@@ -98,6 +98,7 @@ export function startServer(_args: string[]): void {
         { globPattern: '**/*.js' },
         { globPattern: '**/*.ts' },
         { globPattern: '**/spindle.config.*' },
+        { globPattern: '**/*twee-config.*' },
       ],
     });
 

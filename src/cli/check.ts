@@ -5,7 +5,7 @@ import { glob } from 'glob';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
-import { loadConfigFromDisk } from '../core/workspace/config-loader.js';
+import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
 import type { Diagnostic } from '../core/types.js';
 import { formatPretty } from './reporters/pretty.js';
 import { formatJson } from './reporters/json.js';
@@ -132,10 +132,27 @@ export async function runCheck(args: string[]): Promise<number> {
     return 0;
   }
 
-  // Load project config
-  const configRoot = options.configPath
-    ? resolve(cwd, options.configPath, '..')
-    : cwd;
+  // Load project config — search from the common ancestor of matched files,
+  // walking up to find the config file (covers running from a different cwd)
+  let configRoot: string;
+  if (options.configPath) {
+    configRoot = resolve(cwd, options.configPath, '..');
+  } else {
+    // Find the common directory of all matched files
+    const dirs = uniqueFiles.map(f => resolve(f, '..'));
+    configRoot = dirs.reduce((a, b) => {
+      while (!b.startsWith(a)) a = resolve(a, '..');
+      return a;
+    });
+    // Walk up from common dir to find config (max 10 levels)
+    let search = configRoot;
+    for (let i = 0; i < 10; i++) {
+      if (findConfigFile(search)) { configRoot = search; break; }
+      const parent = resolve(search, '..');
+      if (parent === search) break;
+      search = parent;
+    }
+  }
   const projectConfig = loadConfigFromDisk(configRoot);
 
   // Create workspace and load files

@@ -3,16 +3,25 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
 /**
- * Spindle project config as loaded from `spindle.config.yaml/yml/json`.
+ * Spindle project config as loaded from config files.
  */
 export interface SpindleProjectConfig {
   macros: Record<string, any>;
+  enums?: Record<string, string>;
 }
 
+/**
+ * Config files searched in order of priority.
+ * Supports both the new `spindle.config.*` format and the legacy
+ * `t3lt.twee-config.*` format (used by twee3-language-tools).
+ */
 const CONFIG_FILENAMES = [
   'spindle.config.yaml',
   'spindle.config.yml',
   'spindle.config.json',
+  't3lt.twee-config.yaml',
+  't3lt.twee-config.yml',
+  't3lt.twee-config.json',
 ];
 
 const EMPTY_CONFIG: SpindleProjectConfig = { macros: {} };
@@ -41,10 +50,18 @@ export function parseConfig(
   }
 
   const obj = raw as Record<string, unknown>;
+
+  // Support legacy t3lt.twee-config format: { "spindle-0": { macros: {...}, enums: {...} } }
+  const spindle0 = obj['spindle-0'] as Record<string, unknown> | undefined;
+  const source = (spindle0 && typeof spindle0 === 'object') ? spindle0 : obj;
+
   return {
-    macros: (typeof obj.macros === 'object' && obj.macros !== null)
-      ? obj.macros as Record<string, any>
+    macros: (typeof source.macros === 'object' && source.macros !== null)
+      ? source.macros as Record<string, any>
       : {},
+    enums: (typeof source.enums === 'object' && source.enums !== null)
+      ? source.enums as Record<string, string>
+      : undefined,
   };
 }
 
