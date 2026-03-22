@@ -93,8 +93,8 @@ export function startServer(_args: string[]): void {
     };
   });
 
-  connection.onInitialized(async () => {
-    // Register for file watching
+  connection.onInitialized(() => {
+    // Register for file watching (fire-and-forget — don't block the connection)
     connection.client.register(DidChangeWatchedFilesNotification.type, {
       watchers: [
         { globPattern: '**/*.tw' },
@@ -104,14 +104,20 @@ export function startServer(_args: string[]): void {
         { globPattern: '**/spindle.config.*' },
         { globPattern: '**/*twee-config.*' },
       ],
-    });
+    }).catch(() => { /* client may not support dynamic registration */ });
 
-    // Initial workspace scan
+    // Initial workspace scan — deferred so it doesn't block request processing
     if (workspace) {
-      const fileContents = await scanWorkspaceFiles(workspaceRoot);
-      console.error('[spindle-lsp] onInitialized: scanned', fileContents.size, 'files from root:', workspaceRoot ?? 'undefined');
-      workspace.initialize(fileContents);
-      console.error('[spindle-lsp] workspace initialized, macros:', workspace.macros.getAllMacros().length, 'warnings:', workspace.macros.warnings);
+      setImmediate(async () => {
+        try {
+          const fileContents = await scanWorkspaceFiles(workspaceRoot);
+          console.error('[spindle-lsp] scanned', fileContents.size, 'files from root:', workspaceRoot ?? 'undefined');
+          workspace.initialize(fileContents);
+          console.error('[spindle-lsp] workspace initialized, macros:', workspace.macros.getAllMacros().length);
+        } catch (err) {
+          console.error('[spindle-lsp] workspace scan failed:', err);
+        }
+      });
     }
   });
 
