@@ -42,6 +42,11 @@ export class WorkspaceModel extends EventEmitter {
     this.variables = new VariableTracker();
     this.widgets = new WidgetRegistry();
 
+    // Load builtins + supplements eagerly so macros are available
+    // even before initialize() is called (LSP didOpen may arrive first)
+    this.macros.loadBuiltins();
+    this.macros.loadSupplements(supplements as Record<string, any>);
+
     // Bind event handlers
     this.onDocumentChanged = (uri: string) => this.handleDocumentChange(uri);
     this.onDocumentOpened = (uri: string) => this.handleDocumentChange(uri);
@@ -58,9 +63,6 @@ export class WorkspaceModel extends EventEmitter {
    * Loads all file contents, builds indices, and emits 'modelReady'.
    */
   initialize(fileContents: Map<string, string>): void {
-    // Load macros first (builtins + supplements)
-    this.macros.loadBuiltins();
-    this.macros.loadSupplements(supplements as Record<string, any>);
 
     // Load all documents (this triggers documentOpened for each, which
     // will rebuild passages, but we do a bulk rebuild below anyway)

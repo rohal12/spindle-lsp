@@ -48,6 +48,7 @@ export function startServer(_args: string[]): void {
   let workspaceRoot: string | undefined;
 
   connection.onInitialize((params) => {
+    console.error('[spindle-lsp] onInitialize called');
     const initOptions = (params.initializationOptions ?? {}) as Partial<SpindleConfig>;
 
     // Determine workspace root from LSP params
@@ -70,9 +71,11 @@ export function startServer(_args: string[]): void {
 
     // Create workspace model
     workspace = new WorkspaceModel();
+    console.error('[spindle-lsp] workspaceRoot:', workspaceRoot ?? 'undefined');
 
     // Load and filter plugins
     activePlugins = loadPlugins(allPlugins, config);
+    console.error('[spindle-lsp] plugins loaded:', activePlugins.map(p => p.id).join(', '));
 
     // Initialize each plugin with context
     for (const plugin of activePlugins) {
@@ -82,6 +85,7 @@ export function startServer(_args: string[]): void {
     // Load user-defined macros from project config
     if (Object.keys(projectConfig.macros).length > 0) {
       workspace.macros.loadSupplements(projectConfig.macros);
+      console.error('[spindle-lsp] loaded config macros:', Object.keys(projectConfig.macros).length);
     }
 
     return {
@@ -105,7 +109,9 @@ export function startServer(_args: string[]): void {
     // Initial workspace scan
     if (workspace) {
       const fileContents = await scanWorkspaceFiles(workspaceRoot);
+      console.error('[spindle-lsp] onInitialized: scanned', fileContents.size, 'files from root:', workspaceRoot ?? 'undefined');
       workspace.initialize(fileContents);
+      console.error('[spindle-lsp] workspace initialized, macros:', workspace.macros.getAllMacros().length, 'warnings:', workspace.macros.warnings);
     }
   });
 
