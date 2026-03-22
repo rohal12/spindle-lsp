@@ -60,16 +60,19 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel): Diag
       // Variable validation failed — continue
     }
 
-    try {
-      validateLinks(text, passages, passageNames, diagnostics);
-    } catch {
-      // Link validation failed — continue
-    }
+    // Cross-file checks only after full workspace is indexed
+    if (workspace.initialized) {
+      try {
+        validateLinks(text, passages, passageNames, diagnostics);
+      } catch {
+        // Link validation failed — continue
+      }
 
-    try {
-      validateWidgetInvocations(macros, workspace, diagnostics);
-    } catch {
-      // Widget validation failed — continue
+      try {
+        validateWidgetInvocations(macros, workspace, diagnostics);
+      } catch {
+        // Widget validation failed — continue
+      }
     }
 
     return diagnostics;
@@ -321,6 +324,11 @@ function validateVariables(
   workspace: WorkspaceModel,
   diagnostics: Diagnostic[],
 ): void {
+  // Skip cross-file variable checks until the full workspace is indexed.
+  // Before initialize(), we only see individually opened files and can't
+  // know whether StoryVariables exists in another file.
+  if (!workspace.initialized) return;
+
   if (!workspace.variables.hasStoryVariables()) {
     // SP202: no StoryVariables passage
     // Only emit once per document, and only if there are variable usages

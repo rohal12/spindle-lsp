@@ -26,6 +26,9 @@ export class WorkspaceModel extends EventEmitter {
   readonly variables: VariableTracker;
   readonly widgets: WidgetRegistry;
 
+  /** True after initialize() has completed (full workspace scan done). */
+  initialized = false;
+
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly DEBOUNCE_MS = 200;
 
@@ -80,6 +83,8 @@ export class WorkspaceModel extends EventEmitter {
 
     // Bulk rebuild
     this.rebuildAll();
+
+    this.initialized = true;
 
     // Schedule modelReady emission
     this.scheduleModelReady();
