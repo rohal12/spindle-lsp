@@ -10,6 +10,7 @@ import { codeLensPlugin } from './code-lens.js';
 import { inlayHintsPlugin } from './inlay-hints.js';
 import { semanticTokensPlugin } from './semantic-tokens.js';
 import { codeActionsPlugin } from './code-actions.js';
+import { formatPlugin } from './format.js';
 
 /**
  * Registry of all feature plugins.
@@ -26,4 +27,5 @@ export const allPlugins: SpindlePlugin[] = [
   inlayHintsPlugin,
   semanticTokensPlugin,
   codeActionsPlugin,
+  formatPlugin,
 ];
