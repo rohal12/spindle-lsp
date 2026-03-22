@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, parse as parsePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MacroInfo, ChildConstraint } from '../types.js';
@@ -50,10 +51,12 @@ export class MacroRegistry {
     let builtinMacros: BuiltinMacroEntry[] = [];
 
     try {
-      // Resolve the macro-registry.json from @rohal12/spindle package.
-      // Walk up from this file's directory to find node_modules.
+      // Resolve macro-registry.json from @rohal12/spindle package.
+      // Try createRequire first (works in bundled/global contexts),
+      // fall back to directory walk.
       const thisDir = dirname(fileURLToPath(import.meta.url));
-      const registryPath = this.resolveRegistryPath(thisDir);
+      const registryPath = this.resolveRegistryPathViaRequire(thisDir)
+        ?? this.resolveRegistryPath(thisDir);
       if (registryPath) {
         const raw = readFileSync(registryPath, 'utf-8');
         const parsed = JSON.parse(raw);
@@ -154,6 +157,23 @@ export class MacroRegistry {
    * Walk up directory tree from `startDir` to find the
    * @rohal12/spindle/dist/pkg/macro-registry.json file.
    */
+  /**
+   * Resolve macro-registry.json using Node's require resolution.
+   * Works in bundled contexts where import.meta.url may not be near node_modules.
+   */
+  private resolveRegistryPathViaRequire(startDir: string): string | null {
+    try {
+      const require = createRequire(join(startDir, '_'));
+      // Resolve the tooling entry point, then navigate to the sibling JSON
+      const toolingPath = require.resolve('@rohal12/spindle/tooling');
+      const candidate = join(dirname(toolingPath), 'macro-registry.json');
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      // Package not resolvable via require — fall through
+    }
+    return null;
+  }
+
   private resolveRegistryPath(startDir: string): string | null {
     const target = join('node_modules', '@rohal12', 'spindle', 'dist', 'pkg', 'macro-registry.json');
     let dir = startDir;
