@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { parseMacros } from '../../src/core/parsing/macro-parser.js';
+import { MacroRegistry } from '../../src/core/workspace/macro-registry.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
 
@@ -203,6 +204,20 @@ describe('error handling', () => {
     expect(() => parseMacros('{{{unclosed')).not.toThrow();
   });
 
+  it('parseMacros handles deeply nested braces', () => {
+    expect(() => parseMacros('{{{{{{{{{{foo}}}}}}}}}}')).not.toThrow();
+  });
+
+  it('parseMacros handles empty string', () => {
+    const result = parseMacros('');
+    expect(result).toHaveLength(0);
+  });
+
+  it('parseMacros handles string with only whitespace', () => {
+    const result = parseMacros('   \n\n\t  ');
+    expect(result).toHaveLength(0);
+  });
+
   it('handles empty document', () => {
     const workspace = createWorkspaceFrom({ name: 'empty.tw', content: '' });
     const diags = computeDiagnostics('file:///empty.tw', workspace);
@@ -219,5 +234,29 @@ describe('error handling', () => {
     const workspace = createWorkspaceFrom({ name: 'a.tw', content: ':: Start\nhi' });
     const diags = computeDiagnostics('file:///nonexistent.tw', workspace);
     expect(diags).toHaveLength(0);
+  });
+
+  it('handles very long lines without crashing', () => {
+    const longLine = 'a'.repeat(10000);
+    const text = `:: Start\n${longLine}`;
+    const workspace = createWorkspaceFrom({ name: 'long.tw', content: text });
+    expect(() => computeDiagnostics('file:///long.tw', workspace)).not.toThrow();
+  });
+
+  it('handles document with many macros', () => {
+    const lines = [':: Start'];
+    for (let i = 0; i < 100; i++) {
+      lines.push(`{set $x${i} = ${i}}`);
+    }
+    const text = lines.join('\n');
+    const workspace = createWorkspaceFrom({ name: 'many.tw', content: text });
+    expect(() => computeDiagnostics('file:///many.tw', workspace)).not.toThrow();
+  });
+
+  it('MacroRegistry.loadBuiltins gracefully handles missing package', () => {
+    const registry = new MacroRegistry();
+    expect(() => registry.loadBuiltins()).not.toThrow();
+    // Should still be functional (empty or with builtins from the package if available)
+    expect(registry.getAllMacros()).toBeDefined();
   });
 });

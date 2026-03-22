@@ -43,6 +43,9 @@ export class MacroRegistry {
    * Load built-in macro metadata from @rohal12/spindle's macro-registry.json.
    * This is the base layer that provides name, block, subMacros, flags, source.
    */
+  /** Warnings collected during loadBuiltins for logging. */
+  readonly warnings: string[] = [];
+
   loadBuiltins(): void {
     let builtinMacros: BuiltinMacroEntry[] = [];
 
@@ -52,23 +55,40 @@ export class MacroRegistry {
       const thisDir = dirname(fileURLToPath(import.meta.url));
       const registryPath = this.resolveRegistryPath(thisDir);
       if (registryPath) {
-        builtinMacros = JSON.parse(readFileSync(registryPath, 'utf-8'));
+        const raw = readFileSync(registryPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          this.warnings.push(
+            `macro-registry.json: expected array, got ${typeof parsed}. Continuing with supplements only.`,
+          );
+        } else {
+          builtinMacros = parsed;
+        }
       }
-    } catch {
-      // Package not available — no builtins
+    } catch (err: unknown) {
+      // Package not available or malformed — log and continue with supplements only
+      const message = err instanceof Error ? err.message : String(err);
+      this.warnings.push(
+        `Failed to load builtin macros: ${message}. Continuing with supplements only.`,
+      );
     }
 
     for (const m of builtinMacros) {
-      const key = m.name.toLowerCase();
-      this.macros.set(key, {
-        name: m.name,
-        block: m.block,
-        subMacros: m.subMacros ?? [],
-        storeVar: m.storeVar,
-        interpolate: m.interpolate,
-        merged: m.merged,
-        source: m.source === 'builtin' ? 'builtin' : 'user',
-      });
+      try {
+        const key = m.name.toLowerCase();
+        this.macros.set(key, {
+          name: m.name,
+          block: m.block,
+          subMacros: m.subMacros ?? [],
+          storeVar: m.storeVar,
+          interpolate: m.interpolate,
+          merged: m.merged,
+          source: m.source === 'builtin' ? 'builtin' : 'user',
+        });
+      } catch {
+        // Skip malformed entries
+        this.warnings.push(`Skipped malformed builtin macro entry: ${JSON.stringify(m)}`);
+      }
     }
   }
 

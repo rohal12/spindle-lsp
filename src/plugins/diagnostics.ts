@@ -22,38 +22,61 @@ import { parseLinks } from '../core/parsing/link-parser.js';
  *  - Link/widget validation (SP300, SP301)
  */
 export function computeDiagnostics(uri: string, workspace: WorkspaceModel): Diagnostic[] {
-  const text = workspace.documents.getText(uri);
-  if (text === undefined) return [];
+  try {
+    const text = workspace.documents.getText(uri);
+    if (text === undefined) return [];
 
-  const passages = workspace.passages.getPassagesInDocument(uri);
-  if (passages.length === 0) return [];
+    const passages = workspace.passages.getPassagesInDocument(uri);
+    if (passages.length === 0) return [];
 
-  const diagnostics: Diagnostic[] = [];
+    const diagnostics: Diagnostic[] = [];
 
-  // Parse macros for the whole document
-  const macros = parseMacros(text);
-  pairMacros(macros, (name) => workspace.macros.isBlock(name));
+    // Parse macros for the whole document
+    const macros = parseMacros(text);
+    pairMacros(macros, (name) => workspace.macros.isBlock(name));
 
-  // Collect all passage names across workspace for link validation
-  const allPassages = workspace.passages.getAllPassages();
-  const passageNames = new Set(allPassages.map(p => p.name));
+    // Collect all passage names across workspace for link validation
+    const allPassages = workspace.passages.getAllPassages();
+    const passageNames = new Set(allPassages.map(p => p.name));
 
-  // --- Macro validation ---
-  validateMacros(macros, workspace, diagnostics);
+    // Each validation step is wrapped individually so that a failure
+    // in one category still allows the others to produce diagnostics.
 
-  // --- Argument / parameter validation ---
-  validateArguments(macros, workspace, passageNames, diagnostics);
+    try {
+      validateMacros(macros, workspace, diagnostics);
+    } catch {
+      // Macro validation failed — continue with other checks
+    }
 
-  // --- Variable validation ---
-  validateVariables(uri, workspace, diagnostics);
+    try {
+      validateArguments(macros, workspace, passageNames, diagnostics);
+    } catch {
+      // Argument validation failed — continue
+    }
 
-  // --- Link validation ---
-  validateLinks(text, passages, passageNames, diagnostics);
+    try {
+      validateVariables(uri, workspace, diagnostics);
+    } catch {
+      // Variable validation failed — continue
+    }
 
-  // --- Widget invocation validation ---
-  validateWidgetInvocations(macros, workspace, diagnostics);
+    try {
+      validateLinks(text, passages, passageNames, diagnostics);
+    } catch {
+      // Link validation failed — continue
+    }
 
-  return diagnostics;
+    try {
+      validateWidgetInvocations(macros, workspace, diagnostics);
+    } catch {
+      // Widget validation failed — continue
+    }
+
+    return diagnostics;
+  } catch {
+    // Catastrophic failure — return empty diagnostics rather than crashing
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
