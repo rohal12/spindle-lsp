@@ -1,0 +1,283 @@
+{
+  "if": {
+    "name": "if",
+    "children": [
+      { "name": "else", "max": 1 },
+      { "name": "elseif" }
+    ],
+    "container": true,
+    "description": "Conditionally displays its contents based on the given expression.\n\nUsage:\n\n```\n{if condition}\n  ...\n{elseif condition}\n  ...\n{else}\n  ...\n{/if}\n```",
+    "parameters": ["...text"]
+  },
+  "elseif": {
+    "name": "elseif",
+    "parents": ["if"],
+    "description": "Used within `{if}` to provide an additional conditional branch.\n\nUsage: `{elseif condition}`",
+    "parameters": ["...text"]
+  },
+  "else": {
+    "name": "else",
+    "parents": ["if"],
+    "description": "Used within `{if}` to provide a fallback branch.\n\nUsage: `{else}`",
+    "parameters": []
+  },
+  "for": {
+    "name": "for",
+    "children": [
+      { "name": "next" },
+      { "name": "stop" }
+    ],
+    "container": true,
+    "description": "Loop block. Usage: `{for @item of $list}...{/for}` or `{for @item, @index of $list}...{/for}`",
+    "skipArgs": true
+  },
+  "next": {
+    "name": "next",
+    "parents": ["for"],
+    "description": "Continues to the next iteration of a `{for}` loop.\n\nUsage: `{next}`",
+    "parameters": []
+  },
+  "stop": {
+    "name": "stop",
+    "parents": ["for", "repeat"],
+    "description": "Breaks out of a `{for}` or `{repeat}` loop.\n\nUsage: `{stop}`",
+    "parameters": []
+  },
+  "switch": {
+    "name": "switch",
+    "children": [
+      { "name": "case", "min": 1 },
+      { "name": "default", "max": 1 }
+    ],
+    "container": true,
+    "description": "Evaluates an expression and executes the matching `{case}` branch.\n\nUsage:\n\n```\n{switch expression}\n  {case value1}\n    ...\n  {case value2}\n    ...\n  {default}\n    ...\n{/switch}\n```",
+    "parameters": ["...text"]
+  },
+  "case": {
+    "name": "case",
+    "parents": ["switch"],
+    "description": "Defines a branch within a `{switch}` macro.\n\nUsage: `{case value}`",
+    "parameters": ["...text"]
+  },
+  "default": {
+    "name": "default",
+    "parents": ["switch"],
+    "description": "Defines the default branch within a `{switch}` macro.\n\nUsage: `{default}`",
+    "parameters": []
+  },
+  "set": {
+    "name": "set",
+    "description": "Sets variables based on the given expression.\n\nUsage: `{set $var to value}`\n\nSupports `$var` (story), `_var` (temporary), and `@var` (local) variables.",
+    "parameters": ["...text"]
+  },
+  "unset": {
+    "name": "unset",
+    "description": "Unsets one or more variables.\n\nUsage: `{unset $var}`",
+    "parameters": ["...text"]
+  },
+  "computed": {
+    "name": "computed",
+    "description": "Evaluates an expression and outputs the result.\n\nUsage: `{computed expression}`",
+    "parameters": ["...text"]
+  },
+  "print": {
+    "name": "print",
+    "description": "Outputs the result of the given expression.\n\nUsage: `{print expression}`",
+    "parameters": ["...text"]
+  },
+  "do": {
+    "name": "do",
+    "container": true,
+    "description": "Displays its contents. Can be updated dynamically.\n\nUsage:\n\n```\n{do}\n  ...\n{/do}\n```",
+    "parameters": []
+  },
+  "link": {
+    "name": "link",
+    "container": true,
+    "description": "Creates a link that executes its contents when clicked.\n\nUsage:\n\n```\n{link \"text\" \"passage\"}\n  ...\n{/link}\n```",
+    "parameters": ["text |+ text", ""]
+  },
+  "button": {
+    "name": "button",
+    "container": true,
+    "description": "Creates a button that executes its contents when clicked.\n\nUsage:\n\n```\n{button \"text\" \"passage\"}\n  ...\n{/button}\n```",
+    "parameters": ["text |+ text", ""]
+  },
+  "timed": {
+    "name": "timed",
+    "children": [
+      { "name": "next" }
+    ],
+    "container": true,
+    "description": "Displays its contents after a specified delay.\n\nUsage:\n\n```\n{timed delay}\n  ...\n  {next delay}\n  ...\n{/timed}\n```",
+    "parameters": ["text"]
+  },
+  "repeat": {
+    "name": "repeat",
+    "children": [
+      { "name": "stop" }
+    ],
+    "container": true,
+    "description": "Repeatedly displays its contents at the specified interval.\n\nUsage:\n\n```\n{repeat delay}\n  ...\n{/repeat}\n```",
+    "parameters": ["text"]
+  },
+  "type": {
+    "name": "type",
+    "container": true,
+    "description": "Outputs its contents one character at a time, mimicking a typewriter effect.\n\nUsage:\n\n```\n{type speed}\n  ...\n{/type}\n```",
+    "parameters": ["text"]
+  },
+  "listbox": {
+    "name": "listbox",
+    "children": [
+      { "name": "option", "min": 1 }
+    ],
+    "container": true,
+    "description": "Creates a dropdown listbox.\n\nUsage:\n\n```\n{listbox \"$receiver\"}\n  {option \"label1\"}\n  {option \"label2\"}\n{/listbox}\n```",
+    "parameters": ["receiver"]
+  },
+  "cycle": {
+    "name": "cycle",
+    "children": [
+      { "name": "option", "min": 1 }
+    ],
+    "container": true,
+    "description": "Creates a cycling link.\n\nUsage:\n\n```\n{cycle \"$receiver\"}\n  {option \"label1\"}\n  {option \"label2\"}\n{/cycle}\n```",
+    "parameters": ["receiver"]
+  },
+  "option": {
+    "name": "option",
+    "parents": ["listbox", "cycle"],
+    "description": "Defines an option within a `{listbox}` or `{cycle}` macro.\n\nUsage: `{option label}`",
+    "parameters": ["|+ text &+ text", "text"]
+  },
+  "widget": {
+    "name": "widget",
+    "container": true,
+    "description": "Defines a custom widget (macro).\n\nUsage:\n\n```\n{widget \"name\"}\n  ...\n{/widget}\n```",
+    "parameters": ["...text"]
+  },
+  "meter": {
+    "name": "meter",
+    "description": "Displays a progress meter.\n\nUsage: `{meter $var min max}`",
+    "parameters": ["...text"]
+  },
+  "goto": {
+    "name": "goto",
+    "description": "Navigates to the specified passage.\n\nUsage: `{goto \"passage\"}`",
+    "parameters": ["text"]
+  },
+  "back": {
+    "name": "back",
+    "description": "Creates a link or navigates to the previous passage in history.\n\nUsage: `{back}`",
+    "parameters": []
+  },
+  "forward": {
+    "name": "forward",
+    "description": "Creates a link or navigates to the next passage in history.\n\nUsage: `{forward}`",
+    "parameters": []
+  },
+  "restart": {
+    "name": "restart",
+    "description": "Restarts the story.\n\nUsage: `{restart}`",
+    "parameters": []
+  },
+  "include": {
+    "name": "include",
+    "description": "Outputs the contents of the specified passage.\n\nUsage: `{include \"passage\"}`",
+    "parameters": ["text"]
+  },
+  "passage": {
+    "name": "passage",
+    "description": "Outputs the name of the current passage.\n\nUsage: `{passage}`",
+    "parameters": []
+  },
+  "textbox": {
+    "name": "textbox",
+    "description": "Creates a text input box.\n\nUsage: `{textbox \"$receiver\" defaultValue}`",
+    "parameters": ["receiver &+ text"]
+  },
+  "numberbox": {
+    "name": "numberbox",
+    "description": "Creates a number input box.\n\nUsage: `{numberbox \"$receiver\" defaultValue}`",
+    "parameters": ["receiver &+ text"]
+  },
+  "textarea": {
+    "name": "textarea",
+    "description": "Creates a multi-line text input area.\n\nUsage: `{textarea \"$receiver\" defaultValue}`",
+    "parameters": ["receiver &+ text"]
+  },
+  "checkbox": {
+    "name": "checkbox",
+    "description": "Creates a checkbox input.\n\nUsage: `{checkbox \"$receiver\" uncheckedValue checkedValue}`",
+    "parameters": ["receiver &+ text"]
+  },
+  "radiobutton": {
+    "name": "radiobutton",
+    "description": "Creates a radio button input.\n\nUsage: `{radiobutton \"$receiver\" value}`",
+    "parameters": ["receiver &+ text &+ text"]
+  },
+  "quicksave": {
+    "name": "quicksave",
+    "description": "Performs a quick save of the current story state.\n\nUsage: `{quicksave}`",
+    "parameters": []
+  },
+  "quickload": {
+    "name": "quickload",
+    "description": "Loads the most recent quick save.\n\nUsage: `{quickload}`",
+    "parameters": []
+  },
+  "saves": {
+    "name": "saves",
+    "description": "Opens the saves dialog.\n\nUsage: `{saves}`",
+    "parameters": []
+  },
+  "settings": {
+    "name": "settings",
+    "description": "Opens the settings dialog.\n\nUsage: `{settings}`",
+    "parameters": []
+  },
+  "story-title": {
+    "name": "story-title",
+    "description": "Outputs the story title.\n\nUsage: `{story-title}`",
+    "parameters": []
+  },
+  "dialog": {
+    "name": "dialog",
+    "container": true,
+    "description": "Opens a dialog with its contents.\n\nUsage:\n\n```\n{dialog \"title\"}\n  ...\n{/dialog}\n```",
+    "parameters": ["text"]
+  },
+  "nobr": {
+    "name": "nobr",
+    "container": true,
+    "description": "Removes line breaks from its contents.\n\nUsage:\n\n```\n{nobr}\n  ...\n{/nobr}\n```",
+    "parameters": []
+  },
+  "span": {
+    "name": "span",
+    "container": true,
+    "description": "Wraps its contents in a `<span>` element.\n\nUsage:\n\n```\n{span}\n  ...\n{/span}\n```",
+    "parameters": []
+  },
+  "save-manager": {
+    "name": "save-manager",
+    "description": "Renders the save/load UI.\n\nUsage: `{save-manager}`",
+    "parameters": []
+  },
+  "settings-controls": {
+    "name": "settings-controls",
+    "description": "Renders the settings controls UI.\n\nUsage: `{settings-controls}`",
+    "parameters": []
+  },
+  "watch": {
+    "name": "watch",
+    "description": "Watches a variable for changes and triggers a re-render.\n\nUsage: `{watch $var}`",
+    "parameters": ["...text"]
+  },
+  "unwatch": {
+    "name": "unwatch",
+    "description": "Stops watching a variable.\n\nUsage: `{unwatch $var}`",
+    "parameters": ["...text"]
+  }
+}
