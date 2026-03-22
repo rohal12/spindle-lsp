@@ -1,0 +1,12 @@
+:: StoryVariables
+$health = 100
+$name = "Hero"
+
+:: Start
+This is a valid story.
+{set $health = 100}
+{if $health > 50}You're healthy!{/if}
+[[Next]]
+
+:: Next
+The end.

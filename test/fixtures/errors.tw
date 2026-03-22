@@ -1,0 +1,5 @@
+:: ErrorPassage
+{if $x}missing closing tag
+{unknownMacro "arg"}
+{option "outside listbox"}
+[[NonExistent]]

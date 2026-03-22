@@ -1,7 +1,7 @@
 import type { SpindlePlugin } from '../core/plugin/plugin-api.js';
+import { diagnosticsPlugin } from './diagnostics.js';
 
 /**
  * Registry of all feature plugins.
- * Plugins will be added here as they are implemented in Phase 10.
  */
-export const allPlugins: SpindlePlugin[] = [];
+export const allPlugins: SpindlePlugin[] = [diagnosticsPlugin];

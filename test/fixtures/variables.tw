@@ -1,0 +1,7 @@
+:: StoryVariables
+$health = 100
+$name = "Hero"
+
+:: TestPassage
+{set $health = 50}
+{set $unknown = 1}
