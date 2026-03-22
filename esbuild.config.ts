@@ -14,6 +14,8 @@ await build({
     'vscode-languageserver-protocol',
     'glob',
     'yaml',
+    '@modelcontextprotocol/sdk',
+    'zod',
   ],
   banner: { js: '#!/usr/bin/env node' },
   sourcemap: true,

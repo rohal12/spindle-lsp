@@ -14,22 +14,25 @@
     "lint": "tsc --noEmit && vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@rohal12/spindle": "^0.34.0",
+    "glob": "^11.0.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
-    "glob": "^11.0.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0",
     "esbuild": "^0.24.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
   },
   "publishConfig": {
     "access": "public"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18"
   },

@@ -10,6 +10,9 @@ if (args[0] === 'check') {
   const { runFormat } = await import('./cli/format.js');
   const exitCode = await runFormat(args.slice(1));
   process.exit(exitCode);
+} else if (args[0] === 'mcp') {
+  const { startMcpServer } = await import('./mcp/server.js');
+  await startMcpServer();
 } else {
   // Default: start LSP server
   const { startServer } = await import('./server/server.js');
