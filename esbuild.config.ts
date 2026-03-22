@@ -7,7 +7,14 @@ await build({
   target: 'node18',
   format: 'esm',
   outfile: 'dist/bin.js',
-  external: ['@rohal12/spindle'],
+  external: [
+    '@rohal12/spindle',
+    'vscode-languageserver',
+    'vscode-languageserver-textdocument',
+    'vscode-languageserver-protocol',
+    'glob',
+    'yaml',
+  ],
   banner: { js: '#!/usr/bin/env node' },
   sourcemap: true,
 });
