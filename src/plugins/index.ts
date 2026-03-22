@@ -11,6 +11,10 @@ import { inlayHintsPlugin } from './inlay-hints.js';
 import { semanticTokensPlugin } from './semantic-tokens.js';
 import { codeActionsPlugin } from './code-actions.js';
 import { formatPlugin } from './format.js';
+import { documentSymbolPlugin } from './document-symbol.js';
+import { workspaceSymbolPlugin } from './workspace-symbol.js';
+import { foldingRangePlugin } from './folding-range.js';
+import { documentLinkPlugin } from './document-link.js';
 
 /**
  * Registry of all feature plugins.
@@ -28,4 +32,8 @@ export const allPlugins: SpindlePlugin[] = [
   semanticTokensPlugin,
   codeActionsPlugin,
   formatPlugin,
+  documentSymbolPlugin,
+  workspaceSymbolPlugin,
+  foldingRangePlugin,
+  documentLinkPlugin,
 ];
