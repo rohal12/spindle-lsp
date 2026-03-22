@@ -22,6 +22,11 @@ import { parseLinks } from '../core/parsing/link-parser.js';
  *  - Link/widget validation (SP300, SP301)
  */
 export function computeDiagnostics(uri: string, workspace: WorkspaceModel): Diagnostic[] {
+  // Don't emit any diagnostics until the full workspace scan is done.
+  // Before that, passage/variable/widget indices are incomplete and
+  // would produce false positives for cross-file references.
+  if (!workspace.initialized) return [];
+
   try {
     const text = workspace.documents.getText(uri);
     if (text === undefined) return [];
@@ -60,19 +65,16 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel): Diag
       // Variable validation failed — continue
     }
 
-    // Cross-file checks only after full workspace is indexed
-    if (workspace.initialized) {
-      try {
-        validateLinks(text, passages, passageNames, diagnostics);
-      } catch {
-        // Link validation failed — continue
-      }
+    try {
+      validateLinks(text, passages, passageNames, diagnostics);
+    } catch {
+      // Link validation failed — continue
+    }
 
-      try {
-        validateWidgetInvocations(macros, workspace, diagnostics);
-      } catch {
-        // Widget validation failed — continue
-      }
+    try {
+      validateWidgetInvocations(macros, workspace, diagnostics);
+    } catch {
+      // Widget validation failed — continue
     }
 
     return diagnostics;
@@ -324,11 +326,6 @@ function validateVariables(
   workspace: WorkspaceModel,
   diagnostics: Diagnostic[],
 ): void {
-  // Skip cross-file variable checks until the full workspace is indexed.
-  // Before initialize(), we only see individually opened files and can't
-  // know whether StoryVariables exists in another file.
-  if (!workspace.initialized) return;
-
   if (!workspace.variables.hasStoryVariables()) {
     // SP202: no StoryVariables passage
     // Only emit once per document, and only if there are variable usages
