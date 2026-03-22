@@ -1,0 +1,8 @@
+:: MyWidgets [widget]
+{widget "greeting" @name}
+Hello, {@name}!
+{/widget}
+
+{widget "counter" @count @label}
+{@label}: {@count}
+{/widget}
