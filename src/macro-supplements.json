@@ -279,5 +279,11 @@
     "name": "unwatch",
     "description": "Stops watching a variable.\n\nUsage: `{unwatch $var}`",
     "parameters": ["...text"]
+  },
+  "unless": {
+    "name": "unless",
+    "container": true,
+    "description": "Conditionally displays its contents when the expression is falsy. The inverse of `{if}`.\n\nUsage:\n\n```\n{unless condition}\n  ...\n{/unless}\n```",
+    "parameters": ["...text"]
   }
 }

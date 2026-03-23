@@ -188,7 +188,7 @@ export async function startMcpServer(): Promise<void> {
       for (const filePath of files) {
         try {
           const text = readFileSync(filePath, 'utf-8');
-          const result = formatDocument(text);
+          const result = await formatDocument(text);
 
           if (result !== text) {
             writeFileSync(filePath, result, 'utf-8');
@@ -232,7 +232,7 @@ export async function startMcpServer(): Promise<void> {
       for (const filePath of files) {
         try {
           const text = readFileSync(filePath, 'utf-8');
-          const result = formatDocument(text);
+          const result = await formatDocument(text);
 
           const relativePath = filePath.startsWith(cwd)
             ? filePath.slice(cwd.length + 1)

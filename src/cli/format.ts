@@ -65,7 +65,7 @@ export async function runFormat(args: string[]): Promise<number> {
   for (const filePath of uniqueFiles) {
     try {
       const text = readFileSync(filePath, 'utf-8');
-      const formatted = formatDocument(text);
+      const formatted = await formatDocument(text);
 
       if (formatted !== text) {
         if (options.check) {

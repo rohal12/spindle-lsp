@@ -84,4 +84,39 @@ describe('CLI format command', () => {
     const result = readFileSync(filePath, 'utf-8');
     expect(result).toBe(':: Start\nHello world\n');
   });
+
+  it('formats container macros beyond if/for/switch', async () => {
+    const filePath = join(tmpDir, 'test.tw');
+    writeFileSync(filePath, ':: Start\n{button "Go"}\n{set $x = 1}\n{/button}');
+
+    const { exitCode } = await captureStdout(() => runFormat([filePath]));
+    expect(exitCode).toBe(0);
+
+    const result = readFileSync(filePath, 'utf-8');
+    expect(result).toContain('  {set $x = 1}');
+  });
+
+  it('formats custom container macros auto-detected from closing tags', async () => {
+    const filePath = join(tmpDir, 'test.tw');
+    writeFileSync(filePath, ':: Start\n{Section "V"}\ncontent\n{/Section}');
+
+    const { exitCode } = await captureStdout(() => runFormat([filePath]));
+    expect(exitCode).toBe(0);
+
+    const result = readFileSync(filePath, 'utf-8');
+    expect(result).toContain('  content');
+  });
+
+  it('dedents {else} to parent level', async () => {
+    const filePath = join(tmpDir, 'test.tw');
+    writeFileSync(filePath, ':: Start\n{if $x}\na\n{else}\nb\n{/if}');
+
+    const { exitCode } = await captureStdout(() => runFormat([filePath]));
+    expect(exitCode).toBe(0);
+
+    const result = readFileSync(filePath, 'utf-8');
+    const lines = result.split('\n');
+    expect(lines[3]).toBe('{else}');
+    expect(lines[4]).toBe('  b');
+  });
 });
