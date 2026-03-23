@@ -232,6 +232,73 @@ describe('formatDocument', () => {
     const result = await formatDocument(input);
     expect(result.split('\n')[2]).toBe('  Warning!');
   });
+
+  // -- Script passage formatting ------------------------------------------
+
+  it('formats JavaScript in [script]-tagged passages', async () => {
+    const input = ':: Init [script]\nconst   x=1;const y = 2\n';
+    const result = await formatDocument(input);
+    expect(result).toContain('const x = 1;');
+  });
+
+  it('leaves malformed JS in [script] passages as-is', async () => {
+    const input = ':: Init [script]\nconst x = {{{\n';
+    const result = await formatDocument(input);
+    expect(result).toContain('const x = {{{');
+  });
+
+  // -- Stylesheet passage formatting -------------------------------------
+
+  it('formats CSS in [stylesheet]-tagged passages', async () => {
+    const input = ':: Styles [stylesheet]\n.foo{color:red;display:block}\n';
+    const result = await formatDocument(input);
+    expect(result).toContain('color: red;');
+  });
+
+  // -- Inline <script> formatting ----------------------------------------
+
+  it('formats JavaScript inside <script> tags', async () => {
+    const input = ':: Start\n<script>\nconst   x=1\n</script>\n';
+    const result = await formatDocument(input);
+    expect(result).toContain('const x = 1;');
+  });
+
+  // -- HTML block formatting ---------------------------------------------
+
+  it('formats multi-line HTML and preserves Spindle tokens', async () => {
+    const input = ':: Start\n<div>\n<span>{$name}</span>\n</div>\n';
+    const result = await formatDocument(input);
+    expect(result).toContain('{$name}');
+  });
+
+  it('preserves Spindle links inside HTML', async () => {
+    const input = ':: Start\n<div>\n<span>[[Home]]</span>\n</div>\n';
+    const result = await formatDocument(input);
+    expect(result).toContain('[[Home]]');
+  });
+
+  // -- Idempotency -------------------------------------------------------
+
+  it('is idempotent — double formatting produces same result', async () => {
+    const input = ':: Start\n{if $x}\n{Section "V"}\ncontent\n{/Section}\n{/if}\n';
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
+  it('is idempotent with HTML blocks', async () => {
+    const input = ':: Start\n<div>\n<span>{$name}</span>\n</div>\n';
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
+  it('is idempotent with script passages', async () => {
+    const input = ':: Init [script]\nconst   x=1;const y = 2\n';
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
 });
 
 describe('formatRange', () => {

@@ -1,6 +1,9 @@
 import type { Range } from '../core/types.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import supplements from '../macro-supplements.json' with { type: 'json' };
+import { splitPassages, classifyPassage, segmentRegions } from './format/segment.js';
+import { formatJS, formatCSS, formatHTML as formatHTMLPrettier } from './format/prettier-bridge.js';
+import { replaceSpindleTokens, restoreSpindleTokens } from './format/placeholders.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,33 +85,109 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
   const isDedenting = options?.isDedentingSubMacro
     ?? ((name: string) => DEFAULT_DEDENTING.has(name.toLowerCase()));
 
-  const lines = text.split('\n');
-  const result: string[] = [];
-  let indentLevel = 0;
+  const passages = splitPassages(text);
+  const resultLines: string[] = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
+  for (let pi = 0; pi < passages.length; pi++) {
+    const passage = passages[pi];
 
-    // Remove trailing whitespace
-    line = line.replace(/\s+$/, '');
+    // Preserve blank line separator between passages when the original had one
+    if (pi > 0 && passage.header) {
+      const prev = passages[pi - 1];
+      const prevBodyLineCount = prev.body ? prev.body.split('\n').length - 1 : 0;
+      const prevEndLine = prev.startLine + (prev.header ? 1 : 0) + prevBodyLineCount;
+      if (passage.startLine > prevEndLine) {
+        // There were blank lines between passages — emit one blank separator
+        resultLines.push('');
+      }
+    }
 
-    // Normalize passage headers
-    if (PASSAGE_HEADER_REGEX.test(line)) {
-      line = normalizePassageHeader(line);
-      indentLevel = 0;
-      result.push(line);
+    // Normalize and emit passage header
+    if (passage.header) {
+      const header = PASSAGE_HEADER_REGEX.test(passage.header)
+        ? normalizePassageHeader(passage.header)
+        : passage.header;
+      resultLines.push(header);
+    }
+
+    const kind = classifyPassage(passage.header);
+
+    if (kind === 'script') {
+      const formatted = await formatJS(passage.body.trim());
+      resultLines.push(formatted.trim());
       continue;
     }
 
+    if (kind === 'stylesheet') {
+      const formatted = await formatCSS(passage.body.trim());
+      resultLines.push(formatted.trim());
+      continue;
+    }
+
+    // Normal passage: segment into regions
+    const regions = segmentRegions(passage.body);
+
+    for (const region of regions) {
+      if (region.type === 'script') {
+        // Inline <script> — format JS content between tags
+        const firstLine = region.lines[0];
+        const lastLine = region.lines[region.lines.length - 1];
+        const innerLines = region.lines.slice(1, region.lines.length - 1);
+        const innerCode = innerLines.join('\n');
+        const formatted = await formatJS(innerCode.trim());
+        resultLines.push(firstLine);
+        if (formatted.trim()) {
+          for (const fLine of formatted.trim().split('\n')) {
+            resultLines.push('  ' + fLine);
+          }
+        }
+        resultLines.push(lastLine);
+        continue;
+      }
+
+      if (region.type === 'html') {
+        // HTML block — placeholder substitution + Prettier
+        const htmlText = region.lines.join('\n');
+        const { text: placeholdered, tokens } = replaceSpindleTokens(htmlText);
+        const formatted = await formatHTMLPrettier(placeholdered);
+        const restored = restoreSpindleTokens(formatted.trim(), tokens);
+        for (const fLine of restored.split('\n')) {
+          resultLines.push(fLine);
+        }
+        continue;
+      }
+
+      // Spindle/markdown region — apply macro indentation
+      const indented = indentMacros(region.lines, isBlock, isDedenting);
+      resultLines.push(...indented);
+    }
+  }
+
+  // Strip trailing whitespace from all lines and ensure single trailing newline
+  let output = resultLines.map(l => l.replace(/\s+$/, '')).join('\n');
+  output = output.replace(/\n*$/, '\n');
+
+  return output;
+}
+
+function indentMacros(
+  lines: string[],
+  isBlock: (name: string) => boolean,
+  isDedenting: (name: string) => boolean,
+): string[] {
+  const result: string[] = [];
+  let indentLevel = 0;
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/, '');
     const trimmed = line.trim();
 
-    // Empty lines: preserve without whitespace
     if (trimmed === '') {
       result.push('');
       continue;
     }
 
-    // Check for dedenting sub-macro (else, elseif, next, case, default)
+    // Check for dedenting sub-macro
     const dedentMatch = trimmed.match(MACRO_OPEN_REGEX);
     if (dedentMatch && isDedenting(dedentMatch[1])) {
       indentLevel = Math.max(0, indentLevel - 1);
@@ -117,27 +196,22 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
       continue;
     }
 
-    // Check for closing tag
+    // Closing tag
     const closeMatch = trimmed.match(MACRO_CLOSE_REGEX);
     if (closeMatch) {
       indentLevel = Math.max(0, indentLevel - 1);
     }
 
-    // Apply indentation
     result.push(indentLevel > 0 ? '  '.repeat(indentLevel) + trimmed : trimmed);
 
-    // Check for opening container tag
+    // Opening container tag
     const openMatch = trimmed.match(MACRO_OPEN_REGEX);
     if (openMatch && isBlock(openMatch[1])) {
       indentLevel++;
     }
   }
 
-  // Ensure file ends with a single newline
-  let output = result.join('\n');
-  output = output.replace(/\n*$/, '\n');
-
-  return output;
+  return result;
 }
 
 /**
