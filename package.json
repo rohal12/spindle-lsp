@@ -21,6 +21,9 @@
     "vscode-languageserver-textdocument": "^1.0.12",
     "yaml": "^2.7.0"
   },
+  "optionalDependencies": {
+    "prettier": "^3.0.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "esbuild": "^0.24.0",

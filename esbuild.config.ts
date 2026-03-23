@@ -16,6 +16,7 @@ await build({
     'yaml',
     '@modelcontextprotocol/sdk',
     'zod',
+    'prettier',
   ],
   banner: { js: '#!/usr/bin/env node' },
   sourcemap: true,
