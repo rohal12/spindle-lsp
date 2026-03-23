@@ -126,7 +126,7 @@ describe('MCP spindle_format_check', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('identifies unformatted files', () => {
+  it('identifies unformatted files', async () => {
     // Write an unformatted file
     const unformattedPath = join(tmpDir, 'unformatted.tw');
     writeFileSync(unformattedPath, ':: Start\n{if $x}\n{set $y = 1}\n{/if}');
@@ -140,7 +140,7 @@ describe('MCP spindle_format_check', () => {
 
     for (const filePath of [unformattedPath, formattedPath]) {
       const text = readFileSync(filePath, 'utf-8');
-      const result = formatDocument(text);
+      const result = await formatDocument(text);
       if (result !== text) {
         needsFormatting.push(filePath);
       } else {
@@ -154,7 +154,7 @@ describe('MCP spindle_format_check', () => {
     expect(alreadyFormatted[0]).toContain('formatted.tw');
   });
 
-  it('reports all files as formatted when they are', () => {
+  it('reports all files as formatted when they are', async () => {
     const path1 = join(tmpDir, 'a.tw');
     const path2 = join(tmpDir, 'b.tw');
     writeFileSync(path1, ':: Start\nHello\n');
@@ -165,7 +165,7 @@ describe('MCP spindle_format_check', () => {
 
     for (const filePath of [path1, path2]) {
       const text = readFileSync(filePath, 'utf-8');
-      const result = formatDocument(text);
+      const result = await formatDocument(text);
       if (result !== text) {
         needsFormatting.push(filePath);
       } else {
@@ -189,7 +189,7 @@ describe('MCP spindle_format', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('formats files in place and returns summary', () => {
+  it('formats files in place and returns summary', async () => {
     const path1 = join(tmpDir, 'needs-format.tw');
     const path2 = join(tmpDir, 'already-ok.tw');
     writeFileSync(path1, ':: Start\n{if $x}\n{set $y = 1}\n{/if}');
@@ -201,7 +201,7 @@ describe('MCP spindle_format', () => {
 
     for (const filePath of [path1, path2]) {
       const text = readFileSync(filePath, 'utf-8');
-      const result = formatDocument(text);
+      const result = await formatDocument(text);
 
       if (result !== text) {
         writeFileSync(filePath, result, 'utf-8');
@@ -223,12 +223,12 @@ describe('MCP spindle_format', () => {
     expect(updatedContent.endsWith('\n')).toBe(true);
   });
 
-  it('returns zero formatted when all files are already formatted', () => {
+  it('returns zero formatted when all files are already formatted', async () => {
     const filePath = join(tmpDir, 'ok.tw');
     writeFileSync(filePath, ':: Start\n{if $x}\n  {set $y = 1}\n{/if}\n');
 
     const text = readFileSync(filePath, 'utf-8');
-    const result = formatDocument(text);
+    const result = await formatDocument(text);
 
     expect(result).toBe(text);
   });

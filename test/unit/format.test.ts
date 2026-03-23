@@ -2,16 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { formatDocument, formatRange } from '../../src/plugins/format.js';
 
 describe('formatDocument', () => {
-  it('indents content inside block macros by 2 spaces', () => {
+  // -- Existing behavior -------------------------------------------------
+
+  it('indents content inside {if} by 2 spaces', async () => {
     const input = ':: Start\n{if $x}\n{set $y = 1}\n{/if}\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     const lines = result.split('\n');
     expect(lines[2]).toBe('  {set $y = 1}');
   });
 
-  it('handles nested indentation (2 and 4 spaces)', () => {
+  it('handles nested indentation (2 and 4 spaces)', async () => {
     const input = ':: Start\n{if $x}\n{for @item range $list}\n{set $y = 1}\n{/for}\n{/if}\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     const lines = result.split('\n');
     expect(lines[2]).toBe('  {for @item range $list}');
     expect(lines[3]).toBe('    {set $y = 1}');
@@ -19,73 +21,223 @@ describe('formatDocument', () => {
     expect(lines[5]).toBe('{/if}');
   });
 
-  it('removes trailing whitespace from lines', () => {
+  it('removes trailing whitespace from lines', async () => {
     const input = ':: Start   \nHello world   \n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     const lines = result.split('\n');
     expect(lines[0]).toBe(':: Start');
     expect(lines[1]).toBe('Hello world');
   });
 
-  it('ensures file ends with a single newline', () => {
+  it('ensures file ends with a single newline', async () => {
     const input = ':: Start\nHello world';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     expect(result.endsWith('\n')).toBe(true);
     expect(result.endsWith('\n\n')).toBe(false);
   });
 
-  it('collapses multiple trailing newlines to one', () => {
+  it('collapses multiple trailing newlines to one', async () => {
     const input = ':: Start\nHello world\n\n\n\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     expect(result).toBe(':: Start\nHello world\n');
   });
 
-  it('normalizes passage headers with extra whitespace', () => {
+  it('normalizes passage headers with extra whitespace', async () => {
     const input = '::  Name  [tag]\nContent\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     const lines = result.split('\n');
     expect(lines[0]).toBe(':: Name [tag]');
   });
 
-  it('normalizes passage header with metadata braces', () => {
+  it('normalizes passage header with metadata braces', async () => {
     const input = '::  MyPassage  {"position": "100,200"}\nContent\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     const lines = result.split('\n');
     expect(lines[0]).toBe(':: MyPassage {"position": "100,200"}');
   });
 
-  it('returns already-formatted document unchanged', () => {
+  it('returns already-formatted document unchanged', async () => {
     const input = ':: Start\n{if $x}\n  {set $y = 1}\n{/if}\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     expect(result).toBe(input);
   });
 
-  it('resets indent level at passage boundaries', () => {
+  it('resets indent level at passage boundaries', async () => {
     const input = ':: Passage1\n{if $x}\nContent\n\n:: Passage2\nMore content\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     const lines = result.split('\n');
-    // Passage2 content should not be indented
     expect(lines[5]).toBe('More content');
   });
 
-  it('handles empty input', () => {
-    const result = formatDocument('');
+  it('handles empty input', async () => {
+    const result = await formatDocument('');
     expect(result).toBe('\n');
   });
 
-  it('handles widget blocks', () => {
+  it('handles widget blocks', async () => {
     const input = ':: Widgets [widget]\n{widget "greet" @name}\nHello {@name}\n{/widget}\n';
-    const result = formatDocument(input);
+    const result = await formatDocument(input);
     const lines = result.split('\n');
     expect(lines[2]).toBe('  Hello {@name}');
     expect(lines[3]).toBe('{/widget}');
   });
+
+  // -- New container macros ----------------------------------------------
+
+  it('indents content inside {button}', async () => {
+    const input = ':: Start\n{button "Click"}\n{set $x = 1}\n{/button}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  {set $x = 1}');
+  });
+
+  it('indents content inside {do}', async () => {
+    const input = ':: Start\n{do}\n{set $x = 1}\n{/do}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  {set $x = 1}');
+  });
+
+  it('indents content inside {link}', async () => {
+    const input = ':: Start\n{link "Go" "Next"}\n{set $x = 1}\n{/link}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  {set $x = 1}');
+  });
+
+  it('indents content inside {timed}', async () => {
+    const input = ':: Start\n{timed 2s}\nFirst\n{/timed}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  First');
+  });
+
+  it('indents content inside {repeat}', async () => {
+    const input = ':: Start\n{repeat 1s}\nContent\n{/repeat}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  Content');
+  });
+
+  it('indents content inside {type}', async () => {
+    const input = ':: Start\n{type 30}\nContent\n{/type}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  Content');
+  });
+
+  it('indents content inside {dialog}', async () => {
+    const input = ':: Start\n{dialog "Title"}\nContent\n{/dialog}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  Content');
+  });
+
+  it('indents content inside {nobr}', async () => {
+    const input = ':: Start\n{nobr}\nContent\n{/nobr}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  Content');
+  });
+
+  it('indents content inside {span}', async () => {
+    const input = ':: Start\n{span}\nContent\n{/span}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  Content');
+  });
+
+  it('indents content inside {listbox}', async () => {
+    const input = ':: Start\n{listbox "$x"}\n{option "a"}\n{/listbox}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  {option "a"}');
+  });
+
+  it('indents content inside {cycle}', async () => {
+    const input = ':: Start\n{cycle "$x"}\n{option "a"}\n{/cycle}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  {option "a"}');
+  });
+
+  it('indents content inside {unless}', async () => {
+    const input = ':: Start\n{unless $x}\nContent\n{/unless}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  Content');
+  });
+
+  // -- Custom macros via auto-detection ----------------------------------
+
+  it('auto-detects custom container macros from closing tags', async () => {
+    const input = ':: Start\n{Section "Vitals"}\n{StatBar "HP" $hp 10}\n{/Section}\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[2]).toBe('  {StatBar "HP" $hp 10}');
+    expect(lines[3]).toBe('{/Section}');
+  });
+
+  // -- Registry-backed isBlock callback ----------------------------------
+
+  it('uses provided isBlock callback', async () => {
+    const input = ':: Start\n{CustomBlock}\nContent\n{/CustomBlock}\n';
+    const result = await formatDocument(input, {
+      isBlock: (name) => name.toLowerCase() === 'customblock',
+    });
+    expect(result.split('\n')[2]).toBe('  Content');
+  });
+
+  // -- Dedenting sub-macros ----------------------------------------------
+
+  it('dedents {else} to parent level', async () => {
+    const input = ':: Start\n{if $x}\ncontent\n{else}\nfallback\n{/if}\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[1]).toBe('{if $x}');
+    expect(lines[2]).toBe('  content');
+    expect(lines[3]).toBe('{else}');
+    expect(lines[4]).toBe('  fallback');
+    expect(lines[5]).toBe('{/if}');
+  });
+
+  it('dedents {elseif} to parent level', async () => {
+    const input = ':: Start\n{if $x}\na\n{elseif $y}\nb\n{else}\nc\n{/if}\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[2]).toBe('  a');
+    expect(lines[3]).toBe('{elseif $y}');
+    expect(lines[4]).toBe('  b');
+    expect(lines[5]).toBe('{else}');
+    expect(lines[6]).toBe('  c');
+  });
+
+  it('dedents {next} inside {timed} to parent level', async () => {
+    const input = ':: Start\n{timed 2s}\nFirst\n{next 2s}\nSecond\n{next}\nThird\n{/timed}\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[1]).toBe('{timed 2s}');
+    expect(lines[2]).toBe('  First');
+    expect(lines[3]).toBe('{next 2s}');
+    expect(lines[4]).toBe('  Second');
+    expect(lines[5]).toBe('{next}');
+    expect(lines[6]).toBe('  Third');
+    expect(lines[7]).toBe('{/timed}');
+  });
+
+  it('dedents {case} and {default} to parent level inside {switch}', async () => {
+    const input = ':: Start\n{switch $x}\n{case "a"}\nbranch a\n{default}\nfallback\n{/switch}\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[1]).toBe('{switch $x}');
+    expect(lines[2]).toBe('{case "a"}');
+    expect(lines[3]).toBe('  branch a');
+    expect(lines[4]).toBe('{default}');
+    expect(lines[5]).toBe('  fallback');
+    expect(lines[6]).toBe('{/switch}');
+  });
+
+  // -- Macros with CSS prefix --------------------------------------------
+
+  it('indents content inside macros with CSS prefix', async () => {
+    const input = ':: Start\n{.red#alert if $danger}\nWarning!\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('  Warning!');
+  });
 });
 
 describe('formatRange', () => {
-  it('formats only the specified line range', () => {
+  it('formats the full document (range is advisory)', async () => {
     const input = ':: Start\n{if $x}\n{set $y = 1}\n{/if}\n:: Next\nContent\n';
-    const result = formatRange(input, {
+    const result = await formatRange(input, {
       start: { line: 1, character: 0 },
       end: { line: 3, character: 4 },
     });
@@ -94,11 +246,11 @@ describe('formatRange', () => {
     expect(lines[5]).toBe('Content');
   });
 
-  it('handles range at start of document', () => {
+  it('normalizes passage headers even outside range', async () => {
     const input = '::  Start  [tag]\nContent\n';
-    const result = formatRange(input, {
-      start: { line: 0, character: 0 },
-      end: { line: 0, character: 0 },
+    const result = await formatRange(input, {
+      start: { line: 1, character: 0 },
+      end: { line: 1, character: 0 },
     });
     const lines = result.split('\n');
     expect(lines[0]).toBe(':: Start [tag]');
