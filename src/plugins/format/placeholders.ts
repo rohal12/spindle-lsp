@@ -1,11 +1,14 @@
 /**
  * Regex matching Spindle tokens in HTML:
  * - {/macroName} closing tags
- * - {macroName ...} opening tags (with optional CSS prefix)
+ * - {macroName ...} opening tags (with optional CSS prefix, balanced nested braces)
  * - {$variable}, {_variable}, {@variable} (with optional dot paths)
  * - [[links]]
  */
-const SPINDLE_TOKEN_REGEX = /(?:\{\/[A-Za-z][\w-]*\s*\}|\{(?:[#.][a-zA-Z][\w-]*\s*)*[A-Za-z][\w-]*(?:\s+(?:[^}]|\}(?=[^}]))*?)?\}|\{[$_@][a-zA-Z][\w.]*\}|\[\[(?:[^\]]*)\]\])/g;
+const SPINDLE_TOKEN_REGEX = /(?:\{\/[A-Za-z][\w-]*\s*\}|\{(?:[#.][a-zA-Z][\w-]*\s*)*[A-Za-z][\w-]*(?:\s+(?:[^{}]|\{[^{}]*\})*)?\}|\{[$_@][a-zA-Z][\w.]*\}|\[\[(?:[^\]]*)\]\])/g;
+
+/** Detect HTML tags in text (opening or self-closing or closing). */
+const HTML_TAG_REGEX = /<\/?[a-zA-Z][\w-]*[\s>/]/;
 
 /**
  * Check if a position in the string is inside an HTML attribute value.
@@ -34,19 +37,53 @@ export interface PlaceholderResult {
 /**
  * Replace Spindle tokens with placeholders.
  * Uses <!--SP:N--> in HTML content and __SPN__ in attribute values.
+ *
+ * Lines that contain Spindle tokens but no HTML tags are replaced as a
+ * single whole-line placeholder so Prettier cannot split them.
  */
 export function replaceSpindleTokens(html: string): PlaceholderResult {
   const tokens: string[] = [];
-  const text = html.replace(SPINDLE_TOKEN_REGEX, (match, ...args) => {
-    const offset = args[args.length - 2] as number;
-    const idx = tokens.length;
-    tokens.push(match);
-    if (isInsideAttribute(html, offset)) {
-      return `__SP${idx}__`;
+  const lines = html.split('\n');
+  const resultLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Check if line has any Spindle tokens
+    SPINDLE_TOKEN_REGEX.lastIndex = 0;
+    if (!SPINDLE_TOKEN_REGEX.test(trimmed)) {
+      resultLines.push(line);
+      continue;
     }
-    return `<!--SP:${idx}-->`;
-  });
-  return { text, tokens };
+
+    // Check if line has HTML tags after removing Spindle tokens
+    SPINDLE_TOKEN_REGEX.lastIndex = 0;
+    const withoutSpindle = trimmed.replace(SPINDLE_TOKEN_REGEX, '');
+    const hasHtml = HTML_TAG_REGEX.test(withoutSpindle);
+
+    if (!hasHtml) {
+      // Line has Spindle tokens but no HTML — replace entire line with one placeholder
+      const idx = tokens.length;
+      tokens.push(trimmed);
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      resultLines.push(`${indent}<!--SP:${idx}-->`);
+    } else {
+      // Line has both HTML and Spindle — replace individual tokens
+      SPINDLE_TOKEN_REGEX.lastIndex = 0;
+      const replaced = line.replace(SPINDLE_TOKEN_REGEX, (match, ...args) => {
+        const matchOffset = args[args.length - 2] as number;
+        const idx = tokens.length;
+        tokens.push(match);
+        if (isInsideAttribute(line, matchOffset)) {
+          return `__SP${idx}__`;
+        }
+        return `<!--SP:${idx}-->`;
+      });
+      resultLines.push(replaced);
+    }
+  }
+
+  return { text: resultLines.join('\n'), tokens };
 }
 
 /**

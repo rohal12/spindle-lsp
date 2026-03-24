@@ -277,6 +277,84 @@ describe('formatDocument', () => {
     expect(result).toContain('[[Home]]');
   });
 
+  // -- HTML blocks with Spindle macros (regression) ----------------------
+
+  it('preserves {button} inside HTML blocks', async () => {
+    const input = [
+      ':: Actions [nobr]',
+      '<div class="menu">',
+      '{for @action of $actions}',
+      '<button class="btn" data-action="do" data-id="{@action.id}">{@action.name}</button>',
+      '{/for}',
+      '</div>',
+      '',
+    ].join('\n');
+    const result = await formatDocument(input);
+    // The <button> tag must remain intact — not split across lines or corrupted
+    expect(result).toContain('<button');
+    expect(result).toContain('</button>');
+    // The macro tokens inside attributes must survive
+    expect(result).toContain('{@action.id}');
+    expect(result).toContain('{@action.name}');
+  });
+
+  it('preserves {button} with macro arguments inside {widget}', async () => {
+    const input = [
+      ':: Widgets [widget]',
+      '{widget "OpenPad" @view @label}',
+      '<div class="choices-section">',
+      '{button "{@label}"}{set $view = @view}{do} Story.goto("blank"); {/do}{/button}',
+      '</div>',
+      '{/widget}',
+      '',
+    ].join('\n');
+    const result = await formatDocument(input);
+    // The single-line {button} must not be split across multiple lines
+    const buttonLine = result.split('\n').find(l => l.includes('{button'));
+    expect(buttonLine).toBeDefined();
+    expect(buttonLine).toContain('{/button}');
+  });
+
+  it('is idempotent with <button> inside {for} in HTML blocks', async () => {
+    const input = [
+      ':: Panel [nobr]',
+      '<div class="panel">',
+      '{for @item of $items}',
+      '<button class="item-btn" data-id="{@item.id}">{@item.name}</button>',
+      '{/for}',
+      '</div>',
+      '',
+    ].join('\n');
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
+  it('is idempotent with complex ALMA-style panel', async () => {
+    const input = [
+      ':: ALMAPanel [nobr]',
+      '<div class="alma-panel">',
+      '<div class="header">Day {$game.day}</div>',
+      '{if $npc_plans.length > 0}',
+      '<div class="crew">',
+      '{for @plan of $npc_plans}',
+      '<div class="row"><span>{@plan.name}</span></div>',
+      '{/for}',
+      '</div>',
+      '{/if}',
+      '<div class="actions">',
+      '{for @action of $actions}',
+      '<button class="action-btn {if @action.cost > $ap.current}disabled{/if}" data-action="game-action" data-action-id="{@action.id}"><span>{@action.name}</span><span>{@action.cost} AP</span></button>',
+      '{/for}',
+      '</div>',
+      '</div>',
+      '',
+    ].join('\n');
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
   // -- Idempotency -------------------------------------------------------
 
   it('is idempotent — double formatting produces same result', async () => {
