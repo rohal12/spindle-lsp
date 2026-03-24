@@ -217,6 +217,16 @@ function indentMacros(
     if (openMatch && isBlock(openMatch[1])) {
       indentLevel++;
     }
+
+    // Closing tags that appear later on the same line (not at position 0,
+    // which is already handled by the close-at-start check above).
+    const closeGlobal = /\{\/[A-Za-z][\w-]*\s*\}/g;
+    let cm: RegExpExecArray | null;
+    while ((cm = closeGlobal.exec(trimmed)) !== null) {
+      if (cm.index > 0) {
+        indentLevel = Math.max(0, indentLevel - 1);
+      }
+    }
   }
 
   return result;

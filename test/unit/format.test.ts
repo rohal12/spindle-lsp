@@ -418,6 +418,66 @@ describe('formatDocument', () => {
     expect(svgLine).toContain('viewBox="0 0 24 24"');
   });
 
+  // -- Inline block macros (open+close on same line) ---------------------
+
+  it('does not indent after inline {sys}...{/sys}', async () => {
+    const input = ':: Start\n{sys}System message{/sys}\nNext line\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[1]).toBe('{sys}System message{/sys}');
+    expect(lines[2]).toBe('Next line');
+  });
+
+  it('does not indent after inline {say}...{/say}', async () => {
+    const input = ':: Start\n{say}"Hello," she said.{/say}\nNext line\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[2]).toBe('Next line');
+  });
+
+  it('handles multiple inline block macros without compounding indent', async () => {
+    const input = [
+      ':: Start',
+      '{sys}First system message{/sys}',
+      'Prose line one',
+      '{say}"Dialog line"{/say}',
+      'Prose line two',
+      '{think}Internal thought{/think}',
+      'Prose line three',
+      '',
+    ].join('\n');
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[1]).toBe('{sys}First system message{/sys}');
+    expect(lines[2]).toBe('Prose line one');
+    expect(lines[3]).toBe('{say}"Dialog line"{/say}');
+    expect(lines[4]).toBe('Prose line two');
+    expect(lines[5]).toBe('{think}Internal thought{/think}');
+    expect(lines[6]).toBe('Prose line three');
+  });
+
+  it('handles inline block macro inside a block container', async () => {
+    const input = ':: Start\n{if $x}\n{say}"Hello"{/say}\nMore content\n{/if}\n';
+    const result = await formatDocument(input);
+    const lines = result.split('\n');
+    expect(lines[2]).toBe('  {say}"Hello"{/say}');
+    expect(lines[3]).toBe('  More content');
+  });
+
+  it('is idempotent with inline block macros', async () => {
+    const input = [
+      ':: Start',
+      '{sys}System message{/sys}',
+      'Prose',
+      '{say}"Dialog"{/say}',
+      'More prose',
+      '',
+    ].join('\n');
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
   // -- Idempotency -------------------------------------------------------
 
   it('is idempotent — double formatting produces same result', async () => {
