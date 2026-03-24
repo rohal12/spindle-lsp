@@ -35,6 +35,32 @@ export interface PlaceholderResult {
 }
 
 /**
+ * Replace `<svg>…</svg>` blocks with HTML comment placeholders so Prettier
+ * does not reformat them (CommonMark does not recognise multi-line SVG tags
+ * as HTML blocks, so reformatted attributes break rendering).
+ */
+export function replaceSvgBlocks(html: string): PlaceholderResult {
+  const tokens: string[] = [];
+  const result = html.replace(/<svg[\s>][\s\S]*?<\/svg>/gi, (match) => {
+    const idx = tokens.length;
+    tokens.push(match);
+    return `<!--SVG:${idx}-->`;
+  });
+  return { text: result, tokens };
+}
+
+/**
+ * Restore SVG blocks from placeholders.
+ */
+export function restoreSvgBlocks(text: string, tokens: string[]): string {
+  let result = text;
+  for (let i = 0; i < tokens.length; i++) {
+    result = result.replace(`<!--SVG:${i}-->`, tokens[i]);
+  }
+  return result;
+}
+
+/**
  * Replace Spindle tokens with placeholders.
  * Uses <!--SP:N--> in HTML content and __SPN__ in attribute values.
  *
