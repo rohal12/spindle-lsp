@@ -3,7 +3,7 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import supplements from '../macro-supplements.json' with { type: 'json' };
 import { splitPassages, classifyPassage, segmentRegions } from './format/segment.js';
 import { formatJS, formatCSS, formatHTML as formatHTMLPrettier } from './format/prettier-bridge.js';
-import { replaceSpindleTokens, restoreSpindleTokens } from './format/placeholders.js';
+import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks } from './format/placeholders.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -145,12 +145,20 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
         continue;
       }
 
+      if (region.type === 'svg') {
+        // SVG block — leave untouched (Prettier would break rendering)
+        resultLines.push(...region.lines);
+        continue;
+      }
+
       if (region.type === 'html') {
         // HTML block — placeholder substitution + Prettier
         const htmlText = region.lines.join('\n');
-        const { text: placeholdered, tokens } = replaceSpindleTokens(htmlText);
+        const { text: svgPlaceholdered, tokens: svgTokens } = replaceSvgBlocks(htmlText);
+        const { text: placeholdered, tokens } = replaceSpindleTokens(svgPlaceholdered);
         const formatted = await formatHTMLPrettier(placeholdered);
-        const restored = restoreSpindleTokens(formatted.trim(), tokens);
+        const restoredSpindle = restoreSpindleTokens(formatted.trim(), tokens);
+        const restored = restoreSvgBlocks(restoredSpindle, svgTokens);
         for (const fLine of restored.split('\n')) {
           resultLines.push(fLine);
         }

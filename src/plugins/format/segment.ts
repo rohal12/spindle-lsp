@@ -6,7 +6,7 @@ export interface Passage {
 }
 
 export interface Region {
-  type: 'spindle' | 'html' | 'script';
+  type: 'spindle' | 'html' | 'script' | 'svg';
   lines: string[];
 }
 
@@ -102,6 +102,24 @@ export function segmentRegions(body: string): Region[] {
         i++;
       }
       regions.push({ type: 'script', lines: scriptLines });
+      continue;
+    }
+
+    // Detect <svg> blocks — treat as opaque to prevent Prettier from
+    // breaking multi-line attributes (CommonMark does not list svg as a
+    // type-6 HTML block tag, so reformatted multi-line tags break rendering).
+    if (/^<svg(\s|>)/i.test(trimmed)) {
+      const svgLines: string[] = [line];
+      i++;
+      while (i < lines.length && !/<\/svg>/i.test(lines[i])) {
+        svgLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) {
+        svgLines.push(lines[i]); // closing </svg>
+        i++;
+      }
+      regions.push({ type: 'svg', lines: svgLines });
       continue;
     }
 

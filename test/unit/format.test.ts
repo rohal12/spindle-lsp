@@ -373,6 +373,51 @@ describe('formatDocument', () => {
     expect(second).toBe(first);
   });
 
+  // -- SVG preservation (issue #5) ----------------------------------------
+
+  it('does not reformat SVG tags to multi-line', async () => {
+    const input = [
+      ':: Test',
+      '<div class="wrapper"><svg class="my-svg" width="100" height="100" viewBox="0 0 100 100">',
+      '<circle cx="50" cy="50" r="40"></circle>',
+      '</svg></div>',
+      '',
+    ].join('\n');
+    const result = await formatDocument(input);
+    // SVG attributes must stay on one line — not broken across lines by Prettier
+    expect(result).toContain('viewBox="0 0 100 100"');
+    expect(result).not.toContain('<svg\n');
+  });
+
+  it('is idempotent with SVG blocks', async () => {
+    const input = [
+      ':: Test',
+      '<svg class="my-svg" width="100" height="100" viewBox="0 0 100 100">',
+      '<circle cx="50" cy="50" r="40"></circle>',
+      '</svg>',
+      '',
+    ].join('\n');
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
+  it('preserves SVG inside a wrapper div without reformatting', async () => {
+    const input = [
+      ':: Icons',
+      '<div class="icon-container">',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">',
+      '<path d="M12 2L2 7l10 5 10-5-10-5z"></path>',
+      '</svg>',
+      '</div>',
+      '',
+    ].join('\n');
+    const result = await formatDocument(input);
+    // The SVG opening tag must not be split across lines
+    const svgLine = result.split('\n').find(l => l.includes('<svg'));
+    expect(svgLine).toContain('viewBox="0 0 24 24"');
+  });
+
   // -- Idempotency -------------------------------------------------------
 
   it('is idempotent — double formatting produces same result', async () => {
