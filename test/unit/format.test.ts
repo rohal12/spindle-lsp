@@ -355,6 +355,24 @@ describe('formatDocument', () => {
     expect(second).toBe(first);
   });
 
+  it('is idempotent with multi-attribute div and {include} macros', async () => {
+    const input = [
+      ':: StoryInterface',
+      '<div id="interface">',
+      '<div id="top-bar">',
+      '{include "TopBar"}',
+      '</div>',
+      '<div id="main" class="main-content-area" data-section="primary" data-scrollable="true">',
+      '{include "PCStatus"}',
+      '</div>',
+      '</div>',
+      '',
+    ].join('\n');
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
   // -- Idempotency -------------------------------------------------------
 
   it('is idempotent — double formatting produces same result', async () => {
