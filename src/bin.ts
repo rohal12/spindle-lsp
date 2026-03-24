@@ -1,8 +1,38 @@
 export {};
 
+import { createRequire } from 'node:module';
+
 const args = process.argv.slice(2);
 
-if (args[0] === 'check') {
+const VERSION = (createRequire(import.meta.url))('../package.json').version as string;
+
+const HELP = `\
+spindle-lsp v${VERSION}
+Language Server Protocol server for Spindle story format
+
+Usage:
+  spindle-lsp                Start the LSP server (stdio)
+  spindle-lsp check <files>  Lint .twee/.tw files
+  spindle-lsp format <files> Format .twee/.tw files in place
+  spindle-lsp mcp            Start the MCP server
+
+Options:
+  --help, -h                 Show this help message
+  --version, -v              Show version number
+
+Check options:
+  --format <pretty|json|sarif>   Output format (default: pretty)
+  --severity <level>             Minimum severity: error, warning, info, hint
+  --config <path>                Path to config file
+  --max-line-length <n>          Warn on lines exceeding n characters`;
+
+if (args.includes('--help') || args.includes('-h') || args.length === 0) {
+  console.log(HELP);
+  process.exit(0);
+} else if (args.includes('--version') || args.includes('-v')) {
+  console.log(VERSION);
+  process.exit(0);
+} else if (args[0] === 'check') {
   const { runCheck } = await import('./cli/check.js');
   const exitCode = await runCheck(args.slice(1));
   process.exit(exitCode);

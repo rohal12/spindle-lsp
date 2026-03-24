@@ -21,7 +21,11 @@ import { parseLinks } from '../core/parsing/link-parser.js';
  *  - Variable validation (SP200, SP202)
  *  - Link/widget validation (SP300, SP301)
  */
-export function computeDiagnostics(uri: string, workspace: WorkspaceModel): Diagnostic[] {
+export interface DiagnosticOptions {
+  maxLineLength?: number;
+}
+
+export function computeDiagnostics(uri: string, workspace: WorkspaceModel, options?: DiagnosticOptions): Diagnostic[] {
   // Don't emit any diagnostics until the full workspace scan is done.
   // Before that, passage/variable/widget indices are incomplete and
   // would produce false positives for cross-file references.
@@ -75,6 +79,14 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel): Diag
       validateWidgetInvocations(macros, workspace, diagnostics);
     } catch {
       // Widget validation failed — continue
+    }
+
+    if (options?.maxLineLength) {
+      try {
+        validateLineLength(text, passages, options.maxLineLength, diagnostics);
+      } catch {
+        // Line-length validation failed — continue
+      }
     }
 
     return diagnostics;
@@ -413,6 +425,43 @@ function validateWidgetInvocations(
         macro.range,
         DiagnosticCode.WidgetArgCountMismatch,
         `Widget {${macro.name}} expects ${expectedCount} argument(s), got ${argCount}`,
+      ));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Line-length validation (SP500)
+// ---------------------------------------------------------------------------
+
+function validateLineLength(
+  text: string,
+  passages: Array<{ name: string; range: import('../core/types.js').Range; tags?: string[] }>,
+  maxLength: number,
+  diagnostics: Diagnostic[],
+): void {
+  // Skip script/stylesheet passages — those have their own formatting rules
+  const excludedTags = new Set(['script', 'stylesheet']);
+  const excludedPassages = new Set(passages
+    .filter(p => p.tags?.some(t => excludedTags.has(t)))
+    .map(p => p.name));
+
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Skip passage headers
+    if (/^::\s+/.test(line)) continue;
+    // Skip HTML-heavy lines (tags with attributes)
+    if (/^\s*<[a-zA-Z]/.test(line)) continue;
+
+    if (line.length > maxLength) {
+      diagnostics.push(makeDiag(
+        {
+          start: { line: i, character: maxLength },
+          end: { line: i, character: line.length },
+        },
+        DiagnosticCode.LineTooLong,
+        `Line exceeds ${maxLength} characters (${line.length})`,
       ));
     }
   }

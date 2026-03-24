@@ -5,6 +5,7 @@ import { glob } from 'glob';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
+import type { DiagnosticOptions } from '../plugins/diagnostics.js';
 import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
 import type { Diagnostic } from '../core/types.js';
 import { formatPretty } from './reporters/pretty.js';
@@ -19,6 +20,7 @@ interface CheckOptions {
   format: 'pretty' | 'json' | 'sarif';
   severity: 'error' | 'warning' | 'info' | 'hint' | null;
   configPath: string | null;
+  maxLineLength: number | null;
   patterns: string[];
 }
 
@@ -27,6 +29,7 @@ function parseArgs(args: string[]): CheckOptions {
     format: 'pretty',
     severity: null,
     configPath: null,
+    maxLineLength: null,
     patterns: [],
   };
 
@@ -63,6 +66,14 @@ function parseArgs(args: string[]): CheckOptions {
       i += 2;
     } else if (arg.startsWith('--config=')) {
       options.configPath = arg.slice('--config='.length);
+      i++;
+    } else if (arg === '--max-line-length' && i + 1 < args.length) {
+      const n = parseInt(args[i + 1], 10);
+      if (!isNaN(n) && n > 0) options.maxLineLength = n;
+      i += 2;
+    } else if (arg.startsWith('--max-line-length=')) {
+      const n = parseInt(arg.slice('--max-line-length='.length), 10);
+      if (!isNaN(n) && n > 0) options.maxLineLength = n;
       i++;
     } else if (!arg.startsWith('--')) {
       options.patterns.push(arg);
@@ -175,11 +186,16 @@ export async function runCheck(args: string[]): Promise<number> {
   }
 
   // Compute diagnostics for each file
+  const diagOptions: DiagnosticOptions = {};
+  if (options.maxLineLength !== null) {
+    diagOptions.maxLineLength = options.maxLineLength;
+  }
+
   const allResults: Array<{ uri: string; diagnostics: Diagnostic[] }> = [];
   let hasErrors = false;
 
   for (const uri of fileContents.keys()) {
-    let diags = computeDiagnostics(uri, workspace);
+    let diags = computeDiagnostics(uri, workspace, diagOptions);
 
     // Filter by severity if specified
     if (options.severity) {

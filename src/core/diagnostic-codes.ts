@@ -17,6 +17,7 @@ export const DiagnosticCode = {
   WidgetArgCountMismatch: 'SP301',
   DeadEndPassage: 'SP400',
   UnreachablePassage: 'SP401',
+  LineTooLong: 'SP500',
 } as const;
 
 export type DiagnosticCodeValue = (typeof DiagnosticCode)[keyof typeof DiagnosticCode];
@@ -42,6 +43,7 @@ const severityMap: Record<DiagnosticCodeValue, Severity> = {
   SP301: 'warning',
   SP400: 'hint',
   SP401: 'hint',
+  SP500: 'warning',
 };
 
 export function getSeverity(code: DiagnosticCodeValue): Severity {
