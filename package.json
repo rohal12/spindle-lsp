@@ -4,7 +4,7 @@
   "description": "Language Server Protocol server for Spindle story format",
   "type": "module",
   "bin": {
-    "spindle-lsp": "./dist/bin.js"
+    "spindle-lsp": "dist/bin.js"
   },
   "scripts": {
     "build": "node esbuild.config.ts",

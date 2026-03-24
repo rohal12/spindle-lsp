@@ -131,7 +131,7 @@ export function segmentRegions(body: string): Region[] {
       i++;
       while (i < lines.length && depth > 0) {
         htmlLines.push(lines[i]);
-        const opens = (lines[i].match(new RegExp(`<${tagName}[\\s>]`, 'gi')) ?? []).length;
+        const opens = (lines[i].match(new RegExp(`<${tagName}(?:[\\s>]|$)`, 'gi')) ?? []).length;
         const closes = (lines[i].match(new RegExp(`</${tagName}\\s*>`, 'gi')) ?? []).length;
         depth += opens - closes;
         i++;
