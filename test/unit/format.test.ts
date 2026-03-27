@@ -418,6 +418,37 @@ describe('formatDocument', () => {
     expect(svgLine).toContain('viewBox="0 0 24 24"');
   });
 
+  // -- Expression interpolation in style attributes (issue #8) ----------------
+
+  it('does not split style attributes with expression interpolations', async () => {
+    const input = [
+      ':: Test [nobr]',
+      '<div class="node-cell" style="grid-row: {@node.tier + 1}; grid-column: {@node.column + 1}">',
+      '{@node.name}',
+      '</div>',
+      '',
+    ].join('\n');
+    const result = await formatDocument(input);
+    // The style attribute must stay on one line — not split by Prettier
+    const styleLine = result.split('\n').find(l => l.includes('style='));
+    expect(styleLine).toBeDefined();
+    expect(styleLine).toContain('{@node.tier + 1}');
+    expect(styleLine).toContain('{@node.column + 1}');
+  });
+
+  it('is idempotent with expression interpolations in style attributes', async () => {
+    const input = [
+      ':: Test [nobr]',
+      '<div class="node-cell" style="grid-row: {@node.tier + 1}; grid-column: {@node.column + 1}">',
+      '{@node.name}',
+      '</div>',
+      '',
+    ].join('\n');
+    const first = await formatDocument(input);
+    const second = await formatDocument(first);
+    expect(second).toBe(first);
+  });
+
   // -- Inline block macros (open+close on same line) ---------------------
 
   it('does not indent after inline {sys}...{/sys}', async () => {
