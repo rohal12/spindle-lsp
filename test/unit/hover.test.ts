@@ -97,4 +97,27 @@ describe('getHoverInfo', () => {
     expect(result!.contents).toContain('health');
     expect(result!.contents).toContain('mana');
   });
+
+  it('returns transient variable info when hovering over %variable', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%npcList = []\n\n:: Start\n{set %npcList = [1, 2]}',
+    });
+    const result = getHoverInfo('file:///test.tw', { line: 4, character: 6 }, ws);
+    expect(result).not.toBeNull();
+    expect(result!.contents).toContain('Transient variable');
+    expect(result!.contents).toContain('npcList');
+  });
+
+  it('returns field info for transient variable with fields', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%state = { phase: 1, active: true }\n\n:: Start\n%state.phase',
+    });
+    const result = getHoverInfo('file:///test.tw', { line: 4, character: 2 }, ws);
+    expect(result).not.toBeNull();
+    expect(result!.contents).toContain('Transient variable');
+    expect(result!.contents).toContain('phase');
+    expect(result!.contents).toContain('active');
+  });
 });

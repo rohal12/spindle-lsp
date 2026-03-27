@@ -85,6 +85,18 @@ describe('computeSemanticTokensAbsolute', () => {
     );
     expect(readonlyTokens.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('emits tokens for transient variables with defaultLibrary modifier', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: Start\n{set %npcList = []}',
+    });
+    const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
+    const transientTokens = tokens.filter(
+      t => t.tokenType === typeIdx('variable') && (t.tokenModifiers & modBit('defaultLibrary')) !== 0,
+    );
+    expect(transientTokens.length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('encodeTokens', () => {

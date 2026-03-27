@@ -176,6 +176,31 @@ plain text only
     expect(sp115[0].message).toContain('case');
   });
 
+  it('produces SP203 for undeclared transient variable', () => {
+    const text = `:: StoryTransients\n%known = 1\n\n:: Start\n{set %unknown = 1}`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    const sp203 = diags.filter(d => d.code === 'SP203');
+    expect(sp203.length).toBeGreaterThan(0);
+    expect(sp203[0].message).toContain('%unknown');
+  });
+
+  it('does not flag declared transient variables as SP203', () => {
+    const text = `:: StoryTransients\n%npcList = []\n\n:: Start\n{set %npcList = [1]}`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    const sp203 = diags.filter(d => d.code === 'SP203');
+    expect(sp203).toHaveLength(0);
+  });
+
+  it('does not produce SP203 when no StoryTransients passage exists', () => {
+    const text = `:: Start\n{set %whatever = 1}`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    const sp203 = diags.filter(d => d.code === 'SP203');
+    expect(sp203).toHaveLength(0);
+  });
+
   it('handles multi-file workspace', () => {
     const file1 = `:: StoryVariables\n$x = 1\n\n:: Start\n[[Page2]]\n`;
     const file2 = `:: Page2\nHello\n`;

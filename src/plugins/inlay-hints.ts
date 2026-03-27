@@ -33,6 +33,7 @@ export function computeInlayHints(
 
   addWidgetParamHints(text, range, workspace, hints);
   addVariableTypeHints(uri, text, range, workspace, hints);
+  addTransientTypeHints(uri, text, range, workspace, hints);
 
   return hints;
 }
@@ -111,6 +112,43 @@ function addVariableTypeHints(
   for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
     const line = lines[lineNum];
     const declMatch = line.match(/^\$([A-Za-z_$][\w$]*)\s*=\s*(.+)$/);
+    if (!declMatch) continue;
+
+    const valueStr = declMatch[2].trim();
+    const inferredType = inferType(valueStr);
+    if (!inferredType) continue;
+
+    const eqIdx = line.indexOf('=');
+    hints.push({
+      position: { line: lineNum, character: eqIdx },
+      label: `: ${inferredType}`,
+      kind: 'type',
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transient variable type hints in StoryTransients
+// ---------------------------------------------------------------------------
+
+function addTransientTypeHints(
+  uri: string,
+  text: string,
+  range: Range,
+  workspace: WorkspaceModel,
+  hints: InlayHintItem[],
+): void {
+  const storyTransientsPassage = workspace.passages.getStoryTransients();
+  if (!storyTransientsPassage) return;
+  if (storyTransientsPassage.uri !== uri) return;
+
+  const lines = text.split('\n');
+  const startLine = Math.max(range.start.line, 0);
+  const endLine = Math.min(range.end.line, lines.length - 1);
+
+  for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
+    const line = lines[lineNum];
+    const declMatch = line.match(/^%([A-Za-z_$][\w$]*)\s*=\s*(.+)$/);
     if (!declMatch) continue;
 
     const valueStr = declMatch[2].trim();

@@ -17,7 +17,9 @@ import { parseMacros, pairMacros } from '../core/parsing/macro-parser.js';
  *  - After `$`   -> story variable names
  *  - After `_`   -> temp variable names from current document
  *  - After `@`   -> local variable names from current document
+ *  - After `%`   -> transient variable names
  *  - After `$var.` -> declared object fields
+ *  - After `%var.` -> declared transient object fields
  *  - After `[[`  -> passage names
  */
 export function getCompletions(
@@ -36,6 +38,12 @@ export function getCompletions(
   // --- Context: closing macro `{/` ---
   if (/\{\/[A-Za-z\w-]*$/.test(lineText)) {
     return getClosingMacroCompletions(text, position, workspace);
+  }
+
+  // --- Context: dot-path field `%var.` ---
+  const transientDotPathMatch = /%([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)?$/.exec(lineText);
+  if (transientDotPathMatch) {
+    return getTransientDotPathCompletions(transientDotPathMatch[1], workspace);
   }
 
   // --- Context: dot-path field `$var.` ---
@@ -57,6 +65,11 @@ export function getCompletions(
   // --- Context: local variable `@` ---
   if (/@[A-Za-z_$]?[\w$]*$/.test(lineText)) {
     return getLocalVariableCompletions(text);
+  }
+
+  // --- Context: transient variable `%` ---
+  if (/%[A-Za-z_$]?[\w$]*$/.test(lineText) && !/%[A-Za-z_$][\w$]*\./.test(lineText)) {
+    return getTransientVariableCompletions(workspace);
   }
 
   // --- Context: passage link `[[` ---
@@ -216,6 +229,37 @@ function getDotPathCompletions(varName: string, workspace: WorkspaceModel): Comp
   }));
 }
 
+function getTransientVariableCompletions(workspace: WorkspaceModel): CompletionItem[] {
+  const declared = workspace.variables.getDeclaredTransient();
+  if (declared.size === 0) return [];
+
+  const items: CompletionItem[] = [];
+  for (const [name, decl] of declared) {
+    items.push({
+      label: `%${name}`,
+      kind: 6, // CompletionItemKind.Variable
+      detail: 'transient variable',
+      insertText: name,
+      documentation: decl.fields && decl.fields.length > 0
+        ? `Fields: ${decl.fields.join(', ')}`
+        : undefined,
+    });
+  }
+  return items;
+}
+
+function getTransientDotPathCompletions(varName: string, workspace: WorkspaceModel): CompletionItem[] {
+  const declared = workspace.variables.getDeclaredTransient();
+  const decl = declared.get(varName);
+  if (!decl || !decl.fields || decl.fields.length === 0) return [];
+
+  return decl.fields.map(field => ({
+    label: field,
+    kind: 5, // CompletionItemKind.Field
+    detail: `field of %${varName}`,
+  }));
+}
+
 function getPassageNameCompletions(workspace: WorkspaceModel): CompletionItem[] {
   const passages = workspace.passages.getAllPassages();
   if (passages.length === 0) return [];
@@ -235,7 +279,7 @@ export const completionsPlugin: SpindlePlugin = {
   id: 'completions',
   capabilities: {
     completionProvider: {
-      triggerCharacters: ['{', '$', '_', '@', '[', '.'],
+      triggerCharacters: ['{', '$', '_', '@', '%', '[', '.'],
     },
   },
   initialize(ctx: PluginContext) {

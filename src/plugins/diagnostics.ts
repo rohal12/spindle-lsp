@@ -18,7 +18,7 @@ import { parseLinks } from '../core/parsing/link-parser.js';
  * Checks:
  *  - Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
  *  - Argument/parameter validation (SP108, SP109, SP110, SP111, SP112)
- *  - Variable validation (SP200, SP202)
+ *  - Variable validation (SP200, SP202, SP203)
  *  - Link/widget validation (SP300, SP301)
  */
 export interface DiagnosticOptions {
@@ -360,17 +360,28 @@ function validateVariables(
         ));
       }
     }
-    return;
+  } else {
+    // SP200: undeclared variable
+    const undeclared = workspace.variables.getUndeclared(uri);
+    for (const u of undeclared) {
+      diagnostics.push(makeDiag(
+        u.range,
+        DiagnosticCode.UndeclaredVariable,
+        `Variable '$${u.name}' is not declared in StoryVariables`,
+      ));
+    }
   }
 
-  // SP200: undeclared variable
-  const undeclared = workspace.variables.getUndeclared(uri);
-  for (const u of undeclared) {
-    diagnostics.push(makeDiag(
-      u.range,
-      DiagnosticCode.UndeclaredVariable,
-      `Variable '$${u.name}' is not declared in StoryVariables`,
-    ));
+  // SP203: undeclared transient variable (independent of StoryVariables)
+  if (workspace.variables.hasStoryTransients()) {
+    const undeclaredTransient = workspace.variables.getUndeclaredTransient(uri);
+    for (const u of undeclaredTransient) {
+      diagnostics.push(makeDiag(
+        u.range,
+        DiagnosticCode.UndeclaredTransient,
+        `Transient variable '%${u.name}' is not declared in StoryTransients`,
+      ));
+    }
   }
 }
 

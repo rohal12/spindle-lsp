@@ -62,6 +62,20 @@ export function findReferences(
     }
   }
 
+  // --- %transient ---
+  {
+    const transRegex = /(?<!\w)%([A-Za-z_$][\w$]*)/g;
+    let match: RegExpExecArray | null;
+    while ((match = transRegex.exec(line)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (position.character >= start && position.character <= end) {
+        const varName = match[1];
+        return findTransientReferences(varName, workspace, includeDeclaration);
+      }
+    }
+  }
+
   // --- Widget ---
   {
     const widgetRegex = /\{([A-Za-z_$][\w$]*)/g;
@@ -196,6 +210,31 @@ export function findVariableReferences(
   }
 
   return locations;
+}
+
+/**
+ * Find all references to a transient variable across the workspace.
+ */
+export function findTransientReferences(
+  varName: string,
+  workspace: WorkspaceModel,
+  includeDeclaration: boolean,
+): ReferenceLocation[] {
+  const results: ReferenceLocation[] = [];
+
+  if (includeDeclaration) {
+    const decl = workspace.variables.getDeclaredTransient().get(varName);
+    if (decl?.declarationUri && decl.declarationRange) {
+      results.push({ uri: decl.declarationUri, range: decl.declarationRange });
+    }
+  }
+
+  const usages = workspace.variables.getTransientUsages(varName);
+  for (const u of usages) {
+    results.push({ uri: u.uri, range: u.range });
+  }
+
+  return results;
 }
 
 /**

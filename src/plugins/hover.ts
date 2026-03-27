@@ -165,6 +165,30 @@ function getVariableHover(
     }
   }
 
+  // Transient variables: %name
+  {
+    const re = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(line)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (position.character >= start && position.character <= end) {
+        const baseName = match[1].split('.')[0];
+        const decl = workspace.variables.getDeclaredTransient().get(baseName);
+        const typeInfo = decl?.fields && decl.fields.length > 0
+          ? `\n\nFields: ${decl.fields.map(f => `\`${f}\``).join(', ')}`
+          : '';
+        return {
+          contents: `**Transient variable** \`%${match[1]}\`${typeInfo}`,
+          range: {
+            start: { line: position.line, character: start },
+            end: { line: position.line, character: end },
+          },
+        };
+      }
+    }
+  }
+
   return null;
 }
 

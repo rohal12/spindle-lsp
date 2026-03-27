@@ -4,6 +4,7 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import {
   findPassageReferences,
   findVariableReferences,
+  findTransientReferences,
   findWidgetReferences,
 } from './references.js';
 
@@ -65,8 +66,12 @@ export function computeRename(
     }
 
     case 'variable': {
-      const bareName = newName.startsWith('$') ? newName.slice(1) : newName;
-      const refs = findVariableReferences(symbol.name, workspace, true);
+      const bareName = newName.startsWith('$') ? newName.slice(1) :
+                       newName.startsWith('%') ? newName.slice(1) : newName;
+      const isTransient = workspace.variables.getDeclaredTransient().has(symbol.name);
+      const refs = isTransient
+        ? findTransientReferences(symbol.name, workspace, true)
+        : findVariableReferences(symbol.name, workspace, true);
       for (const ref of refs) {
         addEdit(ref.uri, ref.range, bareName);
       }
@@ -158,6 +163,26 @@ function resolveSymbolAtCursor(
     const varRegex = /\$([A-Za-z_$][\w$]*)/g;
     let match: RegExpExecArray | null;
     while ((match = varRegex.exec(line)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (position.character >= start && position.character <= end) {
+        return {
+          kind: 'variable',
+          name: match[1],
+          range: {
+            start: { line: position.line, character: start },
+            end: { line: position.line, character: end },
+          },
+        };
+      }
+    }
+  }
+
+  // --- %transient ---
+  {
+    const transRegex = /(?<!\w)%([A-Za-z_$][\w$]*)/g;
+    let match: RegExpExecArray | null;
+    while ((match = transRegex.exec(line)) !== null) {
       const start = match.index;
       const end = start + match[0].length;
       if (position.character >= start && position.character <= end) {

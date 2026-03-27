@@ -76,6 +76,24 @@ describe('computeInlayHints', () => {
     expect(typeHints).toHaveLength(0);
   });
 
+  it('provides type hints for StoryTransients', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%npcList = []\n%count = 42\n%label = "test"',
+    });
+    const fullRange = {
+      start: { line: 0, character: 0 },
+      end: { line: 10, character: 0 },
+    };
+    const hints = computeInlayHints('file:///test.tw', fullRange, ws);
+    const typeHints = hints.filter(h => h.kind === 'type');
+    expect(typeHints.length).toBe(3);
+    const labels = typeHints.map(h => h.label);
+    expect(labels).toContain(': array');
+    expect(labels).toContain(': number');
+    expect(labels).toContain(': string');
+  });
+
   it('respects the requested range', () => {
     const ws = createWorkspace({
       name: 'test.tw',

@@ -4,6 +4,7 @@ import {
   findReferences,
   findPassageReferences,
   findVariableReferences,
+  findTransientReferences,
   findWidgetReferences,
 } from '../../src/plugins/references.js';
 
@@ -57,6 +58,28 @@ describe('findVariableReferences', () => {
     const refs = findVariableReferences('health', ws, false);
     // Should find usages in Start passage
     expect(refs.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('findTransientReferences', () => {
+  it('finds transient variable usages across workspace', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%npcList = []\n\n:: Start\n{set %npcList = [1]}\n{if %npcList}ok{/if}',
+    });
+    const refs = findTransientReferences('npcList', ws, false);
+    expect(refs.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('findReferences (transient)', () => {
+  it('finds transient references when cursor is on %variable', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%npcList = []\n\n:: Start\n{set %npcList = [1]}',
+    });
+    const refs = findReferences('file:///test.tw', { line: 4, character: 6 }, ws, false);
+    expect(refs.length).toBeGreaterThanOrEqual(1);
   });
 });
 

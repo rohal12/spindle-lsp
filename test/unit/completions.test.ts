@@ -108,6 +108,29 @@ describe('getCompletions', () => {
     expect(labels).toContain('{/if}');
   });
 
+  it('returns transient variable completions after %', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%npcList = []\n%agents = {}\n\n:: Start\n{set %',
+    });
+    const items = getCompletions('file:///test.tw', { line: 5, character: 6 }, '%', ws);
+    const labels = items.map(i => i.label);
+    expect(labels).toContain('%npcList');
+    expect(labels).toContain('%agents');
+    expect(items.every(i => i.kind === 6)).toBe(true);
+  });
+
+  it('returns dot-path completions for %var.', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%player = { health: 100, name: "Hero" }\n\n:: Start\n{%player.',
+    });
+    const items = getCompletions('file:///test.tw', { line: 4, character: 9 }, '.', ws);
+    const labels = items.map(i => i.label);
+    expect(labels).toContain('health');
+    expect(labels).toContain('name');
+  });
+
   it('returns empty array when no context matches', () => {
     const ws = createWorkspace({
       name: 'test.tw',

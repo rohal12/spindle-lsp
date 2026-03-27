@@ -67,12 +67,12 @@
   },
   "set": {
     "name": "set",
-    "description": "Sets variables based on the given expression.\n\nUsage: `{set $var to value}`\n\nSupports `$var` (story), `_var` (temporary), and `@var` (local) variables.",
+    "description": "Sets variables based on the given expression.\n\nUsage: `{set $var to value}`\n\nSupports `$var` (story), `_var` (temporary), `@var` (local), and `%var` (transient) variables.",
     "parameters": ["...text"]
   },
   "unset": {
     "name": "unset",
-    "description": "Unsets one or more variables.\n\nUsage: `{unset $var}`",
+    "description": "Unsets one or more variables.\n\nUsage: `{unset $var}`\n\nSupports `$var` (story), `_var` (temporary), `@var` (local), and `%var` (transient) variables.",
     "parameters": ["...text"]
   },
   "computed": {

@@ -76,6 +76,27 @@ describe('computeCodeActions', () => {
     expect(action.edits[0].newText).toContain(':: StoryVariables');
   });
 
+  it('produces quick fix for SP203 (undeclared transient variable)', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%known = 1\n\n:: Start\n{set %unknown = 1}',
+    });
+    const diags = computeDiagnostics('file:///test.tw', ws);
+    const sp203 = diags.filter(d => d.code === 'SP203');
+    expect(sp203.length).toBeGreaterThan(0);
+
+    const actions = computeCodeActions('file:///test.tw', sp203, ws);
+    expect(actions.length).toBeGreaterThan(0);
+
+    const action = actions[0];
+    expect(action.title).toContain('%unknown');
+    expect(action.title).toContain('StoryTransients');
+    expect(action.kind).toBe('quickfix');
+    expect(action.diagnosticCodes).toContain('SP203');
+    expect(action.edits.length).toBe(1);
+    expect(action.edits[0].newText).toContain('%unknown = null');
+  });
+
   it('returns no actions for non-actionable diagnostics', () => {
     const ws = createWorkspace({
       name: 'test.tw',

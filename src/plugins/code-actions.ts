@@ -25,6 +25,7 @@ export interface CodeAction {
  *  - SP100 (undefined macro) -> "Add 'macroName' to spindle.config.yaml"
  *  - SP200 (undeclared variable) -> "Declare '$varName' in StoryVariables"
  *  - SP202 (no StoryVariables) -> "Create StoryVariables passage"
+ *  - SP203 (undeclared transient) -> "Declare '%varName' in StoryTransients"
  */
 export function computeCodeActions(
   uri: string,
@@ -47,6 +48,11 @@ export function computeCodeActions(
       }
       case DiagnosticCode.NoStoryVariables: {
         const action = fixNoStoryVariables(uri, workspace);
+        if (action) actions.push(action);
+        break;
+      }
+      case DiagnosticCode.UndeclaredTransient: {
+        const action = fixUndeclaredTransient(diag, workspace);
         if (action) actions.push(action);
         break;
       }
@@ -166,6 +172,53 @@ function fixNoStoryVariables(
         end: { line: lastLine, character: 0 },
       },
       newText: '\n:: StoryVariables\n',
+    }],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Quick fix: SP203 — Declare transient variable in StoryTransients
+// ---------------------------------------------------------------------------
+
+function fixUndeclaredTransient(
+  diag: Diagnostic,
+  workspace: WorkspaceModel,
+): CodeAction | null {
+  const match = diag.message.match(/'%(\w+)'/);
+  if (!match) return null;
+
+  const varName = match[1];
+
+  const storyTransients = workspace.passages.getStoryTransients();
+  if (!storyTransients) return null;
+
+  const storyTransientsUri = storyTransients.uri;
+  const text = workspace.documents.getText(storyTransientsUri);
+  if (text === undefined) return null;
+
+  const lines = text.split('\n');
+  const contentStart = storyTransients.headerEnd.end.line + 1;
+  let contentEnd = lines.length;
+  for (let i = contentStart; i < lines.length; i++) {
+    if (/^::\s+/.test(lines[i])) {
+      contentEnd = i;
+      break;
+    }
+  }
+
+  const insertLine = contentEnd;
+
+  return {
+    title: `Declare '%${varName}' in StoryTransients`,
+    kind: 'quickfix',
+    diagnosticCodes: [DiagnosticCode.UndeclaredTransient],
+    edits: [{
+      uri: storyTransientsUri,
+      range: {
+        start: { line: insertLine, character: 0 },
+        end: { line: insertLine, character: 0 },
+      },
+      newText: `%${varName} = null\n`,
     }],
   };
 }

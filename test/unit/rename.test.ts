@@ -33,6 +33,16 @@ describe('prepareRename', () => {
     expect(result!.placeholder).toBe('health');
   });
 
+  it('returns range and placeholder for %transient variable', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%npcList = []\n\n:: Start\n{set %npcList = [1]}',
+    });
+    const result = prepareRename('file:///test.tw', { line: 4, character: 6 }, ws);
+    expect(result).not.toBeNull();
+    expect(result!.placeholder).toBe('npcList');
+  });
+
   it('returns null for plain text', () => {
     const ws = createWorkspace({
       name: 'test.tw',
@@ -89,6 +99,19 @@ describe('computeRename', () => {
     expect(allEdits.length).toBeGreaterThanOrEqual(1);
     // Variable rename strips the $ prefix
     expect(allEdits.some(e => e.newText === 'hp')).toBe(true);
+  });
+
+  it('renames transient variable across documents', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryTransients\n%npcList = []\n\n:: Start\n{set %npcList = [1]}',
+    });
+    const edits = computeRename(
+      'file:///test.tw', { line: 4, character: 6 }, '%agents', ws,
+    );
+    const allEdits = Array.from(edits.values()).flat();
+    expect(allEdits.length).toBeGreaterThanOrEqual(1);
+    expect(allEdits.some(e => e.newText === 'agents')).toBe(true);
   });
 
   it('renames widget definition and invocations', () => {

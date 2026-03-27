@@ -57,6 +57,7 @@ export interface AbsoluteToken {
  *  - Story variables ($var) -> 'variable' + 'global'
  *  - Temp variables (_var) -> 'variable' + 'local'
  *  - Local variables (@var) -> 'variable' + 'readonly'
+ *  - Transient variables (%var) -> 'variable' + 'defaultLibrary'
  *  - Sugar keywords -> 'keyword'
  *  - Passage headers -> 'namespace'
  *
@@ -131,6 +132,7 @@ export function computeSemanticTokensAbsolute(
   const storyVarRegex = /(?<!\w)\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
   const tempVarRegex = /(?<!\w)_([A-Za-z_$][\w$]*)/g;
   const localVarRegex = /(?<!\w)@([A-Za-z_$][\w$]*)/g;
+  const transientVarRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
   const sugarKeywordRegex = /\b(to|is|isnot|eq|neq|gt|gte|lt|lte|and|or|not|def|ndef)\b/g;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -171,6 +173,18 @@ export function computeSemanticTokensAbsolute(
         length: m[0].length,
         tokenType: encodeType('variable'),
         tokenModifiers: encodeModifiers(['readonly']),
+      });
+    }
+
+    // Transient vars (%var)
+    transientVarRegex.lastIndex = 0;
+    while ((m = transientVarRegex.exec(line)) !== null) {
+      tokens.push({
+        line: lineIndex,
+        startChar: m.index,
+        length: m[0].length,
+        tokenType: encodeType('variable'),
+        tokenModifiers: encodeModifiers(['defaultLibrary']),
       });
     }
 
