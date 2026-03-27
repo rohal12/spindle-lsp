@@ -1,12 +1,3 @@
-/**
- * Regex matching Spindle tokens in HTML:
- * - {/macroName} closing tags
- * - {macroName ...} opening tags (with optional CSS prefix, balanced nested braces)
- * - {$variable}, {_variable}, {@variable} (with optional dot paths)
- * - [[links]]
- */
-const SPINDLE_TOKEN_REGEX = /(?:\{\/[A-Za-z][\w-]*\s*\}|\{(?:[#.][a-zA-Z][\w-]*\s*)*[A-Za-z][\w-]*(?:\s+(?:[^{}]|\{[^{}]*\})*)?\}|\{[$_@][a-zA-Z][\w.]*\}|\[\[(?:[^\]]*)\]\])/g;
-
 /** Detect HTML tags in text (opening or self-closing or closing). */
 const HTML_TAG_REGEX = /<\/?[a-zA-Z][\w-]*[\s>/]/;
 
@@ -143,16 +134,19 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // Check if line has any Spindle tokens
-    SPINDLE_TOKEN_REGEX.lastIndex = 0;
-    if (!SPINDLE_TOKEN_REGEX.test(trimmed)) {
+    // Scan for Spindle tokens
+    const found = scanSpindleTokens(trimmed);
+
+    if (found.length === 0) {
       resultLines.push(line);
       continue;
     }
 
     // Check if line has HTML tags after removing Spindle tokens
-    SPINDLE_TOKEN_REGEX.lastIndex = 0;
-    const withoutSpindle = trimmed.replace(SPINDLE_TOKEN_REGEX, '');
+    let withoutSpindle = trimmed;
+    for (let fi = found.length - 1; fi >= 0; fi--) {
+      withoutSpindle = withoutSpindle.slice(0, found[fi].start) + withoutSpindle.slice(found[fi].end);
+    }
     const hasHtml = HTML_TAG_REGEX.test(withoutSpindle);
 
     if (!hasHtml) {
@@ -163,16 +157,26 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
       resultLines.push(`${indent}<!--SP:${idx}-->`);
     } else {
       // Line has both HTML and Spindle — replace individual tokens
-      SPINDLE_TOKEN_REGEX.lastIndex = 0;
-      const replaced = line.replace(SPINDLE_TOKEN_REGEX, (match, ...args) => {
-        const matchOffset = args[args.length - 2] as number;
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      const indentLen = indent.length;
+
+      // Assign placeholder indices left-to-right
+      const assignments = found.map(t => {
+        const lineStart = t.start + indentLen;
         const idx = tokens.length;
-        tokens.push(match);
-        if (isInsideAttribute(line, matchOffset)) {
-          return `__SP${idx}__`;
-        }
-        return `<!--SP:${idx}-->`;
+        tokens.push(t.token);
+        const placeholder = isInsideAttribute(line, lineStart)
+          ? `__SP${idx}__`
+          : `<!--SP:${idx}-->`;
+        return { start: lineStart, end: t.end + indentLen, placeholder };
       });
+
+      // Replace right-to-left to preserve offsets
+      let replaced = line;
+      for (let ai = assignments.length - 1; ai >= 0; ai--) {
+        const a = assignments[ai];
+        replaced = replaced.slice(0, a.start) + a.placeholder + replaced.slice(a.end);
+      }
       resultLines.push(replaced);
     }
   }

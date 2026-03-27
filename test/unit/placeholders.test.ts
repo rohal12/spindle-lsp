@@ -47,6 +47,43 @@ describe('replaceSpindleTokens', () => {
     expect(text).toContain('<!--SP:0-->');
     expect(text).toContain('<!--SP:1-->');
   });
+
+  it('replaces expression interpolations with operators', () => {
+    const input = '<div>{@node.tier + 1}</div>';
+    const { text, tokens } = replaceSpindleTokens(input);
+    expect(text).not.toContain('{@node.tier + 1}');
+    expect(tokens[0]).toBe('{@node.tier + 1}');
+  });
+
+  it('replaces expression interpolations in attributes', () => {
+    const input = '<div style="grid-row: {@node.tier + 1}">text</div>';
+    const { text, tokens } = replaceSpindleTokens(input);
+    expect(text).toContain('__SP0__');
+    expect(text).not.toContain('{@node.tier');
+    expect(tokens[0]).toBe('{@node.tier + 1}');
+  });
+
+  it('replaces nested brace expressions', () => {
+    const input = '<span>{@list[{$index}]}</span>';
+    const { text, tokens } = replaceSpindleTokens(input);
+    expect(text).not.toContain('{@list');
+    expect(tokens[0]).toBe('{@list[{$index}]}');
+  });
+
+  it('replaces % transient variable displays', () => {
+    const input = '<span>{%temp}</span>';
+    const { text, tokens } = replaceSpindleTokens(input);
+    expect(text).not.toContain('{%temp}');
+    expect(tokens[0]).toBe('{%temp}');
+  });
+
+  it('replaces multiple expression interpolations in style attribute', () => {
+    const input = '<div style="grid-row: {@node.tier + 1}; grid-column: {@node.column + 1}">text</div>';
+    const { text, tokens } = replaceSpindleTokens(input);
+    expect(text).not.toContain('{@node.tier');
+    expect(text).not.toContain('{@node.column');
+    expect(tokens).toHaveLength(2);
+  });
 });
 
 describe('restoreSpindleTokens', () => {
@@ -66,6 +103,13 @@ describe('restoreSpindleTokens', () => {
 
   it('round-trips multiple mixed tokens', () => {
     const original = '<div class="{$cls}">{$name} [[Home]]</div>';
+    const { text, tokens } = replaceSpindleTokens(original);
+    const restored = restoreSpindleTokens(text, tokens);
+    expect(restored).toBe(original);
+  });
+
+  it('round-trips expression interpolations in attributes', () => {
+    const original = '<div style="grid-row: {@node.tier + 1}; grid-column: {@node.column + 1}">text</div>';
     const { text, tokens } = replaceSpindleTokens(original);
     const restored = restoreSpindleTokens(text, tokens);
     expect(restored).toBe(original);
