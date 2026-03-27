@@ -1,6 +1,6 @@
 {
   "name": "@rohal12/spindle-lsp",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Language Server Protocol server for Spindle story format",
   "type": "module",
   "bin": {
