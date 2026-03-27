@@ -4,9 +4,12 @@ import { parsePassageHeader } from '../parsing/passage-parser.js';
 /** Regex to match $variable references including dot notation. */
 const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
 
+/** Regex to match %transient variable references including dot notation. */
+const transientRefRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+
 /** Passages excluded from variable scanning. */
 const EXCLUDED_PASSAGES = new Set([
-  'StoryVariables', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface',
+  'StoryVariables', 'StoryTransients', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface',
 ]);
 
 /** Patterns that should be stripped before scanning for variable references. */
@@ -33,8 +36,14 @@ export class VariableTracker {
   private declared = new Map<string, DeclaredVariable>();
   private _hasStoryVariables = false;
 
+  private declaredTransient = new Map<string, DeclaredVariable>();
+  private _hasStoryTransients = false;
+
   /** Per-URI list of variable usages. */
   private usagesByUri = new Map<string, VariableUsage[]>();
+
+  /** Per-URI list of transient variable usages. */
+  private transientUsagesByUri = new Map<string, VariableUsage[]>();
 
   /**
    * Parse the StoryVariables passage content for declarations.
@@ -74,15 +83,54 @@ export class VariableTracker {
   }
 
   /**
+   * Parse the StoryTransients passage content for declarations.
+   * Each line like `%name = value` becomes a declaration.
+   */
+  parseStoryTransients(content: string): void {
+    this.declaredTransient.clear();
+    this._hasStoryTransients = true;
+
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
+
+      const match = /^%([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(trimmed);
+      if (!match) continue;
+
+      const name = match[1];
+      const expr = match[2].trim();
+      const decl: DeclaredVariable = { name, sigil: '%' };
+
+      // Extract top-level object fields for dot-notation validation
+      if (expr.startsWith('{')) {
+        const fieldRegex = /(\w+)\s*:/g;
+        let fieldMatch;
+        const fields: string[] = [];
+        while ((fieldMatch = fieldRegex.exec(expr)) !== null) {
+          fields.push(fieldMatch[1]);
+        }
+        if (fields.length > 0) {
+          decl.fields = fields;
+        }
+      }
+
+      this.declaredTransient.set(name, decl);
+    }
+  }
+
+  /**
    * Scan a document for variable usages.
    * Identifies passages in the document and scans non-special ones.
    */
   scanDocument(uri: string, text: string, _macros: MacroNode[]): void {
     // Clear previous usages for this URI
     this.usagesByUri.delete(uri);
+    this.transientUsagesByUri.delete(uri);
 
     const lines = text.split('\n');
     const usages: VariableUsage[] = [];
+    const transientUsages: VariableUsage[] = [];
 
     // Find all passage boundaries in the document
     const passageBoundaries: Array<{ name: string; startLine: number }> = [];
@@ -142,10 +190,38 @@ export class VariableTracker {
 
         usages.push({ uri, baseName, fullName, range });
       }
+
+      // Find transient variable references
+      const tre = new RegExp(transientRefRegex.source, 'g');
+      let tmatch;
+      while ((tmatch = tre.exec(cleaned)) !== null) {
+        const fullName = tmatch[1];
+        const baseName = fullName.split('.')[0];
+        const charOffset = tmatch.index;
+
+        // Convert offset to line/character within content block
+        let localLine = 0;
+        for (let i = 0; i < lineOffsets.length; i++) {
+          if (lineOffsets[i] > charOffset) break;
+          localLine = i;
+        }
+        const character = charOffset - lineOffsets[localLine];
+        const absoluteLine = contentStartLine + localLine;
+
+        const range: Range = {
+          start: { line: absoluteLine, character },
+          end: { line: absoluteLine, character: character + tmatch[0].length },
+        };
+
+        transientUsages.push({ uri, baseName, fullName, range });
+      }
     }
 
     if (usages.length > 0) {
       this.usagesByUri.set(uri, usages);
+    }
+    if (transientUsages.length > 0) {
+      this.transientUsagesByUri.set(uri, transientUsages);
     }
   }
 
@@ -187,5 +263,45 @@ export class VariableTracker {
   /** Whether a StoryVariables passage has been parsed. */
   hasStoryVariables(): boolean {
     return this._hasStoryVariables;
+  }
+
+  /** Get all declared transient variables. */
+  getDeclaredTransient(): Map<string, DeclaredVariable> {
+    return this.declaredTransient;
+  }
+
+  /** Get all usages of a transient variable by base name. */
+  getTransientUsages(name: string): Array<{ uri: string; range: Range }> {
+    const results: Array<{ uri: string; range: Range }> = [];
+    for (const usages of this.transientUsagesByUri.values()) {
+      for (const u of usages) {
+        if (u.baseName === name) {
+          results.push({ uri: u.uri, range: u.range });
+        }
+      }
+    }
+    return results;
+  }
+
+  /** Get undeclared transient variable usages in a specific document. */
+  getUndeclaredTransient(uri: string): Array<{ name: string; range: Range }> {
+    const usages = this.transientUsagesByUri.get(uri);
+    if (!usages) return [];
+
+    const results: Array<{ name: string; range: Range }> = [];
+    const seen = new Set<string>();
+
+    for (const u of usages) {
+      if (!this.declaredTransient.has(u.baseName) && !seen.has(u.baseName)) {
+        seen.add(u.baseName);
+        results.push({ name: u.baseName, range: u.range });
+      }
+    }
+    return results;
+  }
+
+  /** Whether a StoryTransients passage has been parsed. */
+  hasStoryTransients(): boolean {
+    return this._hasStoryTransients;
   }
 }

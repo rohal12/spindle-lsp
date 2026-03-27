@@ -31,8 +31,8 @@ export interface Arg {
   text: string;
   start: number;
   end: number;
-  /** Variable sigil: $, _, or @ */
-  sigil?: '$' | '_' | '@';
+  /** Variable sigil: $, _, @, or % */
+  sigil?: '$' | '_' | '@' | '%';
   /** Dot-access path segments, e.g. $player.health -> ["player", "health"] */
   path?: string[];
 }
@@ -70,7 +70,7 @@ export function countArguments(source: string): number {
 // Token classification
 // ---------------------------------------------------------------------------
 
-const varTestRegexp = /^[$_@][$A-Z_a-z][$0-9A-Z_.a-z]*/;
+const varTestRegexp = /^[$_@%][$A-Z_a-z][$0-9A-Z_.a-z]*/;
 
 function classifyToken(item: LexerItem<RawItem>): Arg {
   const text = item.text;
@@ -97,7 +97,7 @@ function classifyToken(item: LexerItem<RawItem>): Arg {
     case RawItem.Bareword: {
       // Variable?
       if (varTestRegexp.test(text)) {
-        const sigil = text[0] as '$' | '_' | '@';
+        const sigil = text[0] as '$' | '_' | '@' | '%';
         const pathParts = text.slice(1).split('.');
         return {
           ...base,

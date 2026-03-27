@@ -58,7 +58,7 @@ export interface Diagnostic {
 
 export interface DeclaredVariable {
   name: string;
-  sigil: '$' | '_' | '@';
+  sigil: '$' | '_' | '@' | '%';
   fields?: string[];
   declarationUri?: string;
   declarationRange?: Range;

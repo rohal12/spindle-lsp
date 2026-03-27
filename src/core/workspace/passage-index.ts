@@ -105,6 +105,11 @@ export class PassageIndex {
     return this.getPassage('StoryVariables');
   }
 
+  /** Get the StoryTransients passage, if any. */
+  getStoryTransients(): Passage | undefined {
+    return this.getPassage('StoryTransients');
+  }
+
   /** Get the StoryInit passage, if any. */
   getStoryInit(): Passage | undefined {
     return this.getPassage('StoryInit');

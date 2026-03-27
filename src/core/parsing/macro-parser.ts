@@ -4,7 +4,7 @@ import type { MacroNode, Range } from '../types.js';
  * Regex for variable interpolation: {$var}, {_var}, {@var}
  * These must be neutralized before macro parsing to avoid false matches.
  */
-const variableInterpolationRegex = /(?<!\\)\{([$_@][A-Za-z_$][\w$.]*)\}/g;
+const variableInterpolationRegex = /(?<!\\)\{([$_@%][A-Za-z_$][\w$.]*)\}/g;
 
 /**
  * Spindle macro regex.
