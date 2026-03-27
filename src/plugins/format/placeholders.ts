@@ -10,6 +10,74 @@ const SPINDLE_TOKEN_REGEX = /(?:\{\/[A-Za-z][\w-]*\s*\}|\{(?:[#.][a-zA-Z][\w-]*\
 /** Detect HTML tags in text (opening or self-closing or closing). */
 const HTML_TAG_REGEX = /<\/?[a-zA-Z][\w-]*[\s>/]/;
 
+export interface TokenMatch {
+  start: number;
+  end: number;
+  token: string;
+}
+
+/**
+ * Scan text for Spindle tokens using character-level brace-depth tracking.
+ * Finds: closing tags, macro calls, CSS-prefixed macros, variable/expression
+ * interpolations (with arbitrary nested braces), and [[links]].
+ */
+export function scanSpindleTokens(text: string): TokenMatch[] {
+  const matches: TokenMatch[] = [];
+  let i = 0;
+
+  while (i < text.length) {
+    // [[links]]
+    if (text[i] === '[' && text[i + 1] === '[') {
+      const closeIdx = text.indexOf(']]', i + 2);
+      if (closeIdx !== -1) {
+        const end = closeIdx + 2;
+        matches.push({ start: i, end, token: text.slice(i, end) });
+        i = end;
+        continue;
+      }
+    }
+
+    // {token} — skip escaped braces
+    if (text[i] === '{' && !(i > 0 && text[i - 1] === '\\')) {
+      const next = i + 1 < text.length ? text[i + 1] : '';
+      let isToken = false;
+
+      if (next === '/') {
+        // Closing tag: {/Name}
+        isToken = i + 2 < text.length && /[A-Za-z]/.test(text[i + 2]);
+      } else if (next === '#' || next === '.') {
+        // CSS-prefixed macro: {.class MacroName ...}
+        isToken = i + 2 < text.length && /[a-zA-Z]/.test(text[i + 2]);
+      } else if (/[A-Za-z]/.test(next)) {
+        // Macro call: {MacroName ...}
+        isToken = true;
+      } else if (/[$_@%]/.test(next)) {
+        // Variable/expression: {$var}, {@node.tier + 1}
+        isToken = i + 2 < text.length && /[a-zA-Z]/.test(text[i + 2]);
+      }
+
+      if (isToken) {
+        let depth = 1;
+        let j = i + 1;
+        while (j < text.length && depth > 0) {
+          if (text[j] === '{') depth++;
+          else if (text[j] === '}') depth--;
+          j++;
+        }
+        if (depth === 0) {
+          matches.push({ start: i, end: j, token: text.slice(i, j) });
+          i = j;
+          continue;
+        }
+      }
+    }
+
+    i++;
+  }
+
+  return matches;
+}
+
 /**
  * Check if a position in the string is inside an HTML attribute value.
  * Walks forward from start tracking quote context around = signs.
