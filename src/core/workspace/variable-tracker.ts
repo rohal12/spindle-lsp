@@ -1,4 +1,4 @@
-import type { DeclaredVariable, MacroNode, Range } from '../types.js';
+import type { DeclaredVariable, MacroNode, Range, Position } from '../types.js';
 import { parsePassageHeader } from '../parsing/passage-parser.js';
 
 /** Regex to match $variable references including dot notation. */
@@ -22,6 +22,12 @@ const CLEAN_PATTERNS = [
   /'(?:\\.|[^'\\])*'/g,                          // single-quoted strings
 ];
 
+interface NullDeclaration {
+  name: string;
+  sigil: '$' | '%';
+  range: Range;
+}
+
 interface VariableUsage {
   uri: string;
   baseName: string;
@@ -35,9 +41,11 @@ interface VariableUsage {
 export class VariableTracker {
   private declared = new Map<string, DeclaredVariable>();
   private _hasStoryVariables = false;
+  private _nullDeclarations: NullDeclaration[] = [];
 
   private declaredTransient = new Map<string, DeclaredVariable>();
   private _hasStoryTransients = false;
+  private _nullTransientDeclarations: NullDeclaration[] = [];
 
   /** Per-URI list of variable usages. */
   private usagesByUri = new Map<string, VariableUsage[]>();
@@ -49,13 +57,14 @@ export class VariableTracker {
    * Parse the StoryVariables passage content for declarations.
    * Each line like `$name = value` becomes a declaration.
    */
-  parseStoryVariables(content: string): void {
+  parseStoryVariables(content: string, contentStartLine = 0): void {
     this.declared.clear();
     this._hasStoryVariables = true;
+    this._nullDeclarations = [];
 
     const lines = content.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
 
       const match = /^\$([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(trimmed);
@@ -63,6 +72,24 @@ export class VariableTracker {
 
       const name = match[1];
       const expr = match[2].trim();
+
+      // Detect null values — Spindle doesn't support null
+      if (expr === 'null') {
+        const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
+        const absLine = contentStartLine + i;
+        this._nullDeclarations.push({
+          name,
+          sigil: '$',
+          range: {
+            start: { line: absLine, character: charIdx },
+            end: { line: absLine, character: charIdx + 4 },
+          },
+        });
+        // Still register as declared so we don't also emit SP200
+        this.declared.set(name, { name, sigil: '$' });
+        continue;
+      }
+
       const decl: DeclaredVariable = { name, sigil: '$' };
 
       // Extract top-level object fields for dot-notation validation
@@ -86,13 +113,14 @@ export class VariableTracker {
    * Parse the StoryTransients passage content for declarations.
    * Each line like `%name = value` becomes a declaration.
    */
-  parseStoryTransients(content: string): void {
+  parseStoryTransients(content: string, contentStartLine = 0): void {
     this.declaredTransient.clear();
     this._hasStoryTransients = true;
+    this._nullTransientDeclarations = [];
 
     const lines = content.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
 
       const match = /^%([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(trimmed);
@@ -100,6 +128,23 @@ export class VariableTracker {
 
       const name = match[1];
       const expr = match[2].trim();
+
+      // Detect null values — Spindle doesn't support null
+      if (expr === 'null') {
+        const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
+        const absLine = contentStartLine + i;
+        this._nullTransientDeclarations.push({
+          name,
+          sigil: '%',
+          range: {
+            start: { line: absLine, character: charIdx },
+            end: { line: absLine, character: charIdx + 4 },
+          },
+        });
+        this.declaredTransient.set(name, { name, sigil: '%' });
+        continue;
+      }
+
       const decl: DeclaredVariable = { name, sigil: '%' };
 
       // Extract top-level object fields for dot-notation validation
@@ -303,5 +348,15 @@ export class VariableTracker {
   /** Whether a StoryTransients passage has been parsed. */
   hasStoryTransients(): boolean {
     return this._hasStoryTransients;
+  }
+
+  /** Get variables declared with null values in StoryVariables. */
+  getNullDeclarations(): NullDeclaration[] {
+    return this._nullDeclarations;
+  }
+
+  /** Get transient variables declared with null values in StoryTransients. */
+  getNullTransientDeclarations(): NullDeclaration[] {
+    return this._nullTransientDeclarations;
   }
 }

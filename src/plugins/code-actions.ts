@@ -26,6 +26,7 @@ export interface CodeAction {
  *  - SP200 (undeclared variable) -> "Declare '$varName' in StoryVariables"
  *  - SP202 (no StoryVariables) -> "Create StoryVariables passage"
  *  - SP203 (undeclared transient) -> "Declare '%varName' in StoryTransients"
+ *  - SP204 (null variable value) -> "Replace null with 0"
  */
 export function computeCodeActions(
   uri: string,
@@ -53,6 +54,11 @@ export function computeCodeActions(
       }
       case DiagnosticCode.UndeclaredTransient: {
         const action = fixUndeclaredTransient(diag, workspace);
+        if (action) actions.push(action);
+        break;
+      }
+      case DiagnosticCode.NullVariableValue: {
+        const action = fixNullVariableValue(uri, diag);
         if (action) actions.push(action);
         break;
       }
@@ -138,7 +144,7 @@ function fixUndeclaredVariable(
         start: { line: insertLine, character: 0 },
         end: { line: insertLine, character: 0 },
       },
-      newText: `$${varName} = null\n`,
+      newText: `$${varName} = 0\n`,
     }],
   };
 }
@@ -218,7 +224,25 @@ function fixUndeclaredTransient(
         start: { line: insertLine, character: 0 },
         end: { line: insertLine, character: 0 },
       },
-      newText: `%${varName} = null\n`,
+      newText: `%${varName} = 0\n`,
+    }],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Quick fix: SP204 — Replace null with valid default
+// ---------------------------------------------------------------------------
+
+function fixNullVariableValue(uri: string, diag: Diagnostic): CodeAction | null {
+  // The diagnostic range covers the "null" token
+  return {
+    title: 'Replace null with 0',
+    kind: 'quickfix',
+    diagnosticCodes: [DiagnosticCode.NullVariableValue],
+    edits: [{
+      uri,
+      range: diag.range,
+      newText: '0',
     }],
   };
 }

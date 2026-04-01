@@ -330,7 +330,7 @@ function validateArguments(
 }
 
 // ---------------------------------------------------------------------------
-// Variable validation (SP200, SP202)
+// Variable validation (SP200, SP202, SP203, SP204)
 // ---------------------------------------------------------------------------
 
 function validateVariables(
@@ -370,6 +370,19 @@ function validateVariables(
         `Variable '$${u.name}' is not declared in StoryVariables`,
       ));
     }
+
+    // SP204: null variable value in StoryVariables
+    // Only emit on the document that contains StoryVariables
+    const storyVars = workspace.passages.getStoryVariables();
+    if (storyVars && storyVars.uri === uri) {
+      for (const nd of workspace.variables.getNullDeclarations()) {
+        diagnostics.push(makeDiag(
+          nd.range,
+          DiagnosticCode.NullVariableValue,
+          `Variable '$${nd.name}' is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
+        ));
+      }
+    }
   }
 
   // SP203: undeclared transient variable (independent of StoryVariables)
@@ -381,6 +394,18 @@ function validateVariables(
         DiagnosticCode.UndeclaredTransient,
         `Transient variable '%${u.name}' is not declared in StoryTransients`,
       ));
+    }
+
+    // SP204: null transient value in StoryTransients
+    const storyTransients = workspace.passages.getStoryTransients();
+    if (storyTransients && storyTransients.uri === uri) {
+      for (const nd of workspace.variables.getNullTransientDeclarations()) {
+        diagnostics.push(makeDiag(
+          nd.range,
+          DiagnosticCode.NullVariableValue,
+          `Transient variable '%${nd.name}' is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
+        ));
+      }
     }
   }
 }

@@ -67,12 +67,13 @@ describe('computeDiagnostics', () => {
     expect(sp107[0].message).toContain('option');
   });
 
-  it('produces SP200 for undeclared variable', () => {
+  it('produces SP200 for undeclared variable with error severity', () => {
     const workspace = createWorkspaceFromFixture('variables.tw');
     const diags = computeDiagnostics('file:///variables.tw', workspace);
     const sp200 = diags.filter(d => d.code === 'SP200');
     expect(sp200.length).toBeGreaterThan(0);
     expect(sp200.some(d => d.message.includes('$unknown'))).toBe(true);
+    expect(sp200[0].severity).toBe('error');
   });
 
   it('does not flag declared variables as SP200', () => {
@@ -191,6 +192,45 @@ plain text only
     const diags = computeDiagnostics('file:///test.tw', workspace);
     const sp203 = diags.filter(d => d.code === 'SP203');
     expect(sp203).toHaveLength(0);
+  });
+
+  it('produces SP204 for null value in StoryVariables', () => {
+    const text = `:: StoryVariables\n$health = 100\n$bad = null\n\n:: Start\nHello`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    const sp204 = diags.filter(d => d.code === 'SP204');
+    expect(sp204).toHaveLength(1);
+    expect(sp204[0].message).toContain('$bad');
+    expect(sp204[0].message).toContain('null');
+    expect(sp204[0].severity).toBe('error');
+  });
+
+  it('produces SP204 for null value in StoryTransients', () => {
+    const text = `:: StoryTransients\n%ok = 0\n%bad = null\n\n:: Start\nHello`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    const sp204 = diags.filter(d => d.code === 'SP204');
+    expect(sp204).toHaveLength(1);
+    expect(sp204[0].message).toContain('%bad');
+    expect(sp204[0].severity).toBe('error');
+  });
+
+  it('does not produce SP200 for variable declared as null (SP204 instead)', () => {
+    const text = `:: StoryVariables\n$bad = null\n\n:: Start\n{set $bad = 1}`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    const sp200 = diags.filter(d => d.code === 'SP200');
+    expect(sp200).toHaveLength(0);
+    const sp204 = diags.filter(d => d.code === 'SP204');
+    expect(sp204).toHaveLength(1);
+  });
+
+  it('does not produce SP204 for valid default values', () => {
+    const text = `:: StoryVariables\n$a = 0\n$b = ""\n$c = false\n\n:: Start\nHello`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    const sp204 = diags.filter(d => d.code === 'SP204');
+    expect(sp204).toHaveLength(0);
   });
 
   it('does not produce SP203 when no StoryTransients passage exists', () => {

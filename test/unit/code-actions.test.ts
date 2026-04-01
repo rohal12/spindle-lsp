@@ -53,7 +53,7 @@ describe('computeCodeActions', () => {
     expect(action.kind).toBe('quickfix');
     expect(action.diagnosticCodes).toContain('SP200');
     expect(action.edits.length).toBe(1);
-    expect(action.edits[0].newText).toContain('$unknown = null');
+    expect(action.edits[0].newText).toContain('$unknown = 0');
   });
 
   it('produces quick fix for SP202 (no StoryVariables)', () => {
@@ -94,7 +94,7 @@ describe('computeCodeActions', () => {
     expect(action.kind).toBe('quickfix');
     expect(action.diagnosticCodes).toContain('SP203');
     expect(action.edits.length).toBe(1);
-    expect(action.edits[0].newText).toContain('%unknown = null');
+    expect(action.edits[0].newText).toContain('%unknown = 0');
   });
 
   it('returns no actions for non-actionable diagnostics', () => {

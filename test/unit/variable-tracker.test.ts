@@ -92,6 +92,35 @@ describe('VariableTracker', () => {
     expect(usages.length).toBe(0);
   });
 
+  it('detects null declarations in StoryVariables', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables(`$name = "player"\n$bad = null\n$ok = 0`, 5);
+    const nullDecls = tracker.getNullDeclarations();
+    expect(nullDecls).toHaveLength(1);
+    expect(nullDecls[0].name).toBe('bad');
+    expect(nullDecls[0].sigil).toBe('$');
+    expect(nullDecls[0].range.start.line).toBe(6); // line 5 + 1
+    // Variable is still declared (to avoid double-flagging with SP200)
+    expect(tracker.getDeclared().has('bad')).toBe(true);
+  });
+
+  it('detects null declarations in StoryTransients', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryTransients(`%counter = 0\n%bad = null`, 10);
+    const nullDecls = tracker.getNullTransientDeclarations();
+    expect(nullDecls).toHaveLength(1);
+    expect(nullDecls[0].name).toBe('bad');
+    expect(nullDecls[0].sigil).toBe('%');
+    expect(nullDecls[0].range.start.line).toBe(11); // line 10 + 1
+    expect(tracker.getDeclaredTransient().has('bad')).toBe(true);
+  });
+
+  it('does not flag non-null values as null declarations', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables(`$a = 0\n$b = ""\n$c = false\n$d = []\n$e = { x: 1 }`);
+    expect(tracker.getNullDeclarations()).toHaveLength(0);
+  });
+
   it('replaces usages when re-scanning the same document', () => {
     const tracker = new VariableTracker();
     tracker.parseStoryVariables(`$name = "player"`);

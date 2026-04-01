@@ -157,7 +157,7 @@ export class WorkspaceModel extends EventEmitter {
           }
         }
         const content = lines.slice(contentStart, contentEnd).join('\n');
-        this.variables.parseStoryVariables(content);
+        this.variables.parseStoryVariables(content, contentStart);
       }
     }
 
@@ -176,7 +176,7 @@ export class WorkspaceModel extends EventEmitter {
           }
         }
         const content = lines.slice(contentStart, contentEnd).join('\n');
-        this.variables.parseStoryTransients(content);
+        this.variables.parseStoryTransients(content, contentStart);
       }
     }
 
