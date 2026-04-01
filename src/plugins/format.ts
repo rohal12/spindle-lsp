@@ -14,6 +14,8 @@ export interface FormatOptions {
   isBlock?: (name: string) => boolean;
   /** Returns true for sub-macros that dedent to parent level (else, elseif, next, case, default). */
   isDedentingSubMacro?: (name: string) => boolean;
+  /** If set, wrap prose lines exceeding this character count. */
+  maxLineLength?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +168,10 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
       }
 
       // Spindle/markdown region — apply macro indentation
-      const indented = indentMacros(region.lines, isBlock, isDedenting);
+      let indented = indentMacros(region.lines, isBlock, isDedenting);
+      if (options?.maxLineLength) {
+        indented = wrapLines(indented, options.maxLineLength);
+      }
       resultLines.push(...indented);
     }
   }
@@ -240,6 +245,102 @@ function indentMacros(
  */
 export async function formatRange(text: string, _range: Range, options?: FormatOptions): Promise<string> {
   return formatDocument(text, options);
+}
+
+// ---------------------------------------------------------------------------
+// Line wrapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrap lines that exceed maxLen at word boundaries.
+ * Preserves leading indentation. Skips lines that are passage headers,
+ * pure macro lines, or choice/link lines where wrapping would break syntax.
+ */
+function wrapLines(lines: string[], maxLen: number): string[] {
+  const result: string[] = [];
+
+  for (const line of lines) {
+    if (line.length <= maxLen) {
+      result.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+
+    // Don't wrap empty lines, passage headers, or lines that are purely
+    // structural (macros, links, choices)
+    if (
+      trimmed === '' ||
+      /^::/.test(trimmed) ||
+      /^\{[\/#.]/.test(trimmed) ||         // closing/opening-only macro lines
+      /^\[\[/.test(trimmed) ||             // links
+      /^\{choice\b/.test(trimmed) ||       // choice macros
+      /^\{choices\b/.test(trimmed)
+    ) {
+      result.push(line);
+      continue;
+    }
+
+    // Determine the indentation prefix
+    const indentMatch = line.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1] : '';
+
+    const wrapped = wordWrap(trimmed, maxLen, indent);
+    result.push(...wrapped);
+  }
+
+  return result;
+}
+
+/**
+ * Wrap a single trimmed line at word boundaries, respecting macro tokens.
+ * Returns an array of lines with the given indent prefix applied.
+ */
+function wordWrap(text: string, maxLen: number, indent: string): string[] {
+  const lines: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    const currentMax = lines.length === 0 ? maxLen - indent.length : maxLen - indent.length;
+    if (remaining.length <= currentMax) {
+      lines.push(indent + remaining);
+      break;
+    }
+
+    // Find the last space at or before currentMax that isn't inside a macro tag
+    let breakIdx = -1;
+    let inMacro = 0;
+    for (let i = 0; i < remaining.length && i <= currentMax; i++) {
+      if (remaining[i] === '{') inMacro++;
+      else if (remaining[i] === '}') inMacro = Math.max(0, inMacro - 1);
+      else if (remaining[i] === ' ' && inMacro === 0 && i > 0) {
+        breakIdx = i;
+      }
+    }
+
+    // If no break point found before maxLen, look for the next space after
+    if (breakIdx === -1) {
+      for (let i = currentMax + 1; i < remaining.length; i++) {
+        if (remaining[i] === '{') inMacro++;
+        else if (remaining[i] === '}') inMacro = Math.max(0, inMacro - 1);
+        else if (remaining[i] === ' ' && inMacro === 0) {
+          breakIdx = i;
+          break;
+        }
+      }
+    }
+
+    // No break point at all — emit the whole thing
+    if (breakIdx === -1) {
+      lines.push(indent + remaining);
+      break;
+    }
+
+    lines.push(indent + remaining.substring(0, breakIdx));
+    remaining = remaining.substring(breakIdx + 1);
+  }
+
+  return lines;
 }
 
 // ---------------------------------------------------------------------------
