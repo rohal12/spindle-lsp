@@ -1,10 +1,10 @@
 export {};
 
-import { createRequire } from 'node:module';
+declare const SPINDLE_LSP_VERSION: string;
 
 const args = process.argv.slice(2);
 
-const VERSION = (createRequire(import.meta.url))('../package.json').version as string;
+const VERSION = SPINDLE_LSP_VERSION;
 
 const HELP = `\
 spindle-lsp v${VERSION}
