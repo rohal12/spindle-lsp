@@ -51,12 +51,13 @@ export function startServer(_args: string[]): void {
     console.error('[spindle-lsp] onInitialize called');
     const initOptions = (params.initializationOptions ?? {}) as Partial<SpindleConfig>;
 
-    // Determine workspace root from LSP params
+    // Determine workspace root from LSP params (try multiple sources)
     workspaceRoot =
       initOptions.workspaceRoot ??
       (params.workspaceFolders?.[0]?.uri
         ? uriToFsPath(params.workspaceFolders[0].uri)
-        : undefined);
+        : undefined) ??
+      (params.rootUri ? uriToFsPath(params.rootUri) : undefined);
 
     // Load project config from disk if we have a workspace root
     const projectConfig = workspaceRoot
@@ -154,7 +155,18 @@ export function startServer(_args: string[]): void {
   connection.onDidCloseTextDocument(({ textDocument }) => {
     documents.delete(textDocument.uri);
     if (workspace) {
-      workspace.documents.close(textDocument.uri);
+      // After the editor closes a tab the file may still exist on disk
+      // (e.g. it was loaded during the workspace scan).  Re-read from disk
+      // so its passages stay in the index; only truly remove if the file
+      // is gone.
+      try {
+        const fsPath = uriToFsPath(textDocument.uri);
+        const text = readFileSync(fsPath, 'utf-8');
+        workspace.documents.update(textDocument.uri, text);
+      } catch {
+        // File no longer readable (deleted / outside workspace) — remove it
+        workspace.documents.close(textDocument.uri);
+      }
     }
   });
 

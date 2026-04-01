@@ -298,6 +298,143 @@ Content here.
   });
 
   // -----------------------------------------------------------------------
+  // 6b. SP110: cross-file passage parameter validation
+  // -----------------------------------------------------------------------
+
+  it('SP110: passage parameter resolves across files (issue #9)', () => {
+    // Simulate a macro with a "passage" parameter type (e.g. {choice})
+    const file1 = `:: arrival-docking [intro]
+{goto "arrival-alma-flickers"}
+`;
+    const file2 = `:: arrival-alma-flickers [intro]
+Content here.
+`;
+
+    workspace = buildWorkspace({
+      'docking.tw': file1,
+      'alma-flickers.tw': file2,
+    });
+
+    // Override goto's parameter to use "passage" type (simulates user-defined macro config)
+    workspace.macros.addMacro({
+      name: 'goto',
+      parameters: ['passage'],
+    });
+
+    const diags = computeDiagnostics('file:///docking.tw', workspace);
+    const sp110 = diags.filter(d => d.code === 'SP110');
+    // Passage exists in another file — no SP110 expected
+    expect(sp110).toHaveLength(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // 6c. Cross-file passages after document close (LSP flow)
+  // -----------------------------------------------------------------------
+
+  it('closing a document removes its passages (server re-reads from disk)', () => {
+    const file1 = `:: Start
+{goto "PageTwo"}
+`;
+    const file2 = `:: PageTwo
+Content.
+`;
+
+    workspace = buildWorkspace({
+      'file1.tw': file1,
+      'file2.tw': file2,
+    });
+
+    workspace.macros.addMacro({
+      name: 'goto',
+      parameters: ['passage'],
+    });
+
+    // Initially correct — no SP110
+    let diags = computeDiagnostics('file:///file1.tw', workspace);
+    let sp110 = diags.filter(d => d.code === 'SP110');
+    expect(sp110).toHaveLength(0);
+
+    // At the WorkspaceModel level, close() removes passages (expected).
+    // The server's onDidCloseTextDocument handler is responsible for
+    // re-reading from disk to preserve workspace-scanned files.
+    workspace.documents.close('file:///file2.tw');
+
+    diags = computeDiagnostics('file:///file1.tw', workspace);
+    sp110 = diags.filter(d => d.code === 'SP110');
+    // After close, the document store no longer has file2, so SP110 fires.
+    // In the real LSP server, onDidCloseTextDocument re-reads from disk.
+    expect(sp110.length).toBeGreaterThan(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // 6d. LSP flow: didOpen before workspace scan, then scan completes
+  // -----------------------------------------------------------------------
+
+  it('SP110: editor opens file before workspace scan, scan completes later', async () => {
+    // Simulate LSP flow: workspace not yet initialized, editor opens a file
+    workspace = new WorkspaceModel();
+    workspace.macros.addMacro({
+      name: 'goto',
+      parameters: ['passage'],
+    });
+
+    const file1 = `:: Start
+{goto "PageTwo"}
+`;
+    const file2 = `:: PageTwo
+Content.
+`;
+
+    // Step 1: Editor opens file1 before scan (workspace not initialized)
+    workspace.documents.open('file:///file1.tw', file1);
+
+    // Diagnostics should be empty (initialized = false guard)
+    let diags = computeDiagnostics('file:///file1.tw', workspace);
+    expect(diags).toHaveLength(0);
+
+    // Step 2: Workspace scan completes — initialize with all files
+    const allFiles = new Map([
+      ['file:///file1.tw', file1],
+      ['file:///file2.tw', file2],
+    ]);
+    workspace.initialize(allFiles);
+
+    // Step 3: After initialization, diagnostics should be correct
+    diags = computeDiagnostics('file:///file1.tw', workspace);
+    const sp110 = diags.filter(d => d.code === 'SP110');
+    expect(sp110).toHaveLength(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // 6e. LSP flow: workspace scan finds no files (workspaceRoot undefined)
+  // -----------------------------------------------------------------------
+
+  it('SP110: empty workspace scan then didOpen produces false positive', () => {
+    // Simulate: workspaceRoot is undefined → scan returns empty map
+    workspace = new WorkspaceModel();
+    workspace.macros.addMacro({
+      name: 'goto',
+      parameters: ['passage'],
+    });
+
+    const file1 = `:: Start
+{goto "PageTwo"}
+`;
+
+    // Initialize with empty scan (simulates undefined workspaceRoot)
+    workspace.initialize(new Map());
+
+    // Editor opens file1 after initialization
+    workspace.documents.open('file:///file1.tw', file1);
+
+    // Now diagnostics run with only file1's passages
+    const diags = computeDiagnostics('file:///file1.tw', workspace);
+    const sp110 = diags.filter(d => d.code === 'SP110');
+    // PageTwo doesn't exist → SP110 fires (this is correct behavior since no other files)
+    expect(sp110.length).toBeGreaterThan(0);
+  });
+
+  // -----------------------------------------------------------------------
   // 7. Variable completions are consistent with variable diagnostics
   // -----------------------------------------------------------------------
 
