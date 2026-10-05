@@ -57,9 +57,14 @@ function isConfigFileUri(uri: string): boolean {
  * Start the Spindle LSP server.
  *
  * Supports `--stdio` (default) and `--socket=<port>` transport modes.
+ * Without a transport flag the server talks over stdin/stdout, which the
+ * language-server library would otherwise refuse to guess.
  */
-export function startServer(_args: string[]): void {
-  const connection = createConnection(ProposedFeatures.all);
+export function startServer(args: string[]): void {
+  const hasTransport = args.some(arg => /^--(stdio|node-ipc|socket|pipe)(=|$)/.test(arg));
+  const connection = hasTransport
+    ? createConnection(ProposedFeatures.all)
+    : createConnection(ProposedFeatures.all, process.stdin, process.stdout);
   const documents = new Map<string, TextDocument>();
   let workspace: WorkspaceModel;
   let activePlugins: SpindlePlugin[] = [];

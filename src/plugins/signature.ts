@@ -3,6 +3,7 @@ import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
+import { Parameters, type ParameterSlot } from '../core/parsing/parameter-validator.js';
 import { activeWidgetArgument } from '../core/parsing/widget-arguments.js';
 import { buildLineStarts, createCodeScanner, SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
 
@@ -39,6 +40,60 @@ function findEnclosingMacro(textBefore: string): { macroName: string; argsBefore
   return enclosing;
 }
 
+function slotLabel(slot: ParameterSlot): string {
+  if (slot.repeat) return `...${slot.label}`;
+  return slot.optional ? `[${slot.label}]` : slot.label;
+}
+
+/**
+ * One signature per distinct positional sequence of the macro's schema
+ * variants, using the same schema semantics as the parameter validator.
+ */
+function describeSignatures(
+  macroName: string,
+  variants: string[],
+  documentation: string | undefined,
+): SignatureHelpResult['signatures'] {
+  let sequences: ParameterSlot[][];
+  try {
+    sequences = new Parameters(variants).describe();
+  } catch {
+    return [];
+  }
+  const seen = new Set<string>();
+  const signatures: SignatureHelpResult['signatures'] = [];
+  for (const sequence of sequences) {
+    const labels = sequence.map(slotLabel);
+    const label = `{${[macroName, ...labels].join(' ')}}`;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    signatures.push({ label, documentation, parameters: labels.map(l => ({ label: l })) });
+  }
+  return signatures;
+}
+
+/**
+ * Index of the argument being typed. A token still being typed (the cursor
+ * touches it) keeps its own index; the next index starts at whitespace or a
+ * comma, or inside a token the lexer has not completed (an open string).
+ */
+function activeMacroArgument(argsBefore: string): number {
+  if (argsBefore.trim() === '') return 0;
+  const lexed = lexArguments(argsBefore);
+  const tail = argsBefore.slice(lexed.length > 0 ? lexed[lexed.length - 1].end : 0);
+  if (tail !== '') return lexed.length;
+  return Math.max(lexed.length - 1, 0);
+}
+
+/** The first signature with a position for the active argument. */
+function pickSignature(signatures: SignatureHelpResult['signatures'], active: number): number {
+  const fits = signatures.findIndex(sig => {
+    const last = sig.parameters[sig.parameters.length - 1];
+    return sig.parameters.length > active || (last?.label.startsWith('...') ?? false);
+  });
+  return fits === -1 ? 0 : fits;
+}
+
 /**
  * Compute signature help for the macro at the given position.
  *
@@ -68,18 +123,16 @@ export function getSignatureHelp(
   // Check builtin macros
   const macroInfo = workspace.macros.getMacro(macroName);
   if (macroInfo && macroInfo.parameters && macroInfo.parameters.length > 0) {
-    const paramLabels = macroInfo.parameters;
-    // Count arguments before cursor to determine active parameter
-    const activeParameter = argsBefore.trim() === '' ? 0 : lexArguments(argsBefore).length;
-    return {
-      signatures: [{
-        label: `{${macroName} ${paramLabels.join(' ')}}`,
-        documentation: macroInfo.description ?? undefined,
-        parameters: paramLabels.map(p => ({ label: p })),
-      }],
-      activeSignature: 0,
-      activeParameter,
-    };
+    const signatures = describeSignatures(macroName, macroInfo.parameters, macroInfo.description ?? undefined);
+    if (signatures.length > 0) {
+      const argument = activeMacroArgument(argsBefore);
+      const activeSignature = pickSignature(signatures, argument);
+      const { parameters } = signatures[activeSignature];
+      // A repeated position stays active for every further argument
+      const repeats = parameters[parameters.length - 1]?.label.startsWith('...') ?? false;
+      const activeParameter = repeats ? Math.min(argument, parameters.length - 1) : argument;
+      return { signatures, activeSignature, activeParameter };
+    }
   }
 
   // Check widgets
@@ -105,6 +158,17 @@ export function getSignatureHelp(
 // Plugin wrapper (LSP integration)
 // ---------------------------------------------------------------------------
 
+/** Parameter labels as offsets into the signature label, so equal labels stay distinct. */
+function parameterInformation(sig: SignatureHelpResult['signatures'][number]): ParameterInformation[] {
+  let from = sig.label.indexOf(' ') + 1;
+  return sig.parameters.map(p => {
+    const start = sig.label.indexOf(p.label, from);
+    if (start < 0) return { label: p.label };
+    from = start + p.label.length;
+    return { label: [start, from] };
+  });
+}
+
 export const signaturePlugin: SpindlePlugin = {
   id: 'signature',
   capabilities: {
@@ -124,7 +188,7 @@ export const signaturePlugin: SpindlePlugin = {
       const signatures: SignatureInformation[] = result.signatures.map(sig => ({
         label: sig.label,
         documentation: sig.documentation,
-        parameters: sig.parameters.map(p => ({ label: p.label }) as ParameterInformation),
+        parameters: parameterInformation(sig),
       }));
 
       return {

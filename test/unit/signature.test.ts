@@ -147,3 +147,58 @@ describe('getSignatureHelp finds the enclosing macro', () => {
     expect(help(':: Start\n{.red  counter 5, ')).toBeNull();
   });
 });
+
+describe('H79: signature schema and active argument (#79)', () => {
+  const uri = 'file:///story.tw';
+  function help(body: string) {
+    const ws = new WorkspaceModel();
+    ws.initialize(new Map([[uri, `:: StoryVariables\n$name = ""\n:: Start\n${body}`]]));
+    return getSignatureHelp(uri, { line: 3, character: body.length }, ws);
+  }
+  function active(body: string) {
+    const result = help(body)!;
+    return { result, sig: result.signatures[result.activeSignature] };
+  }
+
+  for (const [macro, args, activeIndex, labels] of [
+    ['textbox', '$name ', 1, ['receiver', '[text]']],
+    ['radiobutton', '$name "yes" ', 2, ['receiver', 'text', '[text]']],
+  ] as const) {
+    it(`H79-${macro}: schema describes each active argument`, () => {
+      const { result, sig } = active(`{${macro} ${args}`);
+      expect(result.activeParameter).toBe(activeIndex);
+      expect(sig.parameters.map(p => p.label)).toEqual(labels);
+      expect(sig.parameters.length).toBeGreaterThan(result.activeParameter);
+    });
+  }
+
+  it('H79-partial: typing the first receiver keeps parameter zero active', () => {
+    expect(help('{textbox $na')?.activeParameter).toBe(0);
+    expect(help('{textbox $name')?.activeParameter).toBe(0);
+    expect(help('{textbox $name ')?.activeParameter).toBe(1);
+    expect(help('{textbox $name "pla')?.activeParameter).toBe(1);
+    expect(help('{radiobutton $name "ye')?.activeParameter).toBe(1);
+    expect(help('{radiobutton $name "yes"')?.activeParameter).toBe(1);
+  });
+
+  it('H79-alternation: each schema variant is a signature and the active one has the argument', () => {
+    const ws = new WorkspaceModel();
+    const body = '{listbox $x}{option "a" ';
+    ws.initialize(new Map([[uri, `:: Start\n${body}`]]));
+    const result = getSignatureHelp(uri, { line: 1, character: body.length }, ws)!;
+    expect(result.signatures.map(s => s.parameters.map(p => p.label))).toEqual([
+      ['[text]', '[text]'],
+      ['text'],
+    ]);
+    expect(result.signatures.map(s => s.label)).toEqual(['{option [text] [text]}', '{option text}']);
+    expect(result.activeSignature).toBe(0);
+    expect(result.activeParameter).toBe(1);
+  });
+
+  it('H79-repetition: a repeated position stays active for further arguments', () => {
+    const result = help('{set $a to 1, $b to 2, $c ')!;
+    const sig = result.signatures[result.activeSignature];
+    expect(sig.parameters.map(p => p.label)).toEqual(['...text']);
+    expect(result.activeParameter).toBe(0);
+  });
+});
