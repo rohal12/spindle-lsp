@@ -12,6 +12,7 @@ import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
 import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
+import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
@@ -854,13 +855,6 @@ function validateVariables(
       }
     }
   }
-}
-
-/** The document that carries the one workspace-wide SP202. */
-function missingStoryVariablesOwner(workspace: WorkspaceModel): string | undefined {
-  return workspace.documents.getUris().find(
-    u => !isMacroSource(u) && workspace.passages.getPassagesInDocument(u).length > 0,
-  );
 }
 
 /** Whether any ordinary passage in the workspace mentions a `$variable`. */

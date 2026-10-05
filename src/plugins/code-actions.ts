@@ -7,6 +7,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode } from '../core/diagnostic-codes.js';
 import { findConfigFile } from '../core/workspace/config-loader.js';
+import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 import { conditionalExpression, printExpression } from '../core/parsing/attribute-blocks.js';
 import { buildLineStarts } from '../core/parsing/macro-parser.js';
@@ -66,7 +67,7 @@ export function computeCodeActions(
         break;
       }
       case DiagnosticCode.NoStoryVariables: {
-        const action = fixNoStoryVariables(uri, workspace);
+        const action = fixNoStoryVariables(workspace);
         if (action) actions.push(action);
         break;
       }
@@ -377,16 +378,10 @@ function fixUndeclaredVariable(
 // ---------------------------------------------------------------------------
 
 function fixNoStoryVariables(
-  uri: string,
   workspace: WorkspaceModel,
 ): CodeAction | null {
-  // Only Twee story documents may receive a passage: never an opened
-  // config (YAML/JSON) or JS/TS macro source. Prefer the diagnostic's own
-  // document, then the first story document in the workspace.
-  const isStoryDocument = (u: string) => /\.(tw|twee)$/i.test(u) && !isMacroSource(u);
-  const targetUri = isStoryDocument(uri)
-    ? uri
-    : workspace.documents.getUris().find(isStoryDocument);
+  // Same owner as the SP202 diagnostic, so applying the fix clears it.
+  const targetUri = missingStoryVariablesOwner(workspace);
   if (targetUri === undefined) return null;
 
   const text = workspace.documents.getText(targetUri);

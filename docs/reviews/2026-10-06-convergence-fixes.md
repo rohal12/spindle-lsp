@@ -22,9 +22,20 @@ Normal gate: `npm test` 63 files / 1,402 tests pass; `npm run typecheck` clean.
 Integration note: Q68-other-doc was adjusted after merge because #78 reports
 SP202 once, on the owning story document; the test now locates that document.
 
-Known gaps: Spindle `>=0.34.0` peer range unverified; #80 no longer tokenizes keywords outside
-macro arguments; #78 SP202 owner vs. quickfix target (`getUris()[0]`) may differ.
+Known gaps: Spindle `>=0.34.0` peer range unverified (see the peer-range note
+once recorded); keywords are tokenized only in macro arguments, including `${}`
+interpolations (string/template text excluded). Spindle 0.45.1 has no keyword
+sugar at all (`expression.ts` only rewrites sigils; `StoryVariables` is plain
+`new Function`), so no other context is an expression for them (control
+`S80-decl-control`).
 
-Follow-up (#74): unmatched block-widget closers (no open container in the same
-passage; Spindle 0.45.1 throws "Unexpected closing") are no longer references,
-definition or rename targets (`macroHeadNames` pairing; tests G74/C-G74).
+Follow-ups after the first merge:
+
+- #74: unmatched block-widget closers (no open container in the same passage;
+  Spindle 0.45.1 throws "Unexpected closing") are no longer references,
+  definition or rename targets (`macroHeadNames` pairing; tests G74/C-G74).
+- #78: the SP202 diagnostic and its quickfix now share
+  `missingStoryVariablesOwner` (H78 tests in `convergence-edits.test.ts`).
+- #80: `${}` interpolation keywords restored (`S80-template*`), CRLF
+  template-target cases added (`R67-template-crlf*`, `X70-template-crlf*`), and
+  a UTF-16 offset bug (code-point splitting in the keyword mask) fixed.
