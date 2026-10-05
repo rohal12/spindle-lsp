@@ -4,7 +4,7 @@ import supplements from '../macro-supplements.json' with { type: 'json' };
 import { SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
 import { splitPassages, classifyPassage, segmentRegions } from './format/segment.js';
 import { formatJS, formatCSS, formatHTML as formatHTMLPrettier } from './format/prettier-bridge.js';
-import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks } from './format/placeholders.js';
+import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks, scanSpindleTokens } from './format/placeholders.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,11 +85,60 @@ function buildDefaultIsBlock(text: string): (name: string) => boolean {
  *  5. Normalize passage headers: `::  Name  [tag]` -> `:: Name [tag]`
  */
 export async function formatDocument(text: string, options?: FormatOptions): Promise<string> {
+  // Format with LF endings, then give the output the document's own style
+  const eol = dominantEol(text);
+  const output = await formatLf(text.replace(/\r\n/g, '\n'), options);
+  return eol === '\r\n' ? output.replace(/\n/g, '\r\n') : output;
+}
+
+/**
+ * The document's line-ending style: whichever of CRLF and LF is more common,
+ * the first one found when equally common. (Spindle's compiler normalizes
+ * CRLF to LF, so the choice never changes what a story does.)
+ */
+function dominantEol(text: string): '\n' | '\r\n' {
+  const crlf = (text.match(/\r\n/g) ?? []).length;
+  const lf = (text.match(/\n/g) ?? []).length - crlf;
+  if (crlf !== lf) return crlf > lf ? '\r\n' : '\n';
+  return text.indexOf('\r\n') !== -1 && text.indexOf('\r\n') < text.indexOf('\n') ? '\r\n' : '\n';
+}
+
+/**
+ * Newline stand-in inside multiline Spindle tokens. A private-use character
+ * absent from the document: not whitespace, so no line-based step touches it.
+ */
+function newlineSentinel(text: string): string {
+  for (let code = 0xe000; code <= 0xf8ff; code++) {
+    const ch = String.fromCharCode(code);
+    if (!text.includes(ch)) return ch;
+  }
+  throw new Error('no free private-use character for the newline stand-in');
+}
+
+/**
+ * Join each multiline token (macro, interpolation or link, as the Spindle
+ * runtime tokenizes it) onto its line with `sentinel` for its newlines. The
+ * line-based formatting steps then see one line and cannot re-indent, wrap,
+ * trim, segment or re-flow the runtime payload inside it.
+ */
+function protectMultilineTokens(body: string, sentinel: string): string {
+  let out = '';
+  let last = 0;
+  for (const m of scanSpindleTokens(body)) {
+    if (!m.token.includes('\n')) continue;
+    out += body.slice(last, m.start) + m.token.replaceAll('\n', sentinel);
+    last = m.end;
+  }
+  return out + body.slice(last);
+}
+
+async function formatLf(text: string, options?: FormatOptions): Promise<string> {
   const isBlock = options?.isBlock ?? buildDefaultIsBlock(text);
   const isDedenting = options?.isDedentingSubMacro
     ?? ((name: string) => DEFAULT_DEDENTING.has(name.toLowerCase()));
 
   const passages = splitPassages(text);
+  const sentinel = newlineSentinel(text);
   const resultLines: string[] = [];
   /** Indices in resultLines whose trailing two spaces are a hard line break. */
   const hardBreakLines = new Set<number>();
@@ -130,10 +179,16 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
       continue;
     }
 
-    // Normal passage: segment into regions
-    const regions = segmentRegions(passage.body);
+    // Normal passage: segment into regions. Multiline tokens are joined onto
+    // one line first, so their inner lines are never taken for markup.
+    const regions = segmentRegions(protectMultilineTokens(passage.body, sentinel));
 
     for (const region of regions) {
+      if (region.type === 'script' || region.type === 'svg') {
+        // Their text is verbatim or JS: undo the joining
+        region.lines = region.lines.map(l => l.replaceAll(sentinel, '\n'));
+      }
+
       if (region.type === 'script') {
         // Same-line <script>…</script> — leave as written
         if (region.lines.length === 1) {
@@ -195,7 +250,7 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
     .join('\n');
   output = output.replace(/\n*$/, '\n');
 
-  return output;
+  return output.replaceAll(sentinel, '\n');
 }
 
 /** A Markdown list item line (`- a`, `* a`, `+ a`, `1. a`, `1) a`). */

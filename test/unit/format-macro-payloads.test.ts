@@ -6,8 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
 import { formatDocument } from '../../src/plugins/format.js';
 
+/** The compiler normalizes CRLF to LF before tokenizing; so does this view. */
 function runtimeMacroArgs(text: string) {
-  return tokenize(text).filter(t => t.type === 'macro').map(t => t.rawArgs);
+  return tokenize(text.replaceAll('\r\n', '\n')).filter(t => t.type === 'macro').map(t => t.rawArgs);
 }
 
 describe('F66: formatting preserves runtime macro payloads (#66)', () => {
@@ -16,7 +17,8 @@ describe('F66: formatting preserves runtime macro payloads (#66)', () => {
       const body = '<div>\n<span>{print `a\nb`}</span>\n</div>'.replaceAll('\n', newline);
       const text = `:: StoryVariables${newline}:: Start${newline}${body}`;
       const output = await formatDocument(text);
-      expect(runtimeMacroArgs(output)).toEqual(runtimeMacroArgs(text.replaceAll('\r\n', '\n')));
+      expect(runtimeMacroArgs(output)).toEqual(runtimeMacroArgs(text));
+      if (newline === '\r\n') expect(output.replaceAll('\r\n', '')).not.toMatch(/[\r\n]/);
       expect(await formatDocument(output)).toBe(output);
     });
   }
@@ -42,7 +44,8 @@ describe('F66: formatting preserves runtime macro payloads (#66)', () => {
       ].join(newline);
       const text = `:: StoryVariables${newline}:: Start${newline}${body}`;
       const output = await formatDocument(text);
-      expect(runtimeMacroArgs(output)).toEqual(runtimeMacroArgs(text.replaceAll('\r\n', '\n')));
+      expect(runtimeMacroArgs(output)).toEqual(runtimeMacroArgs(text));
+      if (newline === '\r\n') expect(output.replaceAll('\r\n', '')).not.toMatch(/[\r\n]/);
       expect(await formatDocument(output)).toBe(output);
     });
   }
