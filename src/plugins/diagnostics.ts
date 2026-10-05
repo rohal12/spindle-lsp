@@ -6,6 +6,7 @@ import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
 import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
 import { scanHtmlTags, type HtmlScan, type HtmlTag } from '../core/parsing/html-scanner.js';
+import { findUnevaluatedBlocks } from '../core/parsing/attribute-blocks.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
@@ -22,6 +23,7 @@ import { isMacroSource } from '../core/workspace/macro-sources.js';
  * Checks:
  *  - Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
  *  - HTML element structure Spindle cannot render (SP102)
+ *  - Macros and expressions in HTML attributes Spindle outputs as text (SP103)
  *  - Argument/parameter validation (SP108, SP109, SP110, SP111, SP112)
  *  - Variable validation (SP200, SP201, SP202, SP203, SP204, SP206)
  *  - StoryVariables / StoryTransients declarations Spindle rejects (SP207)
@@ -77,6 +79,12 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
       diagnostics.push(...replay.errors);
     } catch {
       // Without element information, containers are judged by macros alone
+    }
+
+    try {
+      validateAttributeBlocks(markupText, passages, workspace, diagnostics);
+    } catch {
+      // Attribute validation failed — continue
     }
 
     try {
@@ -344,9 +352,9 @@ interface ElementReplay {
  * Spindle's stack keeps open or throws at (SP101 reports it); where the
  * scanner gave up because Spindle versions disagree or following them
  * would be quadratic; and where the scanner and the macro parser disagree
- * about which text is a macro (such as `{else}` inside an attribute value,
- * which Spindle reads as part of the tag). Macros after that are judged by
- * macros alone, as if there were no HTML.
+ * about which text is a macro (such as `{if}` inside a link, which Spindle
+ * reads as part of the link). Macros after that are judged by macros alone,
+ * as if there were no HTML.
  */
 function replayElements(
   text: string,
@@ -454,7 +462,7 @@ function replayPassage(
     if (!applyTags(start)) return;
 
     if (start >= certainUntil) return;
-    // A macro Spindle does not read, e.g. one inside an attribute value
+    // A macro Spindle does not read, e.g. one inside a link
     while (s < scan.macros.length && scan.macros[s] < start) s++;
     if (scan.macros[s] !== start) return;
     lastMacroEnd = positionToOffset(macro.range.end, lineStarts) - base;
@@ -484,6 +492,70 @@ function replayPassage(
   // element left open needs its closing tag.
   for (const entry of stack) {
     if ('element' in entry) report(tagRange(entry.element), `unclosed <${entry.element.name}>`);
+  }
+}
+
+/** Elements whose content is not markup: their tags are not checked for SP103. */
+const RAW_TEXT_ELEMENTS = new Set(['script', 'style']);
+
+const MACRO_IN_ATTRIBUTE = (macro: string) =>
+  `Macros are not evaluated inside HTML attributes, so Spindle outputs this {${macro}} as text. `
+  + "Use an expression such as {$x ? 'a' : 'b'}";
+
+const EXPRESSION_IN_ATTRIBUTE = 'Spindle evaluates {…} in an HTML attribute only when $, _, @ or % follows the brace, '
+  + "so it outputs this block as text. Start the expression with a variable, as in {$x ? 'a' : 'b'}";
+
+/**
+ * SP103: `{…}` blocks in HTML attribute values that Spindle outputs as text.
+ *
+ * Every tag Spindle's tokenizer reads becomes an element whose attribute
+ * values HtmlNodeRenderer passes through interpolate(), and that evaluates
+ * only blocks opening with a sigil (rohal12/spindle#225; unchanged on
+ * upstream main). findUnevaluatedBlocks() decides which blocks look like
+ * code. Only passages Spindle tokenizes are checked, only tags the scanner
+ * reads before it stops, and not the content of <script> and <style>
+ * elements. If a later Spindle evaluates macros in attributes, this check
+ * needs a version gate.
+ */
+function validateAttributeBlocks(
+  text: string,
+  passages: Passage[],
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  if (!text.includes('<')) return;
+  const lineStarts = buildLineStarts(text);
+  const lineOffset = (line: number) => lineStarts[line] ?? text.length;
+  const lookup = {
+    isMacro: (name: string) => workspace.macros.getMacro(name) !== undefined || workspace.widgets.getWidget(name) !== undefined,
+    isContainer: (name: string) => workspace.isContainer(name),
+  };
+
+  for (const passage of passages) {
+    if (!isMarkupPassage(passage)) continue;
+    const base = lineOffset(passage.range.start.line + 1);
+    const content = text.slice(base, lineOffset(passage.range.end.line + 1));
+    if (!content.includes('<') || !content.includes('{')) continue;
+
+    let rawText: string | undefined;
+    for (const tag of scanHtmlTags(content).tags) {
+      const name = tag.name.toLowerCase();
+      if (rawText !== undefined) {
+        if (tag.kind === 'close' && name === rawText) rawText = undefined;
+        continue;
+      }
+      for (const [start, end] of tag.values ?? []) {
+        for (const block of findUnevaluatedBlocks(content.slice(start, end), lookup)) {
+          const range = {
+            start: offsetToPosition(base + start + block.start, lineStarts),
+            end: offsetToPosition(base + start + block.end, lineStarts),
+          };
+          const message = block.kind === 'macro' ? MACRO_IN_ATTRIBUTE(block.macro!) : EXPRESSION_IN_ATTRIBUTE;
+          diagnostics.push(makeDiag(range, DiagnosticCode.UnevaluatedAttributeBlock, message));
+        }
+      }
+      if (tag.kind === 'open' && RAW_TEXT_ELEMENTS.has(name)) rawText = name;
+    }
   }
 }
 

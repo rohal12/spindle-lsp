@@ -160,3 +160,23 @@ describe('getCompletions', () => {
     expect(items).toHaveLength(0);
   });
 });
+
+// Spindle outputs a macro inside an attribute value as text (SP103).
+describe('getCompletions inside HTML attribute values', () => {
+  // With the closing brace typed for the author: an unbalanced brace makes
+  // Spindle 0.45.1 read the value on past the closing quote.
+  it('offers no macro names after a brace in an attribute value', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n<span class="{}">t</span>\n' });
+    expect(getCompletions('file:///test.tw', { line: 1, character: 14 }, '{', ws)).toEqual([]);
+  });
+
+  it('offers no closing tags in an attribute value', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n{if true}<span class="{/}">t</span>\n' });
+    expect(getCompletions('file:///test.tw', { line: 1, character: 24 }, '/', ws)).toEqual([]);
+  });
+
+  it('still offers variables in an attribute value', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: StoryVariables\n$hp = 1\n:: Start\n<span class="{$}">t</span>\n' });
+    expect(getCompletions('file:///test.tw', { line: 3, character: 15 }, '$', ws).map(i => i.label)).toContain('$hp');
+  });
+});

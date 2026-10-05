@@ -167,6 +167,36 @@ describe('CLI check command', () => {
     }
   });
 
+  it('warns about macros and non-sigil expressions in HTML attributes (#63)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-attributes-'));
+    try {
+      const file = join(dir, 'story.twee');
+      writeFileSync(file, [
+        ':: StoryVariables',
+        '$n = 1',
+        ':: Start',
+        '{set @d = {delta: $n}}',
+        '<span class="{if @d.delta > 0}delta-positive{else}delta-negative{/if}">x</span>',
+        `<span class="{$n > 0 ? 'pos' : 'neg'}">y</span>`,
+        `<span class="{!$n ? 'zero' : 'nonzero'}">z</span>`,
+        `<span data-x='{"a":1}'>j</span>`,
+        '',
+      ].join('\n'));
+      const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', file]));
+      expect(exitCode).toBe(0);
+      const diags: Array<{ code: string; severity: string; message: string; range: { start: { line: number; character: number }; end: { line: number; character: number } } }> =
+        JSON.parse(output).files[0].diagnostics;
+      expect(diags.map(d => [d.code, d.severity, d.range.start.line, d.range.start.character, d.range.end.character])).toEqual([
+        ['SP103', 'warning', 4, 13, 69],
+        ['SP103', 'warning', 6, 13, 39],
+      ]);
+      expect(diags[0].message).toMatch(/^Macros are not evaluated inside HTML attributes/);
+      expect(diags[1].message).toMatch(/only when \$, _, @ or % follows the brace/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('hides the SP303 hint at --severity warning', async () => {
     const file = join(fixturesDir, 'runtime-pitfalls.tw');
     const { output } = await captureStdout(() =>

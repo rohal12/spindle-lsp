@@ -2,7 +2,8 @@ import type { CompletionItem } from 'vscode-languageserver';
 import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseMacros, pairMacros } from '../core/parsing/macro-parser.js';
+import { parseMacros, pairMacros, buildLineStarts } from '../core/parsing/macro-parser.js';
+import { inAttributeValue } from '../core/parsing/html-scanner.js';
 
 // ---------------------------------------------------------------------------
 // Core completion function (no LSP dependency)
@@ -21,6 +22,9 @@ import { parseMacros, pairMacros } from '../core/parsing/macro-parser.js';
  *  - After `$var.` -> declared object fields
  *  - After `%var.` -> declared transient object fields
  *  - After `[[`  -> passage names
+ *
+ * No macro names or closing tags are offered inside an HTML attribute value,
+ * where Spindle outputs macros as text (SP103).
  */
 export function getCompletions(
   uri: string,
@@ -35,9 +39,14 @@ export function getCompletions(
   if (position.line >= lines.length) return [];
   const lineText = lines[position.line].substring(0, position.character);
 
+  // Spindle outputs macros inside an attribute value as text (SP103), so
+  // offer none there. The character before the cursor is the one typed.
+  const inAttribute = () =>
+    inAttributeValue(text, (buildLineStarts(text)[position.line] ?? 0) + position.character - 1);
+
   // --- Context: closing macro `{/` ---
   if (/\{\/[A-Za-z\w-]*$/.test(lineText)) {
-    return getClosingMacroCompletions(uri, text, position, workspace);
+    return inAttribute() ? [] : getClosingMacroCompletions(uri, text, position, workspace);
   }
 
   // --- Context: dot-path field `%var.` ---
@@ -79,7 +88,7 @@ export function getCompletions(
 
   // --- Context: macro invocation `{` or `{partial` ---
   if (/(?:^|[^\\])\{[A-Za-z\w-]*$/.test(lineText)) {
-    return getMacroCompletions(workspace);
+    return inAttribute() ? [] : getMacroCompletions(workspace);
   }
 
   return [];

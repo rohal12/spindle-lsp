@@ -152,3 +152,49 @@ describe('computeCodeActions', () => {
     expect(edit.range.start.line).toBe(4);
   });
 });
+
+describe('computeCodeActions for SP103 (macro in an HTML attribute)', () => {
+  const vars = ':: StoryVariables\n$n = 1\n$s = "a"\n';
+
+  function fixes(line: string) {
+    const ws = createWorkspace({ name: 'test.tw', content: `${vars}:: Start\n${line}\n` });
+    const diags = computeDiagnostics('file:///test.tw', ws).filter(d => d.code === 'SP103');
+    return { diags, actions: computeCodeActions('file:///test.tw', diags, ws) };
+  }
+
+  it('rewrites {if C}A{else}B{/if} as {C ? \'A\' : \'B\'}', () => {
+    const { diags, actions } = fixes('<span class="{if @d.delta > 0}delta-positive{else}delta-negative{/if}">x</span>');
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({
+      title: "Rewrite as {@d.delta > 0 ? 'delta-positive' : 'delta-negative'}",
+      kind: 'quickfix',
+      diagnosticCodes: ['SP103'],
+    });
+    expect(actions[0].edits).toEqual([{
+      uri: 'file:///test.tw',
+      range: diags[0].range,
+      newText: "{@d.delta > 0 ? 'delta-positive' : 'delta-negative'}",
+    }]);
+  });
+
+  it('rewrites {if C}A{/if} with an empty else branch', () => {
+    const { actions } = fixes(`<div class='card {if $s == "a"}active{/if}'>x</div>`);
+    expect(actions.map(a => a.edits[0].newText)).toEqual([`{$s == "a" ? 'active' : ''}`]);
+  });
+
+  it('rewrites {print E} as {E}', () => {
+    const { diags, actions } = fixes(`<span class="d {print $n > 0 ? 'pos' : 'neg'}">x</span>`);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ title: "Rewrite as {$n > 0 ? 'pos' : 'neg'}", diagnosticCodes: ['SP103'] });
+    expect(actions[0].edits).toEqual([{ uri: 'file:///test.tw', range: diags[0].range, newText: "{$n > 0 ? 'pos' : 'neg'}" }]);
+  });
+
+  it('offers no fix for other blocks', () => {
+    expect(fixes('<span class="{print !$n}">x</span>').actions).toEqual([]);
+    expect(fixes('<span class="{print $s + \'}\'}">x</span>').actions).toEqual([]);
+    expect(fixes('<span class="{if !$n}a{/if}">x</span>').actions).toEqual([]);
+    expect(fixes('<span class="{if $n}a{elseif $s}b{/if}">x</span>').actions).toEqual([]);
+    expect(fixes('<span class="{for _i range 3}a{/for}">x</span>').actions).toEqual([]);
+    expect(fixes(`<span class="{!$n ? 'a' : 'b'}">x</span>`).actions).toEqual([]);
+  });
+});

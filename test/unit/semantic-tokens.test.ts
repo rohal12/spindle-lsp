@@ -186,3 +186,16 @@ describe('CSS-prefixed variable displays (#58)', () => {
     ]);
   });
 });
+
+describe('semantic tokens inside HTML attribute values', () => {
+  it('does not mark a macro written inside an attribute value as a macro', () => {
+    // Spindle outputs it there as text (SP103).
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: Start\n<span class="{if $x}a{/if}">t</span>{if $x}b{/if}',
+    });
+    const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
+    const functionTokens = tokens.filter(t => t.tokenType === typeIdx('function'));
+    expect(functionTokens.map(t => t.startChar)).toEqual([37, 46]);
+  });
+});

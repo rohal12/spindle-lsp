@@ -182,3 +182,21 @@ describe('getHoverInfo with CSS selector prefixes (#58)', () => {
     });
   });
 });
+
+// Spindle outputs a macro inside an attribute value as text (SP103).
+describe('getHoverInfo inside HTML attribute values', () => {
+  const content = ':: StoryVariables\n$x = 1\n:: Widgets [widget]\n{widget "Badge"}b{/widget}\n'
+    + ':: Start\n<span class="{if $x}a{/if} {Badge}">t</span>{if $x}b{/if}\n';
+
+  it('does not describe a macro or widget written inside an attribute value', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    expect(getHoverInfo('file:///test.tw', { line: 5, character: 15 }, ws)).toBeNull();
+    expect(getHoverInfo('file:///test.tw', { line: 5, character: 29 }, ws)).toBeNull();
+  });
+
+  it('still describes variables there, and macros outside the tag', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    expect(getHoverInfo('file:///test.tw', { line: 5, character: 18 }, ws)?.contents).toContain('Story variable');
+    expect(getHoverInfo('file:///test.tw', { line: 5, character: 45 }, ws)?.contents).toContain('**if**');
+  });
+});

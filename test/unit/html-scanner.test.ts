@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scanHtmlTags, type HtmlTag } from '../../src/core/parsing/html-scanner.js';
+import { attributeValueSpans, scanHtmlTags, type HtmlTag } from '../../src/core/parsing/html-scanner.js';
 
 /** The tags of a scan as `<name>`, `</name>` and `<name/>` (void) strings. */
 function tags(content: string): string[] {
@@ -198,5 +198,51 @@ describe('scanHtmlTags', () => {
       scanHtmlTags(input);
       expect(performance.now() - t0).toBeLessThan(500);
     }
+  });
+});
+
+describe('scanHtmlTags attribute values', () => {
+  /** The attribute values of each opening or void tag, as text. */
+  function values(content: string): string[][] {
+    return scanHtmlTags(content).tags
+      .filter(t => t.kind !== 'close')
+      .map(t => (t.values ?? []).map(([start, end]) => content.slice(start, end)));
+  }
+
+  it('records quoted and unquoted values without their quotes', () => {
+    expect(values(`<a href="x y" title='z' id=w hidden>`)).toEqual([['x y', 'z', 'w']]);
+  });
+
+  it('keeps a macro written inside a quoted value in the value', () => {
+    const content = '<span class="{if $x == "a"}on{else}off{/if}">t</span>';
+    expect(values(content)).toEqual([['{if $x == "a"}on{else}off{/if}']]);
+    expect(scanHtmlTags(content).macros).toEqual([]);
+  });
+
+  it('records values of void and self-closing tags', () => {
+    expect(values('<img alt="{if $x}a{/if}"><b class="c"/>')).toEqual([['{if $x}a{/if}'], ['c']]);
+  });
+
+  it('records no values for text that only looks like a tag', () => {
+    // Without a closing >, Spindle reads the tag as text and its braces as macros.
+    expect(values('<span class="{if $x}a{/if}" ')).toEqual([]);
+  });
+});
+
+describe('attributeValueSpans', () => {
+  it('lists the attribute values of every passage, in document offsets', () => {
+    const text = ':: A\n<b title="{if $x}y{/if}">z</b>\n:: B [t]\n<i class=k>q</i>\n';
+    expect(attributeValueSpans(text).map(([s, e]) => text.slice(s, e))).toEqual(['{if $x}y{/if}', 'k']);
+  });
+
+  it('does not read a tag across a passage header', () => {
+    const text = ':: A\n<b title="x\n:: B\ny">z</b>\n';
+    expect(attributeValueSpans(text)).toEqual([]);
+  });
+
+  it('stops where the scan stops', () => {
+    // `<a href = "x">` makes Spindle re-read the text after `<`.
+    const text = ':: A\n<a href = "x"> <b title="{if $x}y{/if}">\n';
+    expect(attributeValueSpans(text)).toEqual([]);
   });
 });
