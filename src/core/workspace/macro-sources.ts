@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { glob } from 'glob';
 import type { Path } from 'glob';
@@ -58,6 +58,20 @@ export function findMacroSourceFiles(root: string): Promise<string[]> {
     // Hidden entries are excluded by the predicate, not by glob's default
     dot: true,
     ignore: { ignored: excluded, childrenIgnored: excluded },
+  });
+}
+
+/** Whether `path` is `dir` or lies inside it (whole segments, not a string prefix). */
+function isWithin(path: string, dir: string): boolean {
+  const rel = relative(dir, path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+/** The deepest directory containing all of the given (absolute) files. */
+export function commonDirectory(files: string[]): string {
+  return files.map(f => dirname(f)).reduce((a, b) => {
+    while (!isWithin(b, a) && dirname(a) !== a) a = dirname(a);
+    return a;
   });
 }
 

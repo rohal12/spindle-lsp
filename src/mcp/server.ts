@@ -9,7 +9,7 @@ import { z } from 'zod';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
-import { addProjectMacroSources } from '../core/workspace/macro-sources.js';
+import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
 import { formatDocument } from '../plugins/format.js';
 import type { Diagnostic } from '../core/types.js';
@@ -41,14 +41,6 @@ async function resolveFiles(pattern: string, cwd: string): Promise<string[]> {
     nodir: true,
   });
   return [...new Set(matches)];
-}
-
-/** The common directory of the matched files. */
-function commonDirectory(files: string[]): string {
-  return files.map(f => resolve(f, '..')).reduce((a, b) => {
-    while (!b.startsWith(a)) a = resolve(a, '..');
-    return a;
-  });
 }
 
 /**

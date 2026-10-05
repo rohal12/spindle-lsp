@@ -8,7 +8,7 @@ import { computeDiagnostics } from '../plugins/diagnostics.js';
 import type { DiagnosticOptions } from '../plugins/diagnostics.js';
 import { loadConfigFromDisk, loadConfigFile, findConfigFile } from '../core/workspace/config-loader.js';
 import type { SpindleProjectConfig } from '../core/workspace/config-loader.js';
-import { addProjectMacroSources } from '../core/workspace/macro-sources.js';
+import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
 import type { Diagnostic } from '../core/types.js';
 import { formatPretty } from './reporters/pretty.js';
 import { formatJson } from './reporters/json.js';
@@ -162,10 +162,7 @@ export async function runCheck(args: string[]): Promise<number> {
   // running from a different cwd)
   // Common directory of all matched files: the project's builtin macros
   // (its installed @rohal12/spindle) and its config are found from here
-  const commonDir = uniqueFiles.map(f => resolve(f, '..')).reduce((a, b) => {
-    while (!b.startsWith(a)) a = resolve(a, '..');
-    return a;
-  });
+  const commonDir = commonDirectory(uniqueFiles);
 
   let projectConfig: SpindleProjectConfig;
   if (explicitConfig) {

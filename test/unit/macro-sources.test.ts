@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'nod
 import { tmpdir } from 'node:os';
 
 import {
+  commonDirectory,
   findMacroSourceFiles,
   findProjectRoot,
   isExcludedMacroSource,
@@ -23,6 +24,25 @@ function touch(path: string, content = ''): void {
   mkdirSync(join(dir, path, '..'), { recursive: true });
   writeFileSync(join(dir, path), content);
 }
+
+describe('commonDirectory', () => {
+  it('is the parent of a single file', () => {
+    expect(commonDirectory(['/p/game/story/a.tw'])).toBe('/p/game/story');
+  });
+
+  it('is the deepest directory shared by all files', () => {
+    expect(commonDirectory(['/p/game/story/a.tw', '/p/game/scripts/b.tw'])).toBe('/p/game');
+  });
+
+  it('compares whole path segments, not string prefixes', () => {
+    expect(commonDirectory(['/p/game/a.tw', '/p/gamex/b.tw'])).toBe('/p');
+    expect(commonDirectory(['/p/gamex/b.tw', '/p/game/a.tw'])).toBe('/p');
+  });
+
+  it('falls back to the filesystem root', () => {
+    expect(commonDirectory(['/a/x.tw', '/b/y.tw'])).toBe('/');
+  });
+});
 
 describe('findProjectRoot', () => {
   it.each([
