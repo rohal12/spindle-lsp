@@ -78,10 +78,10 @@
   },
   "set": {
     "name": "set",
-    "description": "Sets variables based on the given expression.\n\nUsage: `{set $var to value}`\n\nSupports `$var` (story), `_var` (temporary), `@var` (local), and `%var` (transient) variables.",
+    "description": "Sets variables based on the given expression.\n\nUsage: `{set $var = value}`\n\nSupports `$var` (story), `_var` (temporary), `@var` (local), and `%var` (transient) variables.",
     "parameters": ["...text"],
     "parameterDocs": [
-      {"name": "assignment", "documentation": "Assignment such as `$var to value`; further comma-separated assignments may follow."}
+      {"name": "assignment", "documentation": "Assignment such as `$var = value`; further comma-separated assignments may follow."}
     ]
   },
   "unset": {
