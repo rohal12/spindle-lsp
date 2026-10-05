@@ -24,4 +24,4 @@ SP202 once, on the owning story document; the test now locates that document.
 
 Known gaps: Spindle `>=0.34.0` peer range unverified; #74 stray `{/w}` closers
 still count as widget references; #80 no longer tokenizes keywords outside
-macro arguments; #78 SP202 owner vs. quickfix target (`getUris()[0]`) may differ.
+macro arguments. The #78 SP202 owner and quickfix target now share `missingStoryVariablesOwner` (follow-up H78 tests in `convergence-edits.test.ts`).

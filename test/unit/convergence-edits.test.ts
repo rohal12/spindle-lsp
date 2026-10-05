@@ -169,3 +169,86 @@ it('E75-runtime: completed output closes the container for the runtime tokenizer
   const out = apply(':: StoryVariables\n:: Start\n{if true}\n{/', [item.textEdit as { range: Range; newText: string }]);
   expect(tokenize(out).filter(t => t.type === 'macro').map(t => t.name)).toEqual(['if', 'if']);
 });
+
+describe('H78: SP202 owner and quick-fix target are one document (#78)', () => {
+  const data = ':: StoryData\n{"format":"Spindle"}\n';
+  /** Build, find the single SP202, apply its fix to every edited document, rebuild. */
+  function fixAndRebuild(entries: Array<[string, string]>, eol = '\n') {
+    const model = new WorkspaceModel({ workspaceRoot: process.cwd() });
+    models.push(model);
+    model.initialize(new Map(entries));
+    const all = entries.map(([u]) => u);
+    const found = all.flatMap(u => computeDiagnostics(u, model).filter(d => d.code === 'SP202').map(d => ({ u, d })));
+    expect(found).toHaveLength(1);
+    const { u: owner, d } = found[0];
+    // The fix must be offered from every document, and always target the owner.
+    for (const u of all) {
+      const edits = computeCodeActions(u, [d], model).flatMap(a => a.edits);
+      expect(edits.length).toBeGreaterThan(0);
+      expect(edits.every(e => e.uri === owner)).toBe(true);
+    }
+    const action = computeCodeActions(owner, [d], model)[0];
+    const next = new Map(entries);
+    for (const u of new Set(action.edits.map(e => e.uri))) {
+      next.set(u, TextDocument.applyEdits(
+        TextDocument.create(u, 'twee', 0, model.documents.getText(u)!),
+        action.edits.filter(e => e.uri === u).map(e => ({ range: e.range, newText: e.newText })),
+      ));
+    }
+    const rebuilt = new WorkspaceModel({ workspaceRoot: process.cwd() });
+    models.push(rebuilt);
+    rebuilt.initialize(next);
+    for (const u of all) {
+      expect(computeDiagnostics(u, rebuilt).filter(x => x.code === 'SP202')).toEqual([]);
+    }
+    expect(rebuilt.variables.hasStoryVariables()).toBe(true);
+    if (eol === '\r\n') expect(next.get(owner)!.replace(/\r\n/g, '')).not.toContain('\n');
+    return { owner, next };
+  }
+
+  it('H78-first: owner is the first story document', () => {
+    const { owner } = fixAndRebuild([[uri, `${data}:: Start\nhi`], ['file:///b.tw', ':: B\nhi']]);
+    expect(owner).toBe(uri);
+  });
+  it('H78-empty-first: first document without passages is skipped by both', () => {
+    const empty = 'file:///empty.tw';
+    const { owner, next } = fixAndRebuild([[empty, ''], [uri, `${data}:: Start\nhi`]]);
+    expect(owner).toBe(uri);
+    expect(next.get(empty)).toBe('');
+  });
+  it('H78-config-first: YAML/JSON/JS opened first are never targeted', () => {
+    for (const [c, text] of [
+      ['file:///spindle.config.yaml', 'macros: {}\n'],
+      ['file:///spindle.config.json', '{}\n'],
+      ['file:///m.js', 'export const x = 1;\n'],
+    ] as Array<[string, string]>) {
+      const { owner, next } = fixAndRebuild([[c, text], [uri, `${data}:: Start\nhi`]]);
+      expect(owner).toBe(uri);
+      expect(next.get(c)).toBe(text);
+    }
+  });
+  it('H78-multi: with several story documents only the first with passages is touched', () => {
+    const b = 'file:///b.tw';
+    const { owner, next } = fixAndRebuild([['file:///a-empty.tw', '\n'], [uri, `${data}:: Start\nhi`], [b, ':: B\nhi\n']]);
+    expect(owner).toBe(uri);
+    expect(next.get(b)).toBe(':: B\nhi\n');
+  });
+  it('H78-unsaved: an open unsaved edit that adds passages changes owner and target together', () => {
+    const empty = 'file:///empty.tw';
+    const model = workspace(`${data}:: Start\nhi`, [[empty, '']]);
+    model.documents.update(empty, ':: Draft\nnew');
+    const all = [empty, uri];
+    const owners = all.filter(u => computeDiagnostics(u, model).some(d => d.code === 'SP202'));
+    expect(owners).toHaveLength(1);
+    const d = computeDiagnostics(owners[0], model).find(x => x.code === 'SP202')!;
+    for (const u of all) {
+      expect(computeCodeActions(u, [d], model)[0].edits.every(e => e.uri === owners[0])).toBe(true);
+    }
+  });
+  it('H78-crlf: CRLF owner keeps CRLF and the fix clears SP202', () => {
+    const text = `:: StoryData\r\n{"format":"Spindle"}\r\n:: Start\r\nhi`;
+    const { next, owner } = fixAndRebuild([[uri, text]], '\r\n');
+    expect(next.get(owner)).toContain('\r\n:: StoryVariables\r\n');
+    expect(next.get(owner)!).not.toMatch(/[^\r]\n/);
+  });
+});
