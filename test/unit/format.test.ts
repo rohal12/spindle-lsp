@@ -558,6 +558,64 @@ describe('formatDocument', () => {
     expect(second).toBe(first);
   });
 
+  // -- Markdown whitespace semantics (issue #33) ---------------------------
+
+  it('keeps two-space hard line breaks before a following line', async () => {
+    const input = ':: Start\nline  \nnext   \nlast  \n\npara\n';
+    const result = await formatDocument(input);
+    // Normalized to exactly two spaces; dropped where no line follows
+    expect(result).toBe(':: Start\nline  \nnext  \nlast\n\npara\n');
+  });
+
+  it('keeps hard line breaks inside macro bodies', async () => {
+    const input = ':: Start\n{if $x}\nline  \nnext\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n{if $x}\n  line  \n  next\n{/if}\n');
+  });
+
+  it('keeps a hard line break when wrapping long lines', async () => {
+    const input = ':: Start\naaa bbb ccc ddd  \nnext\n';
+    const result = await formatDocument(input, { maxLineLength: 8 });
+    expect(result).toBe(':: Start\naaa bbb\nccc ddd  \nnext\n');
+  });
+
+  it('keeps nested list indentation in top-level prose', async () => {
+    const input = ':: Start\n- a\n  - b\n    - c\n- d\n\n  continued item\n';
+    expect(await formatDocument(input)).toBe(input);
+  });
+
+  it('keeps fenced code indentation in top-level prose', async () => {
+    const input = ':: Start\n```\nif (x) {\n    y();\n}\n```\n';
+    expect(await formatDocument(input)).toBe(input);
+  });
+
+  it('keeps relative list indentation inside macro bodies', async () => {
+    const input = ':: Start\n{if $x}\n- a\n  - b\n- c\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n{if $x}\n  - a\n    - b\n  - c\n{/if}\n');
+    expect(await formatDocument(result)).toBe(result);
+  });
+
+  it('re-bases over-indented list bodies without flattening them', async () => {
+    const input = ':: Start\n{if $x}\n      - a\n        - b\n{else}\n- c\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n{if $x}\n  - a\n    - b\n{else}\n  - c\n{/if}\n');
+  });
+
+  it('nests macro bodies under an indented opening line', async () => {
+    const input = ':: Start\n- item\n\n  {if $x}\n  inner\n  {/if}\n';
+    const result = await formatDocument(input);
+    // The {if} line stays inside the list item; its body indents beneath it
+    expect(result).toBe(':: Start\n- item\n\n  {if $x}\n    inner\n  {/if}\n');
+    expect(await formatDocument(result)).toBe(result);
+  });
+
+  it('still normalizes indentation of macro bodies without lists or fences', async () => {
+    const input = ':: Start\n    Intro\n{if $x}\n      {set $y = 1}\n   Text\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\nIntro\n{if $x}\n  {set $y = 1}\n  Text\n{/if}\n');
+  });
+
   // -- Idempotency -------------------------------------------------------
 
   it('is idempotent — double formatting produces same result', async () => {
