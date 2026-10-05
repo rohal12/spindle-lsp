@@ -210,7 +210,9 @@ describe('HTML elements on Spindle\'s AST stack', () => {
   });
 
   it('does not track elements across passages', () => {
-    expect(diagnose(`${vars}:: Other\n<div>\n:: Start\n{if $x}a{else}b{/if}\n`)).toEqual([]);
+    // The <div> is unclosed in its own passage (SP102), not around {else}.
+    const diags = diagnose(`${vars}:: Other\n<div>\n:: Start\n{if $x}a{else}b{/if}\n`);
+    expect(codes(diags)).toEqual(['SP102']);
   });
 
   it('ignores markup in script and stylesheet passages', () => {
@@ -219,14 +221,15 @@ describe('HTML elements on Spindle\'s AST stack', () => {
   });
 
   it('stops tracking elements after a closing tag that does not match', () => {
-    // Spindle throws at </i>; what follows is never reached.
-    expect(diagnose(`${vars}:: Start\n<b></i>{if $x}a<i>{else}</i>{/if}\n`)).toEqual([]);
-    expect(diagnose(`${vars}:: Start\n</i><b>{if $x}<i>{else}</i>{/if}</b>\n`)).toEqual([]);
+    // Spindle throws at </i> (SP102); what follows is never reached.
+    expect(codes(diagnose(`${vars}:: Start\n<b></i>{if $x}a<i>{else}</i>{/if}\n`))).toEqual(['SP102']);
+    expect(codes(diagnose(`${vars}:: Start\n</i><b>{if $x}<i>{else}</i>{/if}</b>\n`))).toEqual(['SP102']);
   });
 
   it('stops tracking elements after a block closes over an open element', () => {
     // {if}<span>{/if}</span> crosses: Spindle throws "Expected </span> but found {/if}".
-    expect(diagnose(`${vars}:: Start\n{if $x}<span>{/if}</span>{if $x}<i>{else}</i>{/if}\n`)).toEqual([]);
+    const diags = diagnose(`${vars}:: Start\n{if $x}<span>{/if}</span>{if $x}<i>{else}</i>{/if}\n`);
+    expect(codes(diags)).toEqual(['SP102']);
   });
 
   it('stops tracking elements where Spindle versions disagree', () => {
@@ -241,10 +244,11 @@ describe('HTML elements on Spindle\'s AST stack', () => {
   });
 
   it('flags a branch in an element that is never closed', () => {
-    // Spindle throws at {else}, whose block is not on top of the stack.
+    // Spindle throws at {else}, whose block is not on top of the stack;
+    // {/if} closing over the <p> is SP102.
     const diags = diagnose(`${vars}:: Start\n{if $x}<p>a{else}b{/if}\n`);
-    expect(codes(diags)).toEqual(['SP107']);
-    expect(diags[0].message).toContain('not inside <p>');
+    expect(codes(diags).sort()).toEqual(['SP102', 'SP107']);
+    expect(diags.find(d => d.code === 'SP107')!.message).toContain('not inside <p>');
   });
 
   it('flags a branch inside an element after a block widget', () => {

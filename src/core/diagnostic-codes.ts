@@ -1,6 +1,7 @@
 export const DiagnosticCode = {
   UndefinedMacro: 'SP100',
   MalformedContainer: 'SP101',
+  MalformedElement: 'SP102',
   IllegalClosingTag: 'SP104',
   InvalidChildren: 'SP107',
   ExpectedNoArguments: 'SP108',
@@ -33,6 +34,7 @@ type Severity = 'error' | 'warning' | 'info' | 'hint';
 const severityMap: Record<DiagnosticCodeValue, Severity> = {
   SP100: 'warning',
   SP101: 'error',
+  SP102: 'error',
   SP104: 'error',
   SP107: 'error',
   SP108: 'error',

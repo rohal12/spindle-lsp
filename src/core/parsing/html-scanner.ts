@@ -93,6 +93,11 @@ function plainBraceMatches(input: string): Int32Array {
  *    literals are skipped (0.45.1 does not, later versions do);
  *  - a quoted attribute value containing braces that the two versions end
  *    at different quotes;
+ *  - a tag inside a `{do}` body, which later versions keep as JavaScript
+ *    text up to the first `{/do}`, or a `{do}` body whose `{/do}` 0.45.1
+ *    reads as part of another token;
+ *  - an even run of backslashes before a brace (`\\{`), where 0.45.1
+ *    escapes the brace and later versions escape a backslash;
  *  - a link that never closes, or a tag that fails after reading
  *    attributes (`<a href = "x">`, `x <y and z.`): Spindle reads the text
  *    again from the character after `<`, which can take quadratic time.
@@ -103,6 +108,40 @@ export function scanHtmlTags(text: string): HtmlScan {
   const macros: number[] = [];
   const code = createCodeScanner(text);
   const plain = plainBraceMatches(text);
+
+  /**
+   * `{do}` bodies as later versions read them: from the end of the `{do}`
+   * to the start of the first `{/do}` after it, as [start, close].
+   */
+  const rawBodies: Array<[number, number]> = [];
+  let doCloses: number[] | undefined;
+  let nextDoClose = 0;
+  const rawBody = (end: number) => {
+    doCloses ??= [...text.matchAll(/\{\/do\s*\}/gi)].map(match => match.index);
+    while (nextDoClose < doCloses.length && doCloses[nextDoClose] < end) nextDoClose++;
+    if (nextDoClose < doCloses.length) rawBodies.push([end, doCloses[nextDoClose]]);
+  };
+
+  /**
+   * The first offset before `limit` at which 0.45.1 and later versions read
+   * a `{do}` body differently, or `limit`: a tag in the body, or the whole
+   * body when 0.45.1 does not read its `{/do}` as a macro.
+   */
+  const rawBodyLimit = (limit: number): number => {
+    if (rawBodies.length === 0) return limit;
+    const macroStarts = new Set(macros);
+    let t = 0;
+    for (const [start, close] of rawBodies) {
+      if (start >= limit) break;
+      if (close < limit && !macroStarts.has(close)) {
+        limit = start;
+        break;
+      }
+      while (t < tags.length && tags[t].start < start) t++;
+      if (t < tags.length && tags[t].start < Math.min(close, limit)) limit = tags[t].start;
+    }
+    return limit;
+  };
 
   /** End of the brace-delimited token opening at `open`, or GIVE_UP. */
   const braceEnd = (open: number): number => {
@@ -135,7 +174,10 @@ export function scanHtmlTags(text: string): HtmlScan {
     // A closing macro takes no selectors.
     if (LETTER.test(c) || (c === '/' && !selectors)) {
       const end = braceEnd(i);
-      if (end > i + 1) macros.push(i);
+      if (end > i + 1) {
+        macros.push(i);
+        if (/^do$/i.test(text.slice(at, end - 1).trim().split(/\s/)[0])) rawBody(end);
+      }
       return end;
     }
     return i + 1;
@@ -241,11 +283,17 @@ export function scanHtmlTags(text: string): HtmlScan {
   };
 
   let i = 0;
+  let stoppedAt = -1;
   while (i < n) {
     const c = text[i];
     let next: number;
-    if (c === '\\' && (text[i + 1] === '{' || text[i + 1] === '}')) {
-      next = i + 2;
+    if (c === '\\') {
+      // A run of backslashes: 0.45.1 escapes a brace after it, later
+      // versions only after an odd run.
+      let k = i + 1;
+      while (text[k] === '\\') k++;
+      if (text[k] === '{' || text[k] === '}') next = (k - i) % 2 === 1 ? k + 1 : GIVE_UP;
+      else next = k;
     } else if (c === '[' && text[i + 1] === '[') {
       next = linkEnd(text, i);
     } else if (c === '{') {
@@ -255,10 +303,21 @@ export function scanHtmlTags(text: string): HtmlScan {
     } else {
       next = i + 1;
     }
-    if (next === GIVE_UP) return { tags, stoppedAt: i, macros };
+    if (next === GIVE_UP) {
+      stoppedAt = i;
+      break;
+    }
     i = next;
   }
-  return { tags, stoppedAt: -1, macros };
+
+  // Where the versions read a {do} body differently, stop there
+  const limit = rawBodyLimit(stoppedAt === -1 ? n : stoppedAt);
+  if (limit === stoppedAt || limit === n) return { tags, stoppedAt, macros };
+  return {
+    tags: tags.filter(tag => tag.start < limit),
+    stoppedAt: limit,
+    macros: macros.filter(at => at < limit),
+  };
 }
 
 /**

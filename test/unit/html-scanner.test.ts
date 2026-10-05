@@ -136,6 +136,36 @@ describe('scanHtmlTags', () => {
     expect(scan.stoppedAt).toBe(3);
   });
 
+  it('stops at a tag inside a {do} body, which later versions keep as JavaScript', () => {
+    // Later versions emit everything up to the first {/do} as text.
+    const scan = scanHtmlTags('<b>{do} s = "<i>"; {/do}</b>');
+    expect(scan.tags.map(show)).toEqual(['<b>']);
+    expect(scan.stoppedAt).toBe(13);
+    expect(scanHtmlTags('<b>{DO}<i>{/do }</b>').stoppedAt).toBe(7);
+  });
+
+  it('reads tags around a {do} body, and after a {do} that never closes', () => {
+    const scan = scanHtmlTags('<b>{do} a < b; {/do}</b>');
+    expect(scan.tags.map(show)).toEqual(['<b>', '</b>']);
+    expect(scan.stoppedAt).toBe(-1);
+    expect(scanHtmlTags('{do}<i>').stoppedAt).toBe(-1);
+  });
+
+  it('stops at a {do} body whose {/do} Spindle 0.45.1 reads as part of something else', () => {
+    const scan = scanHtmlTags('<b>{do}{print "{/do}"}<i>');
+    expect(scan.tags.map(show)).toEqual(['<b>']);
+    expect(scan.stoppedAt).toBe(7);
+  });
+
+  it('stops at an even run of backslashes before a brace', () => {
+    // 0.45.1 escapes the brace after the last backslash; later versions
+    // read \\{ as an escaped backslash before a live brace.
+    const scan = scanHtmlTags('<b>\\\\{print "<i>"}');
+    expect(scan.tags.map(show)).toEqual(['<b>']);
+    expect(scan.stoppedAt).toBe(3);
+    expect(tags('\\\\\\{if <b>')).toEqual(['<b>']);
+  });
+
   it('stops at a tag that fails after its attributes', () => {
     // Spindle re-reads such text from the character after <, which would
     // make this scan quadratic.
@@ -160,6 +190,8 @@ describe('scanHtmlTags', () => {
       '<a x=y '.repeat(20000),
       '{.a{$b}'.repeat(20000),
       '<a title="{'.repeat(20000),
+      '{do}<b>'.repeat(20000) + '{/do}',
+      '<b>\\\\'.repeat(20000) + '{',
     ];
     for (const input of inputs) {
       const t0 = performance.now();
