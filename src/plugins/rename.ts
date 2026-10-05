@@ -1,6 +1,7 @@
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
+import { findPassageRefAt } from '../core/parsing/link-parser.js';
 import {
   findPassageReferences,
   findVariableReferences,
@@ -225,6 +226,12 @@ function resolveSymbolAtCursor(
         }
       }
     }
+  }
+
+  // --- Passage reference in [[link]] or macro arguments (goto, include, link) ---
+  const passageRef = findPassageRefAt(text, position);
+  if (passageRef && workspace.passages.getPassage(passageRef.name)) {
+    return { kind: 'passage', name: passageRef.name, range: passageRef.range };
   }
 
   return null;
