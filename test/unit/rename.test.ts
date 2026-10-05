@@ -358,6 +358,29 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       '{print "$x" + $y}',
     ].join('\n'));
   });
+
+  it('renames references between apostrophes and quotes in prose', () => {
+    const content = [
+      ':: StoryVariables',
+      '$x = 1',
+      ':: Start',
+      "Don't do it.",
+      '{set $x = 2}',
+      "It's fine {$x}",
+      '"I {if $x > 1}hate{else}like{/if} you," she said.',
+    ].join('\n');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'y');
+    expect(result.get('file:///test.tw')).toBe([
+      ':: StoryVariables',
+      '$y = 1',
+      ':: Start',
+      "Don't do it.",
+      '{set $y = 2}',
+      "It's fine {$y}",
+      '"I {if $y > 1}hate{else}like{/if} you," she said.',
+    ].join('\n'));
+  });
 });
 
 describe('rename from a passage reference', () => {

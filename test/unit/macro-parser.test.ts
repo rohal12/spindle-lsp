@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseMacros, pairMacros } from '../../src/core/parsing/macro-parser.js';
+import {
+  parseMacros,
+  pairMacros,
+  scanBalancedBrace,
+  createCodeScanner,
+} from '../../src/core/parsing/macro-parser.js';
 
 describe('parseMacros', () => {
   it('parses simple macro', () => {
@@ -172,6 +177,139 @@ describe('parseMacros balanced braces', () => {
     const macros = parseMacros('{set $x = {a: {$y}}}');
     expect(macros).toHaveLength(1);
     expect(macros[0].name).toBe('set');
+  });
+});
+
+/** Deterministic PRNG (mulberry32) so fuzz inputs are reproducible. */
+function seededRandom(seed: number): () => number {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randomText(rand: () => number, length: number): string {
+  const alphabet = '{{}}``$$\'\'""\\\nab /';
+  let s = '';
+  for (let i = 0; i < length; i++) s += alphabet[Math.floor(rand() * alphabet.length)];
+  return s;
+}
+
+/**
+ * Direct transcription of Spindle's tokenizer scan (exponential on unclosed
+ * nested template interpolations), used as the semantic reference on short
+ * inputs.
+ */
+function referenceScan(input: string, i: number): number {
+  const skipQuoted = (k: number): number => {
+    const quote = input[k];
+    let j = k + 1;
+    while (j < input.length) {
+      const c = input[j];
+      if (c === '\\') j += 2;
+      else if (c === quote) return j + 1;
+      else if (c === '\n') return -1;
+      else j++;
+    }
+    return -1;
+  };
+  const skipTemplate = (k: number): number => {
+    let j = k + 1;
+    while (j < input.length) {
+      const c = input[j];
+      if (c === '\\') j += 2;
+      else if (c === '`') return j + 1;
+      else if (c === '$' && input[j + 1] === '{') {
+        const close = referenceScan(input, j + 2);
+        if (close === -1) return -1;
+        j = close + 1;
+      } else j++;
+    }
+    return -1;
+  };
+  let depth = 1;
+  while (i < input.length) {
+    const c = input[i];
+    if (c === '{') depth++;
+    else if (c === '}') {
+      if (--depth === 0) return i;
+    } else if ((c === '"' || c === "'") && !(i > 0 && /[\p{L}\p{N}_\\]/u.test(input[i - 1]))) {
+      const end = skipQuoted(i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    } else if (c === '`') {
+      const end = skipTemplate(i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+describe('createCodeScanner literalEnd', () => {
+  it('finds the end of string and template literals', () => {
+    const text = 'x = "a}b" + \'c\' + `d${ {e: "`"} }f` + "g\\"h"';
+    const scanner = createCodeScanner(text);
+    expect(scanner.literalEnd(4)).toBe(9);
+    expect(scanner.literalEnd(12)).toBe(15);
+    expect(scanner.literalEnd(18)).toBe(35);
+    expect(scanner.literalEnd(38)).toBe(text.length);
+    expect(scanner.literalEnd(0)).toBe(-1);
+  });
+
+  it('treats apostrophes, escaped quotes and unclosed literals as text', () => {
+    const text = `don't \\"x" "open\n"a\nb" \`never`;
+    const scanner = createCodeScanner(text);
+    expect(scanner.literalEnd(3)).toBe(-1);
+    expect(scanner.literalEnd(7)).toBe(-1);
+    expect(scanner.literalEnd(11)).toBe(-1);
+    expect(scanner.literalEnd(17)).toBe(-1);
+    expect(scanner.literalEnd(text.indexOf('`'))).toBe(-1);
+  });
+});
+
+describe('scanBalancedBrace performance', () => {
+  it('handles deeply nested unclosed template interpolations in linear time', () => {
+    // Each unclosed `${ used to make the enclosing scan redo the inner scan,
+    // doubling the work per level (k = 22 took ~100ms, k = 30 minutes).
+    const text = '{a ' + '`${'.repeat(2000);
+    const start = performance.now();
+    expect(parseMacros(text)).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  it('handles many unclosed macro heads and escaped backticks quickly', () => {
+    const start = performance.now();
+    parseMacros('{a '.repeat(10000));
+    parseMacros('{a `' + '\\`'.repeat(10000));
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  it('completes on random brace/quote/template soup', () => {
+    const rand = seededRandom(0x5eed);
+    const start = performance.now();
+    for (let n = 0; n < 20; n++) parseMacros(randomText(rand, 5000));
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  it('matches the reference scan on random short inputs', () => {
+    const rand = seededRandom(42);
+    for (let n = 0; n < 2000; n++) {
+      const text = randomText(rand, 30);
+      const scanner = createCodeScanner(text);
+      for (let i = 0; i <= text.length; i++) {
+        const expected = referenceScan(text, i);
+        expect(scanBalancedBrace(text, i), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
+        expect(scanner.closeBrace(i), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
+      }
+    }
   });
 });
 

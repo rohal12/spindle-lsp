@@ -309,3 +309,54 @@ describe('VariableTracker references outside diagnostics (#44)', () => {
     expect(tracker.getArrayMemberAccesses('file:///story.tw')).toEqual([]);
   });
 });
+
+describe('VariableTracker string literals in prose and code', () => {
+  function scan(text: string): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$declared = 0');
+    tracker.scanDocument('file:///story.tw', text, []);
+    return tracker;
+  }
+
+  function undeclaredNames(tracker: VariableTracker): string[] {
+    return tracker.getUndeclared('file:///story.tw').map(u => u.name);
+  }
+
+  it('does not treat apostrophes in prose as string delimiters', () => {
+    const tracker = scan(":: Start\nDon't do it.\n{set $x = 2}\nIt's fine {$x}");
+    expect(tracker.getUsages('x').map(u => u.range.start)).toEqual([
+      { line: 2, character: 5 },
+      { line: 3, character: 11 },
+    ]);
+    expect(undeclaredNames(tracker)).toEqual(['x']);
+  });
+
+  it('checks code inside quoted dialogue and HTML attributes', () => {
+    // Quotes in markup are text: Spindle runs the macros between them.
+    const tracker = scan([
+      ':: Start',
+      '"I {if $mood}hate{/if} you," she said.',
+      '"Take {$gold}," he said.',
+      '<div class="{$cls}">x</div>',
+    ].join('\n'));
+    expect(undeclaredNames(tracker)).toEqual(['mood', 'gold', 'cls']);
+  });
+
+  it('does not let a quote in code run past the end of its line', () => {
+    const tracker = scan(':: Start\n{print "unclosed}\n{set $y = 1}"}');
+    expect(tracker.getUsages('y').map(u => u.range.start)).toEqual([{ line: 2, character: 5 }]);
+  });
+
+  it('still ignores literal text in strings inside code', () => {
+    const tracker = scan([
+      ':: Start',
+      `{print "costs $a"} {print 'it\\'s $b'} {print "don't $c"}`,
+      "{print $declared + 'x'} {print name's $declared}",
+    ].join('\n'));
+    expect(tracker.getUsages('a')).toEqual([]);
+    expect(tracker.getUsages('b')).toEqual([]);
+    expect(tracker.getUsages('c')).toEqual([]);
+    expect(tracker.getUsages('declared')).toHaveLength(2);
+    expect(undeclaredNames(tracker)).toEqual([]);
+  });
+});
