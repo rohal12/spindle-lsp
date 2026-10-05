@@ -11,6 +11,11 @@ import supplements from '../../macro-supplements.json' with { type: 'json' };
 
 export interface WorkspaceModelConfig {
   disabledPlugins?: string[];
+  /**
+   * Directory of the story project. Builtin macros are read from the
+   * @rohal12/spindle installed there (or in an ancestor's node_modules).
+   */
+  workspaceRoot?: string;
 }
 
 /**
@@ -49,7 +54,7 @@ export class WorkspaceModel extends EventEmitter {
 
     // Load builtins + supplements eagerly so macros are available
     // even before initialize() is called (LSP didOpen may arrive first)
-    this.macros.loadBuiltins();
+    this.macros.loadBuiltins(config?.workspaceRoot);
     this.macros.loadSupplements(supplements as Record<string, any>);
 
     // Bind event handlers

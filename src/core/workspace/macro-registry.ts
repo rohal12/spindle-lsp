@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join, parse as parsePath } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MacroInfo, ChildConstraint } from '../types.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
@@ -33,7 +32,7 @@ interface BuiltinMacroEntry {
 /**
  * Registry of all known macros, merging data from four tiers
  * (later tiers win for the fields they set):
- * 1. Builtins — from @rohal12/spindle/tooling getMacroRegistry()
+ * 1. Builtins — @rohal12/spindle's macro-registry.json (the project's copy)
  * 2. Supplements — macro-supplements.json (descriptions, parameters, children)
  * 3. Discovered — Story.defineMacro() calls found in the workspace
  *    (see setDiscoveredMacros). At runtime these replace a built-in of the
@@ -59,24 +58,34 @@ export class MacroRegistry {
   /** Tier 4: user config entries, kept so they can be re-applied over discovered macros. */
   private configEntries = new Map<string, SupplementEntry>();
 
-  /**
-   * Load built-in macro metadata from @rohal12/spindle's macro-registry.json.
-   * This is the base layer that provides name, block, subMacros, flags, source.
-   */
   /** Warnings collected during loadBuiltins for logging. */
   readonly warnings: string[] = [];
 
-  loadBuiltins(): void {
+  /** Path of the macro-registry.json the builtins were loaded from, if any. */
+  builtinsPath: string | null = null;
+
+  /**
+   * Load built-in macro metadata from @rohal12/spindle's macro-registry.json.
+   * This is the base layer that provides name, block, subMacros, flags, source.
+   *
+   * The project's own Spindle is authoritative: the registry is resolved from
+   * `workspaceRoot` first, and from this package's install location (a
+   * development copy, or one installed for the peer dependency) only when the
+   * workspace has none.
+   */
+  loadBuiltins(workspaceRoot?: string): void {
     let builtinMacros: BuiltinMacroEntry[] = [];
 
     try {
-      // Resolve macro-registry.json from @rohal12/spindle package.
-      // Try createRequire first (works in bundled/global contexts),
-      // fall back to directory walk.
       const thisDir = dirname(fileURLToPath(import.meta.url));
-      const registryPath = this.resolveRegistryPathViaRequire(thisDir)
-        ?? this.resolveRegistryPath(thisDir);
-      if (registryPath) {
+      const registryPath = (workspaceRoot ? findRegistryPath(workspaceRoot) : null)
+        ?? findRegistryPath(thisDir);
+      if (!registryPath) {
+        this.warnings.push(
+          'macro-registry.json not found: install @rohal12/spindle in the project. Continuing with supplements only.',
+        );
+      } else {
+        this.builtinsPath = registryPath;
         const raw = readFileSync(registryPath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) {
@@ -88,7 +97,7 @@ export class MacroRegistry {
         }
       }
     } catch (err: unknown) {
-      // Package not available or malformed — log and continue with supplements only
+      // Malformed or unreadable registry — log and continue with supplements only
       const message = err instanceof Error ? err.message : String(err);
       this.warnings.push(
         `Failed to load builtin macros: ${message}. Continuing with supplements only.`,
@@ -273,41 +282,6 @@ export class MacroRegistry {
     return info;
   }
 
-  /**
-   * Walk up directory tree from `startDir` to find the
-   * @rohal12/spindle/dist/pkg/macro-registry.json file.
-   */
-  /**
-   * Resolve macro-registry.json using Node's require resolution.
-   * Works in bundled contexts where import.meta.url may not be near node_modules.
-   */
-  private resolveRegistryPathViaRequire(startDir: string): string | null {
-    try {
-      const require = createRequire(join(startDir, '_'));
-      // Resolve the tooling entry point, then navigate to the sibling JSON
-      const toolingPath = require.resolve('@rohal12/spindle/tooling');
-      const candidate = join(dirname(toolingPath), 'macro-registry.json');
-      if (existsSync(candidate)) return candidate;
-    } catch {
-      // Package not resolvable via require — fall through
-    }
-    return null;
-  }
-
-  private resolveRegistryPath(startDir: string): string | null {
-    const target = join('node_modules', '@rohal12', 'spindle', 'dist', 'pkg', 'macro-registry.json');
-    let dir = startDir;
-    const { root } = parsePath(dir);
-    while (dir !== root) {
-      const candidate = join(dir, target);
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-      dir = dirname(dir);
-    }
-    return null;
-  }
-
   /** Merge a set of supplement/config entries into the registry. */
   private mergeEntries(entries: Record<string, SupplementEntry>): void {
     for (const [rawKey, entry] of Object.entries(entries)) {
@@ -337,5 +311,23 @@ export class MacroRegistry {
         });
       }
     }
+  }
+}
+
+/**
+ * Find @rohal12/spindle's macro-registry.json the way Node resolves a package:
+ * check `node_modules` in `startDir` and each of its ancestors. (The file is
+ * not an export of the package, and its `./tooling` export is import-only, so
+ * `require.resolve` cannot locate it.)
+ */
+export function findRegistryPath(startDir: string): string | null {
+  const target = join('node_modules', '@rohal12', 'spindle', 'dist', 'pkg', 'macro-registry.json');
+  let dir = resolve(startDir);
+  for (;;) {
+    const candidate = join(dir, target);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
   }
 }
