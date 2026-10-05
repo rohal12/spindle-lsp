@@ -24,7 +24,6 @@
   "for": {
     "name": "for",
     "children": [
-      { "name": "next" },
       { "name": "stop" }
     ],
     "container": true,
@@ -33,9 +32,9 @@
   },
   "next": {
     "name": "next",
-    "parents": ["for"],
-    "description": "Continues to the next iteration of a `{for}` loop.\n\nUsage: `{next}`",
-    "parameters": []
+    "parents": ["timed"],
+    "description": "Starts the next section of a `{timed}` block, shown after the given delay (immediately when omitted).\n\nUsage: `{next delay}` or `{next}`",
+    "parameters": ["text", ""]
   },
   "stop": {
     "name": "stop",

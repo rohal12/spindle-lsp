@@ -122,6 +122,19 @@ describe('CLI check command', () => {
     expect(byCode('SP303')[0].message).toContain('"ActResist"');
   });
 
+  it('accepts {next} branches with delays inside {timed}', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-timed-'));
+    try {
+      const file = join(dir, 'story.twee');
+      writeFileSync(file, ':: Start\n{timed 1s}\nFirst\n{next 2s}\nSecond\n{/timed}\n');
+      const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', file]));
+      expect(exitCode).toBe(0);
+      expect(JSON.parse(output).files).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('hides the SP303 hint at --severity warning', async () => {
     const file = join(fixturesDir, 'runtime-pitfalls.tw');
     const { output } = await captureStdout(() =>
