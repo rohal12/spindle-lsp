@@ -461,6 +461,12 @@ export class VariableTracker {
     }
   }
 
+  /** Forget the usages recorded for a document, e.g. after it was deleted. */
+  removeDocument(uri: string): void {
+    this.usagesByUri.delete(uri);
+    this.transientUsagesByUri.delete(uri);
+  }
+
   /** Get all declared variables. */
   getDeclared(): Map<string, DeclaredVariable> {
     return this.declared;
