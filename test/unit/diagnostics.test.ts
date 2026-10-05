@@ -885,3 +885,57 @@ describe('CSS-prefixed variable displays (#58)', () => {
     });
   });
 });
+
+describe('SP201: field access on a primitive StoryVariables default', () => {
+  const uri = 'file:///test.tw';
+
+  function diagnose(body: string, vars = '$name = "Bob"\n$list = []\n$p = { hp: 1 }') {
+    const text = `:: StoryVariables\n${vars}\n\n:: Start\n${body}\n`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    return computeDiagnostics(uri, workspace);
+  }
+
+  it('reports the field Spindle rejects at startup as an error (issue example)', () => {
+    const sp201 = diagnose('{print $name.length}').filter(d => d.code === 'SP201');
+    expect(sp201).toHaveLength(1);
+    expect(sp201[0].severity).toBe('error');
+    expect(sp201[0].message).toBe(
+      'Cannot access field "length" on $name (type: string). ' +
+        'Spindle checks field access against the StoryVariables defaults and will not start the story.',
+    );
+    expect(sp201[0].range).toEqual({
+      start: { line: 6, character: 13 },
+      end: { line: 6, character: 19 },
+    });
+  });
+
+  it('reports nested fields with the path Spindle names', () => {
+    const sp201 = diagnose('{$p.hp.max}').filter(d => d.code === 'SP201');
+    expect(sp201.map(d => d.message)).toEqual([
+      expect.stringMatching(/^Cannot access field "max" on \$p\.hp \(type: number\)\./),
+    ]);
+  });
+
+  it('reports nothing for valid paths, undeclared roots or untyped defaults', () => {
+    const diags = diagnose('{$p.hp} {$p.extra.x} {$list.length} {$ghost.length} {$calc.x}', '$p = { hp: 1 }\n$list = []\n$calc = 2 * 3');
+    expect(diags.filter(d => d.code === 'SP201')).toEqual([]);
+    expect(diags.filter(d => d.code === 'SP200').map(d => d.message)).toEqual([
+      "Variable '$ghost' is not declared in StoryVariables",
+    ]);
+  });
+
+  it('never reports SP201 and SP206 for the same reference', () => {
+    const diags = diagnose('{$list.nope} {$name.nope}');
+    expect(diags.filter(d => d.code === 'SP206').map(d => d.message)).toEqual([
+      expect.stringContaining("'$list.nope'"),
+    ]);
+    expect(diags.filter(d => d.code === 'SP201').map(d => d.message)).toEqual([
+      expect.stringContaining('on $name (type: string)'),
+    ]);
+  });
+
+  it('reports nothing without a StoryVariables passage', () => {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: ':: Start\n{$name.length}\n' });
+    expect(computeDiagnostics(uri, workspace).filter(d => d.code === 'SP201')).toEqual([]);
+  });
+});
