@@ -167,6 +167,31 @@ describe('computeDiagnostics', () => {
     expect(sp301).toHaveLength(0);
   });
 
+  it('counts widget arguments the way Spindle splits them', () => {
+    const widgetFile = ':: Widgets [widget]\n{widget "echo" @x}\n{@x}\n{/widget}\n{widget "pair" @a @b}{@a}{@b}{/widget}';
+    const storyFile = [
+      ':: Start',
+      '{echo (1 + 2)}',
+      '{echo [1, 2]}',
+      '{echo $a + 1}',
+      '{echo "Chapter " + $n}',
+      '{pair $a, ($b, $c)}',
+      '{pair "x" [1, 2]}',
+      '{pair 1, Math.max(2, 3)}',
+      '{echo $a, $b}',
+      '{pair (1 + 2)}',
+    ].join('\n');
+    const workspace = createWorkspaceFrom(
+      { name: 'widgets.tw', content: widgetFile },
+      { name: 'story.tw', content: storyFile },
+    );
+    const sp301 = computeDiagnostics('file:///story.tw', workspace).filter(d => d.code === 'SP301');
+    expect(sp301.map(d => [d.range.start.line, d.message])).toEqual([
+      [8, 'Widget {echo} expects 1 argument(s), got 2'],
+      [9, 'Widget {pair} expects 2 argument(s), got 1'],
+    ]);
+  });
+
   it('diagnostics have correct severity from getSeverity', () => {
     const workspace = createWorkspaceFromFixture('errors.tw');
     const diags = computeDiagnostics('file:///errors.tw', workspace);

@@ -2,7 +2,7 @@ import type { Range, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parseMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
-import { lexArguments } from '../core/parsing/argument-lexer.js';
+import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 
 // ---------------------------------------------------------------------------
 // Core inlay hints function (no LSP dependency)
@@ -63,7 +63,7 @@ function addWidgetParamHints(
 
     if (!macro.rawArgs || macro.rawArgs.trim() === '') continue;
 
-    const args = lexArguments(macro.rawArgs);
+    const args = splitWidgetArguments(macro.rawArgs);
 
     // The raw arguments end right before the macro's closing '}'
     const macroEnd = lineStarts[macro.range.end.line] + macro.range.end.character;

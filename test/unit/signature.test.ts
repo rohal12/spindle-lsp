@@ -70,3 +70,28 @@ describe('getSignatureHelp', () => {
     expect(result!.activeParameter).toBe(1);
   });
 });
+
+describe('getSignatureHelp for widget arguments', () => {
+  function activeParameter(before: string): number | undefined {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "counter" @count @label}\n{@count} {@label}\n{/widget}',
+      },
+      { name: 'test.tw', content: `:: Start\n{counter ${before}` },
+    );
+    return getSignatureHelp('file:///test.tw', { line: 1, character: 9 + before.length }, ws)?.activeParameter;
+  }
+
+  it('stays on an argument whose expression is still open', () => {
+    expect(activeParameter('(1 + ')).toBe(0);
+    expect(activeParameter('[1, ')).toBe(0);
+    expect(activeParameter('$a + ')).toBe(0);
+  });
+
+  it('moves to the next argument after a top-level separator', () => {
+    expect(activeParameter('(1 + 2) ')).toBe(1);
+    expect(activeParameter('[1, 2], ')).toBe(1);
+    expect(activeParameter('$a + 1, ')).toBe(1);
+  });
+});

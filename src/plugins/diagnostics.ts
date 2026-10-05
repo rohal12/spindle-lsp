@@ -5,6 +5,7 @@ import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
 import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
+import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
 import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
@@ -530,9 +531,8 @@ function validateWidgetInvocations(
     const widget = workspace.widgets.getWidget(macro.name);
     if (!widget) continue;
 
-    // Count arguments provided
-    const rawArgs = macro.rawArgs ?? '';
-    const argCount = rawArgs.trim() === '' ? 0 : lexArguments(rawArgs).length;
+    // Count arguments the way Spindle's WidgetInvocation splits them
+    const argCount = splitWidgetArguments(macro.rawArgs ?? '').length;
     const expectedCount = widget.params.length;
 
     if (argCount !== expectedCount) {
