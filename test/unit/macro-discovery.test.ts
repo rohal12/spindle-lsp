@@ -5,6 +5,7 @@ import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../../src
 import { MacroRegistry } from '../../src/core/workspace/macro-registry.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
+import { findPassageReferences, findWidgetReferences } from '../../src/plugins/references.js';
 
 describe('discoverMacrosFromSource', () => {
   it('extracts macros from TS source', () => {
@@ -151,6 +152,22 @@ Story.defineMacro({
 
     ws.documents.close('file:///macros.js');
     expect(sp100(ws, 'file:///story.tw')).toEqual(['Unrecognized macro: {fromjs}']);
+    ws.dispose();
+  });
+
+  it('treats JS/TS documents as macro sources only, not story markup (#47)', () => {
+    const ws = new WorkspaceModel();
+    ws.initialize(new Map([
+      ['file:///story.tw', ':: Start\n{include "Row"}\n\n:: Row [widget]\n{widget "Row"}row{/widget}\n'],
+      ['file:///app.ts', 'const html = `\n:: NotAPassage\n${Row}\n[[Start]]\n`;\n'],
+    ]));
+
+    expect(ws.passages.getPassagesInDocument('file:///app.ts')).toEqual([]);
+    expect(ws.passages.getPassage('NotAPassage')).toBeUndefined();
+    // `${Row}` in JS is not a widget invocation: Row stays include-only
+    expect(computeDiagnostics('file:///story.tw', ws).map(d => d.code)).toContain('SP303');
+    expect(findWidgetReferences('Row', ws, false).map(l => l.uri)).not.toContain('file:///app.ts');
+    expect(findPassageReferences('Start', ws, false).map(l => l.uri)).not.toContain('file:///app.ts');
     ws.dispose();
   });
 

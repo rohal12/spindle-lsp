@@ -7,6 +7,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode } from '../core/diagnostic-codes.js';
 import { findConfigFile } from '../core/workspace/config-loader.js';
+import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -351,8 +352,8 @@ function fixNoStoryVariables(
   uri: string,
   workspace: WorkspaceModel,
 ): CodeAction | null {
-  // Find the first document in the workspace to append the passage
-  const uris = workspace.documents.getUris();
+  // Find the first story document in the workspace to append the passage
+  const uris = workspace.documents.getUris().filter(u => !isMacroSource(u));
   const targetUri = uris.length > 0 ? uris[0] : uri;
 
   const text = workspace.documents.getText(targetUri);

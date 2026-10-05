@@ -1029,6 +1029,56 @@ describe('Integration: LSP server over stdio', () => {
     expect(await documentSymbolNames(session, configUri)).toEqual([]);
   });
 
+  // -----------------------------------------------------------------------
+  // #47: discover JS/TS custom macros during the initial workspace scan
+  // -----------------------------------------------------------------------
+
+  it('discovers custom macros from existing JS/TS files during the initial scan (#47)', async () => {
+    const dir = makeTempWorkspace({
+      'macros.js': 'Story.defineMacro({ name: "hello", render() { return null; } });\n',
+      'story.tw': ':: Start\n{hello}\n{greet}\n{vendored}\n{bundled}\n[[Missing]]\n',
+    });
+    mkdirSync(join(dir, 'scripts'));
+    writeFileSync(
+      join(dir, 'scripts', 'greet.ts'),
+      'Story.defineMacro({ name: "greet", render(): null { return null; } });\n',
+    );
+    // Dependency and build-output directories are not macro sources
+    mkdirSync(join(dir, 'node_modules', 'some-lib'), { recursive: true });
+    writeFileSync(
+      join(dir, 'node_modules', 'some-lib', 'index.js'),
+      'Story.defineMacro({ name: "vendored", render() { return null; } });\n',
+    );
+    mkdirSync(join(dir, 'dist'));
+    writeFileSync(
+      join(dir, 'dist', 'app.bundle.js'),
+      'Story.defineMacro({ name: "bundled", render() { return null; } });\n',
+    );
+    const uri = uriFor(dir, 'story.tw');
+    const session = await startLsp(dir);
+    await didOpen(session, uri, readFileSync(join(dir, 'story.tw'), 'utf-8'));
+
+    // SP300 (broken link) is only reported once the initial scan has
+    // completed, so this publish reflects the scanned workspace.
+    const diags = await session.waitForDiagnostics(uri, hasCode('SP300'));
+    const sp100 = diags.filter(d => d.code === 'SP100').map(d => d.message);
+    expect(sp100).toEqual([
+      'Unrecognized macro: {vendored}',
+      'Unrecognized macro: {bundled}',
+    ]);
+
+    // Watcher events for excluded files don't add them either
+    await watchedFileChanged(session, uriFor(dir, 'node_modules/some-lib/index.js'), 2);
+    await watchedFileChanged(session, uriFor(dir, 'dist/app.bundle.js'), 2);
+    const mark = session.publishes.length;
+    await didChangeFull(session, uri, 2, ':: Start\n{vendored}\n{bundled}\n[[Missing]]\n');
+    const after = await session.waitForDiagnostics(uri, hasCode('SP300'), mark);
+    expect(after.filter(d => d.code === 'SP100').map(d => d.message)).toEqual([
+      'Unrecognized macro: {vendored}',
+      'Unrecognized macro: {bundled}',
+    ]);
+  });
+
   it('reloads macros from a legacy t3lt.twee-config.yaml change (#29)', async () => {
     const story = ':: Start\n{legacymacro}\n';
     const dir = makeTempWorkspace({

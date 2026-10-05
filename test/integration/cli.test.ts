@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { runCheck } from '../../src/cli/check.js';
 
@@ -130,6 +130,41 @@ describe('CLI check command', () => {
     const codes = JSON.parse(output).files[0].diagnostics.map((d: { code: string }) => d.code);
     expect(codes).not.toContain('SP303');
     expect(codes).toEqual(expect.arrayContaining(['SP205', 'SP206', 'SP302']));
+  });
+});
+
+describe('CLI check custom macro sources (#47)', () => {
+  it('discovers macros from JS/TS files in the project, skipping dependencies and build output', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-macros-'));
+    const files: Record<string, string> = {
+      'src/story/Start.twee': ':: Start\n{hello}\n{greet}\n{vendored}\n{bundled}\n',
+      'src/assets/app/index.ts': 'Story.defineMacro({ name: "greet", render(): null { return null; } });\n',
+      'macros.js': 'Story.defineMacro({ name: "hello", render() { return null; } });\n',
+      'node_modules/some-lib/index.js': 'Story.defineMacro({ name: "vendored", render() { return null; } });\n',
+      'dist/scripts/app.bundle.js': 'Story.defineMacro({ name: "bundled", render() { return null; } });\n',
+    };
+    for (const [name, content] of Object.entries(files)) {
+      mkdirSync(join(dir, name, '..'), { recursive: true });
+      writeFileSync(join(dir, name), content);
+    }
+    const originalCwd = process.cwd();
+    process.chdir(dir);
+    try {
+      const { output } = await captureStdout(() => runCheck(['--format', 'json']));
+      const parsed = JSON.parse(output);
+      // Macro sources are loaded for discovery, not reported on
+      expect(parsed.files.map((f: { uri: string }) => f.uri.split('/').pop())).toEqual(['Start.twee']);
+      const sp100 = parsed.files[0].diagnostics
+        .filter((d: { code: string }) => d.code === 'SP100')
+        .map((d: { message: string }) => d.message);
+      expect(sp100).toEqual([
+        'Unrecognized macro: {vendored}',
+        'Unrecognized macro: {bundled}',
+      ]);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

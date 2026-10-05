@@ -8,6 +8,7 @@ import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
 import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
+import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
 // Core diagnostic function (no LSP dependency)
@@ -1059,6 +1060,7 @@ export const diagnosticsPlugin: SpindlePlugin = {
 
     ctx.workspace.on('modelReady', () => {
       for (const uri of ctx.workspace.documents.getUris()) {
+        if (isMacroSource(uri)) continue;
         publishFor(uri);
       }
     });

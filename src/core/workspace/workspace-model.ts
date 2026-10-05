@@ -7,6 +7,7 @@ import { WidgetRegistry } from './widget-registry.js';
 import { parseMacros } from '../parsing/macro-parser.js';
 import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
+import { isMacroSource } from './macro-sources.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
 
 export interface WorkspaceModelConfig {
@@ -123,7 +124,8 @@ export class WorkspaceModel extends EventEmitter {
   /** Handle a document change: rebuild passages for that document, then cascade. */
   private handleDocumentChange(uri: string): void {
     const text = this.documents.getText(uri);
-    if (text !== undefined) {
+    // JS/TS macro sources only feed macro discovery — they hold no passages
+    if (text !== undefined && !isMacroSource(uri)) {
       this.passages.rebuild(uri, text);
     }
     this.refreshDiscoveredMacros();
@@ -147,7 +149,7 @@ export class WorkspaceModel extends EventEmitter {
   private rebuildAll(): void {
     for (const uri of this.documents.getUris()) {
       const text = this.documents.getText(uri);
-      if (text !== undefined) {
+      if (text !== undefined && !isMacroSource(uri)) {
         this.passages.rebuild(uri, text);
       }
     }
@@ -171,7 +173,7 @@ export class WorkspaceModel extends EventEmitter {
       const text = this.documents.getText(uri);
       if (!text) continue;
 
-      if (/\.[cm]?[jt]s$/i.test(uri)) {
+      if (isMacroSource(uri)) {
         found.push(...discoverMacrosFromSource(text));
         continue;
       }
@@ -243,11 +245,11 @@ export class WorkspaceModel extends EventEmitter {
       this.variables.clearStoryTransients();
     }
 
-    // Rescan variable usages and macro invocations across all documents
+    // Rescan variable usages and macro invocations across all story documents
     this.widgets.clearInvocations();
     for (const uri of this.documents.getUris()) {
       const text = this.documents.getText(uri);
-      if (text) {
+      if (text && !isMacroSource(uri)) {
         const macros = parseMacros(text);
         this.variables.scanDocument(uri, text, macros);
         this.widgets.recordInvocations(uri, macros);
