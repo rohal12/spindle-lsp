@@ -103,3 +103,29 @@ describe('{include} arguments', () => {
     expect(codes(':: Start\n{include inline}', 'SP109')).toHaveLength(1);
   });
 });
+
+describe('script and stylesheet passages', () => {
+  it('does not report macro-looking text inside a script passage', () => {
+    const diags = diagnose(':: Script [script]\nconst s = "{nosuch}";\nconst t = "{/if}";');
+    expect(diags.filter(d => d.code.startsWith('SP1'))).toEqual([]);
+  });
+
+  it('does not report link-looking text inside a stylesheet passage', () => {
+    const diags = diagnose(':: Styles [stylesheet]\n/* [[Nowhere]] */\nbody { color: red; }');
+    expect(diags.filter(d => d.code === 'SP300' || d.code.startsWith('SP1'))).toEqual([]);
+  });
+
+  it('recognises the script tag among several tags', () => {
+    const diags = diagnose(':: Script [script extra]\nconst s = "{nosuch} [[Nowhere]]";');
+    expect(diags.filter(d => d.code === 'SP100' || d.code === 'SP300')).toEqual([]);
+  });
+
+  it('still checks story passages next to a script passage', () => {
+    const text = ':: Script [script]\nconst s = "{nosuch}";\n\n:: Start\n{nosuch}\n[[Nowhere]]';
+    const diags = diagnose(text);
+    const sp100 = diags.filter(d => d.code === 'SP100');
+    expect(sp100).toHaveLength(1);
+    expect(sp100[0].range.start.line).toBe(4);
+    expect(diags.filter(d => d.code === 'SP300')).toHaveLength(1);
+  });
+});

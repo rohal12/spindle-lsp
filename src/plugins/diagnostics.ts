@@ -7,6 +7,7 @@ import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../c
 import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
+import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core diagnostic function (no LSP dependency)
@@ -41,8 +42,12 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 
     const diagnostics: Diagnostic[] = [];
 
+    // Script and stylesheet passages hold JS/CSS, not story markup: blank
+    // their bodies (keeping offsets) before parsing macros and links.
+    const markupText = maskScriptAndStylesheetPassages(text, passages);
+
     // Parse macros for the whole document
-    const macros = parseMacros(text);
+    const macros = parseMacros(markupText);
     pairMacros(
       macros,
       (name) => workspace.macros.isBlock(name),
@@ -75,7 +80,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     }
 
     try {
-      validateLinks(text, passages, passageNames, diagnostics);
+      validateLinks(markupText, passages, passageNames, diagnostics);
     } catch {
       // Link validation failed — continue
     }
@@ -123,6 +128,24 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // Catastrophic failure — return empty diagnostics rather than crashing
     return [];
   }
+}
+
+/**
+ * Replace the body of every script/stylesheet passage with spaces, keeping
+ * line breaks so that offsets and positions are unchanged.
+ */
+function maskScriptAndStylesheetPassages(text: string, passages: Passage[]): string {
+  const excluded = passages.filter(isScriptOrStylesheetPassage);
+  if (excluded.length === 0) return text;
+
+  const lines = text.split('\n');
+  for (const passage of excluded) {
+    const last = Math.min(passage.range.end.line, lines.length - 1);
+    for (let i = passage.range.start.line + 1; i <= last; i++) {
+      lines[i] = lines[i].replace(/[^\r]/g, ' ');
+    }
+  }
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
