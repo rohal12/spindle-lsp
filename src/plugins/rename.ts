@@ -68,12 +68,17 @@ export function computeRename(
     case 'variable': {
       const bareName = newName.startsWith('$') ? newName.slice(1) :
                        newName.startsWith('%') ? newName.slice(1) : newName;
-      const isTransient = workspace.variables.getDeclaredTransient().has(symbol.name);
-      const refs = isTransient
+      const refs = symbol.sigil === '%'
         ? findTransientReferences(symbol.name, workspace, true)
         : findVariableReferences(symbol.name, workspace, true);
+      // Reference ranges start with the sigil and may continue with a
+      // property path (`$player.health`): replace only the base identifier.
       for (const ref of refs) {
-        addEdit(ref.uri, ref.range, bareName);
+        const start = ref.range.start.character + 1;
+        addEdit(ref.uri, {
+          start: { line: ref.range.start.line, character: start },
+          end: { line: ref.range.start.line, character: start + symbol.name.length },
+        }, bareName);
       }
       break;
     }
@@ -123,6 +128,8 @@ interface SymbolInfo {
   kind: 'passage' | 'variable' | 'widget';
   name: string;
   range: Range;
+  /** Variable namespace: `$` story variable or `%` transient. */
+  sigil?: '$' | '%';
 }
 
 function resolveSymbolAtCursor(
@@ -169,6 +176,7 @@ function resolveSymbolAtCursor(
         return {
           kind: 'variable',
           name: match[1],
+          sigil: '$',
           range: {
             start: { line: position.line, character: start },
             end: { line: position.line, character: end },
@@ -189,6 +197,7 @@ function resolveSymbolAtCursor(
         return {
           kind: 'variable',
           name: match[1],
+          sigil: '%',
           range: {
             start: { line: position.line, character: start },
             end: { line: position.line, character: end },
