@@ -12,6 +12,7 @@ import type { Range } from '../../src/core/types.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeCodeActions } from '../../src/plugins/code-actions.js';
 import { getCompletions } from '../../src/plugins/completions.js';
+import { missingStoryVariablesOwner } from '../../src/core/workspace/story-variables-owner.js';
 
 const uri = 'file:///story.tw';
 const models: WorkspaceModel[] = [];
@@ -250,5 +251,105 @@ describe('H78: SP202 owner and quick-fix target are one document (#78)', () => {
     const { next, owner } = fixAndRebuild([[uri, text]], '\r\n');
     expect(next.get(owner)).toContain('\r\n:: StoryVariables\r\n');
     expect(next.get(owner)!).not.toMatch(/[^\r]\n/);
+  });
+});
+
+describe('M-SP202: a declared Spindle story always has an SP202 owner and fix', () => {
+  const data = ':: StoryData\n{"format":"Spindle"}\n';
+  /** The SP202 diagnostics of every document, with the fix applied to its owner. */
+  function sp202(entries: Array<[string, string]>) {
+    const model = new WorkspaceModel({ workspaceRoot: process.cwd() });
+    models.push(model);
+    model.initialize(new Map(entries));
+    const found = entries.flatMap(([u]) =>
+      computeDiagnostics(u, model).filter(d => d.code === 'SP202').map(d => ({ u, d })));
+    return { model, found };
+  }
+
+  // The format is read from StoryData passages in non-macro documents, so
+  // whichever URI holds the passages (the workspace indexes every such
+  // document and the diagnostics plugin publishes for it) is the owner.
+  for (const name of ['untitled:Untitled-1', 'file:///story.tw2', 'file:///notes.md', 'file:///STORY.TWEE', 'file:///story.twee']) {
+    it(`M-SP202-uri: ${name} holding the StoryData is the owner; error severity; fix applies`, () => {
+      const text = `${data}:: Start\nhi\n`;
+      const { model, found } = sp202([['file:///empty.tw', ''], ['file:///readme.txt', 'no passages here'], [name, text]]);
+      expect(found).toHaveLength(1);
+      expect(found[0].u).toBe(name);
+      expect(found[0].d.severity).toBe('error');
+      const action = computeCodeActions(name, [found[0].d], model)[0];
+      expect(action.edits.every(e => e.uri === name)).toBe(true);
+      const next = TextDocument.applyEdits(
+        TextDocument.create(name, 'twee', 0, text),
+        action.edits.map(e => ({ range: e.range, newText: e.newText })),
+      );
+      expect(sp202([[name, next]]).found).toEqual([]);
+    });
+  }
+
+  it('M-SP202-never-ownerless: declared Spindle implies an owner for every placement of the StoryData', () => {
+    for (const name of ['untitled:a', 'file:///a.tw', 'file:///a.tw2', 'file:///a.md', 'file:///a']) {
+      const model = new WorkspaceModel({ workspaceRoot: process.cwd() });
+      models.push(model);
+      model.initialize(new Map([['file:///empty.twee', ''], [name, data]]));
+      expect(model.storyFormat).toBe('Spindle');
+      expect(missingStoryVariablesOwner(model), name).toBe(name);
+    }
+  });
+
+  it('M-SP202-control: only empty or passage-less documents is not a Spindle story (nothing to start): no format, no owner, no SP202', () => {
+    const { model, found } = sp202([['file:///a.tw', ''], ['file:///b.twee', '\n'], ['file:///readme.md', '# Title\n'], ['file:///m.js', 'export {}\n']]);
+    expect(model.storyFormat).toBeUndefined();
+    expect(missingStoryVariablesOwner(model)).toBeUndefined();
+    expect(found).toEqual([]);
+  });
+
+  it('M-SP202-control: a JS macro source is never the owner even if it contains a passage header', () => {
+    const { found } = sp202([['file:///m.js', ':: StoryData\n{"format":"Spindle"}\n'], ['file:///s.tw', ':: Start\nhi\n']]);
+    expect(found).toEqual([]);
+  });
+});
+
+describe('M-EOL: header-only declaration documents take the workspace line ending', () => {
+  const data = ':: StoryData\r\n{"format":"Spindle"}\r\n';
+  function fix(code: string, entries: Array<[string, string]>, target: string) {
+    const model = new WorkspaceModel({ workspaceRoot: process.cwd() });
+    models.push(model);
+    model.initialize(new Map(entries));
+    const d = entries.flatMap(([u]) => computeDiagnostics(u, model).filter(x => x.code === code).map(x => ({ u, x })))[0];
+    expect(d, code).toBeDefined();
+    const action = computeCodeActions(d.u, [d.x], model)[0];
+    expect(action.edits.every(e => e.uri === target)).toBe(true);
+    const text = model.documents.getText(target)!;
+    return TextDocument.applyEdits(
+      TextDocument.create(target, 'twee', 0, text),
+      action.edits.map(e => ({ range: e.range, newText: e.newText })),
+    );
+  }
+
+  it('M-EOL-sp200: header-only StoryVariables with no newline, CRLF elsewhere', () => {
+    const sv = 'file:///vars.tw';
+    const out = fix('SP200', [[uri, `${data}:: Start\r\n{$x}\r\n`], [sv, ':: StoryVariables']], sv);
+    expect(out).toBe(':: StoryVariables\r\n$x = 0\r\n');
+  });
+  it('M-EOL-sp203: header-only StoryTransients with no newline, CRLF elsewhere', () => {
+    const st = 'file:///trans.tw';
+    const out = fix('SP203', [[uri, `${data}:: StoryVariables\r\n:: Start\r\n{%t}\r\n`], [st, ':: StoryTransients']], st);
+    expect(out).toBe(':: StoryTransients\r\n%t = 0\r\n');
+  });
+  it('M-EOL-sp202: single-line owner takes the CRLF of another document', () => {
+    // owner is the first document with a passage; StoryData lives in the CRLF one
+    const a = 'file:///a.tw';
+    const out = fix('SP202', [[a, ':: A'], [uri, `${data}:: Start\r\nhi\r\n`]], a);
+    expect(out).toBe(':: A\r\n\r\n:: StoryVariables\r\n');
+  });
+  it('M-EOL-control: LF workspace and a lone header-only document stay LF', () => {
+    const sv = 'file:///vars.tw';
+    expect(fix('SP200', [[uri, ':: StoryData\n{"format":"Spindle"}\n:: Start\n{$x}\n'], [sv, ':: StoryVariables']], sv))
+      .toBe(':: StoryVariables\n$x = 0\n');
+  });
+  it('M-EOL-control: the document own CRLF wins over an LF workspace', () => {
+    const sv = 'file:///vars.tw';
+    expect(fix('SP200', [[uri, ':: StoryData\n{"format":"Spindle"}\n:: Start\n{$x}\n'], [sv, ':: StoryVariables\r\n']], sv))
+      .toBe(':: StoryVariables\r\n$x = 0\r\n');
   });
 });

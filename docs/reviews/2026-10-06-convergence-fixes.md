@@ -39,3 +39,37 @@ Follow-ups after the first merge:
 - #80: `${}` interpolation keywords restored (`S80-template*`), CRLF
   template-target cases added (`R67-template-crlf*`, `X70-template-crlf*`), and
   a UTF-16 offset bug (code-point splitting in the keyword mask) fixed.
+
+## SP202 closure (branch `fix/close-m-sp202`)
+
+Runtime oracle: Spindle 0.45.1 `src/index.tsx` throws "Missing StoryVariables
+passage" at startup, so a Spindle story without one cannot start.
+
+- **Ownerless declared story: not reachable.** The story format is read from
+  StoryData *passages*; a document with a StoryData passage holds a passage and
+  so is an owner. Empty or passage-less documents (and JS/TS sources) declare
+  nothing, so there is no story to start, no SP202 and no fix needed (no
+  create-file edit applies). Controls: `M-SP202-control` (two tests),
+  `M-SP202-never-ownerless`, CLI `C-M-SP202-empty` (exit 0).
+- **Owner/extension defect (fixed).** The H78 owner was restricted to
+  `.tw`/`.twee`, but the workspace indexes, diagnoses and publishes for every
+  non-JS/TS document (an unsaved `untitled:` buffer, `.tw2`, ...). A declared
+  story whose StoryData lived there got no SP202 and no fix (previously the
+  diagnostic itself had no extension filter; the restriction was added with the
+  quickfix). `missingStoryVariablesOwner` now uses the workspace definition.
+  Tests: `M-SP202-uri` (5), CLI `C-M-SP202` (exit 1), LSP codeAction round trip
+  on `untitled:`.
+- **Header-only CRLF (fixed).** SP200/SP202/SP203 insertions detect the line
+  ending from the document, else the first other story document, else LF
+  (`M-EOL-*`).
+- **Closing completion end to end.** `lsp.test.ts` requests
+  `textDocument/completion` after `{/i` through the spawned server, applies the
+  `textEdit` and expects `{/if}`.
+
+Red evidence (new tests overlaid on old source via detached worktrees; no stash):
+
+| Base | Result |
+| --- | --- |
+| `11573c1` (pre-convergence), `convergence-edits`, `diagnostics-contracts`, `navigation-contracts` | 69 fail, 26 pass; every pass is a `C-*` control, a before-scan/boundary control, or a Q68/Q69/E75 case where the old behavior was already correct (JS/TS sources never hold passages, config opened after the story, newline-terminated declarations) |
+| `7478fbe` (before the gap fixes) + old owner function | H78-first, H78-empty-first, H78-multi, H78-unsaved fail; H78-config-first and H78-crlf pass (controls for behavior that was already right); G74 (4 tests) fail |
+| `7478fbe`, new M tests | `M-SP202-uri` (untitled, .tw2, .md) and 3 `M-EOL` fail |
