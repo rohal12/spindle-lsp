@@ -983,4 +983,70 @@ describe('Integration: LSP server over stdio', () => {
     await sleep(400);
     expect(codesOf(session.latest(uri)!)).toContain('SP100');
   });
+
+  // -----------------------------------------------------------------------
+  // #29: reload macro configuration on watched config-file changes
+  // -----------------------------------------------------------------------
+
+  it('reloads macros when spindle.config.json is created, changed, and deleted (#29)', async () => {
+    const story = ':: Start\n{newmacro}\n';
+    const dir = makeTempWorkspace({ 'story.twee': story });
+    const uri = uriFor(dir, 'story.twee');
+    const configPath = join(dir, 'spindle.config.json');
+    const configUri = uriFor(dir, 'spindle.config.json');
+    const withMacro = JSON.stringify({ macros: { newmacro: { parameters: [] } } });
+    const session = await startLsp(dir);
+
+    await didOpen(session, uri, story);
+    await session.waitForDiagnostics(uri, hasCode('SP100'));
+
+    // Created
+    let mark = session.publishes.length;
+    writeFileSync(configPath, withMacro);
+    await watchedFileChanged(session, configUri, 1);
+    await session.waitForDiagnostics(uri, lacksCode('SP100'), mark);
+
+    // Changed: macro removed from config
+    mark = session.publishes.length;
+    writeFileSync(configPath, JSON.stringify({ macros: {} }));
+    await watchedFileChanged(session, configUri, 2);
+    await session.waitForDiagnostics(uri, hasCode('SP100'), mark);
+
+    // Changed: macro added back
+    mark = session.publishes.length;
+    writeFileSync(configPath, withMacro);
+    await watchedFileChanged(session, configUri, 2);
+    await session.waitForDiagnostics(uri, lacksCode('SP100'), mark);
+
+    // Deleted
+    mark = session.publishes.length;
+    unlinkSync(configPath);
+    await watchedFileChanged(session, configUri, 3);
+    await session.waitForDiagnostics(uri, hasCode('SP100'), mark);
+
+    // The config file must never be treated as a story document
+    expect(session.publishes.some(p => p.uri === configUri)).toBe(false);
+    expect(await documentSymbolNames(session, configUri)).toEqual([]);
+  });
+
+  it('reloads macros from a legacy t3lt.twee-config.yaml change (#29)', async () => {
+    const story = ':: Start\n{legacymacro}\n';
+    const dir = makeTempWorkspace({
+      'story.twee': story,
+      't3lt.twee-config.yaml': 'spindle-0:\n  macros: {}\n',
+    });
+    const uri = uriFor(dir, 'story.twee');
+    const configUri = uriFor(dir, 't3lt.twee-config.yaml');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(uri, hasCode('SP100'));
+
+    const mark = session.publishes.length;
+    writeFileSync(
+      join(dir, 't3lt.twee-config.yaml'),
+      'spindle-0:\n  macros:\n    legacymacro:\n      parameters: []\n',
+    );
+    await watchedFileChanged(session, configUri, 2);
+    await session.waitForDiagnostics(uri, lacksCode('SP100'), mark);
+    expect(session.publishes.some(p => p.uri === configUri)).toBe(false);
+  });
 });

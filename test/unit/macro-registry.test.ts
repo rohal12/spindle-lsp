@@ -126,6 +126,32 @@ describe('MacroRegistry', () => {
     expect(macro!.parameters).toEqual(['...text']);
   });
 
+  it('loadConfig replaces the previous config, reverting removed entries', () => {
+    const registry = new MacroRegistry();
+    registry.loadBuiltins();
+    registry.loadSupplements({
+      set: { description: 'Supplement description', parameters: ['...text'] },
+    });
+    registry.loadConfig({
+      set: { description: 'User config description', parameters: [] },
+      newmacro: { parameters: [] },
+    });
+    expect(registry.getMacro('newmacro')).toBeDefined();
+    expect(registry.getMacro('set')!.description).toBe('User config description');
+
+    // Reload with newmacro removed and set no longer overridden
+    registry.loadConfig({ other: { container: true } });
+    expect(registry.getMacro('newmacro')).toBeUndefined();
+    expect(registry.getMacro('set')!.description).toBe('Supplement description');
+    expect(registry.getMacro('set')!.parameters).toEqual(['...text']);
+    expect(registry.isBlock('other')).toBe(true);
+
+    // Empty config removes everything the config contributed
+    registry.loadConfig({});
+    expect(registry.getMacro('other')).toBeUndefined();
+    expect(registry.getMacro('set')!.source).toBe('builtin');
+  });
+
   it('supplement skipArgs is preserved', () => {
     const registry = new MacroRegistry();
     registry.loadBuiltins();

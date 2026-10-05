@@ -90,6 +90,15 @@ export class WorkspaceModel extends EventEmitter {
     this.scheduleModelReady();
   }
 
+  /**
+   * Re-run cross-document analysis and schedule 'modelReady', e.g. after
+   * the macro configuration changed without any document changing.
+   */
+  refresh(): void {
+    this.cascade();
+    this.scheduleModelReady();
+  }
+
   /** Clean up listeners and timers. */
   dispose(): void {
     this.documents.removeListener('documentChanged', this.onDocumentChanged);

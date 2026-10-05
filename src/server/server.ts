@@ -7,6 +7,7 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { glob } from 'glob';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
@@ -33,6 +34,15 @@ function uriToFsPath(uri: string): string {
  */
 function fsPathToUri(fsPath: string): string {
   return pathToFileURL(fsPath).toString();
+}
+
+/**
+ * Whether a URI names a project config file (matches the
+ * `spindle.config.*` and `*twee-config.*` watcher globs).
+ */
+function isConfigFileUri(uri: string): boolean {
+  const name = basename(uriToFsPath(uri));
+  return name.startsWith('spindle.config.') || name.includes('twee-config.');
 }
 
 /**
@@ -85,7 +95,7 @@ export function startServer(_args: string[]): void {
 
     // Load user-defined macros from project config
     if (Object.keys(projectConfig.macros).length > 0) {
-      workspace.macros.loadSupplements(projectConfig.macros);
+      workspace.macros.loadConfig(projectConfig.macros);
       console.error('[spindle-lsp] loaded config macros:', Object.keys(projectConfig.macros).length);
     }
 
@@ -177,10 +187,32 @@ export function startServer(_args: string[]): void {
 
   // --- File watcher events ---
 
+  /** Re-read the project config and replace the user macro overrides. */
+  function reloadProjectConfig(): void {
+    if (!workspaceRoot) return;
+    try {
+      const projectConfig = loadConfigFromDisk(workspaceRoot);
+      workspace.macros.loadConfig(projectConfig.macros);
+      console.error('[spindle-lsp] reloaded config macros:', Object.keys(projectConfig.macros).length);
+    } catch (err) {
+      // Keep the previous config (e.g. file saved mid-edit with a syntax error)
+      console.error('[spindle-lsp] config reload failed:', err);
+      return;
+    }
+    workspace.refresh();
+  }
+
   connection.onDidChangeWatchedFiles(({ changes }) => {
     if (!workspace) return;
 
+    let configChanged = false;
     for (const change of changes) {
+      // Config files are not story documents — reload macro config instead
+      if (isConfigFileUri(change.uri)) {
+        configChanged = true;
+        continue;
+      }
+
       // The editor owns open documents: ignore disk changes/deletions until
       // didClose, which re-reads the file from disk (or removes it).
       if (documents.has(change.uri)) continue;
@@ -201,6 +233,10 @@ export function startServer(_args: string[]): void {
           // File may have been deleted between event and read
         }
       }
+    }
+
+    if (configChanged) {
+      reloadProjectConfig();
     }
   });
 
