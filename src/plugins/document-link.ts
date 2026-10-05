@@ -2,7 +2,7 @@ import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
-import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
+import { isMarkupPassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core document link function (no LSP dependency)
@@ -34,8 +34,9 @@ export function computeDocumentLinks(uri: string, workspace: WorkspaceModel): Do
 
   // Parse links from each passage's content
   for (const passage of passages) {
-    // Script and stylesheet bodies are code, not markup
-    if (isScriptOrStylesheetPassage(passage)) continue;
+    // Passages Spindle does not tokenize as markup (script, stylesheet,
+    // StoryData, ...) hold code or data, not links
+    if (!isMarkupPassage(passage)) continue;
     const contentStartLine = passage.range.start.line + 1;
     const contentEndLine = passage.range.end.line + 1;
     const lines = text.split('\n');

@@ -16,6 +16,12 @@ export interface MacroNode {
   range: Range;
   cssPrefix?: string;
   rawArgs?: string;
+  /**
+   * Set by pairMacros() on a closer that crosses a container still to be
+   * closed: the name of the container on top of the stack, which Spindle's
+   * buildAST expects to be closed first.
+   */
+  expected?: string;
 }
 
 export interface MacroInfo {

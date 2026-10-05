@@ -2,6 +2,7 @@ import type { MacroNode, Range } from '../types.js';
 import { createCodeScanner } from './code-scanner.js';
 import { attributeValueSpans } from './html-scanner.js';
 import { bracketLinkEnd } from './link-parser.js';
+import { HAS_PASSAGE_HEADER, maskNonMarkupPassages, passageBodies, type PassageRole } from './passage-parser.js';
 
 export { createCodeScanner, scanBalancedBrace, type CodeScanner } from './code-scanner.js';
 
@@ -97,6 +98,21 @@ export function offsetToPosition(offset: number, lineStarts: number[]): { line: 
  * attributeValueSpans().
  */
 export function parseMacros(text: string): MacroNode[] {
+  // Spindle renders each passage on its own: a macro never spans a header
+  if (!HAS_PASSAGE_HEADER.test(text)) return parseMacrosInPassage(text);
+  const macros: MacroNode[] = [];
+  for (const body of passageBodies(text)) {
+    for (const macro of parseMacrosInPassage(text.slice(body.start, body.end))) {
+      macro.id = macros.length;
+      macro.range.start.line += body.line;
+      macro.range.end.line += body.line;
+      macros.push(macro);
+    }
+  }
+  return macros;
+}
+
+function parseMacrosInPassage(text: string): MacroNode[] {
   // Replace variable interpolation with same-length spaces to preserve offsets
   const cleaned = text.replace(variableInterpolationRegex, (match) => {
     return ' '.repeat(match.length);
@@ -108,10 +124,18 @@ export function parseMacros(text: string): MacroNode[] {
   let id = 0;
 
   const attributeValues = attributeValueSpans(text);
-  let value = 0;
+  // The spans are sorted and disjoint (one tag's values follow another's)
   const inAttributeValue = (offset: number): boolean => {
-    while (value < attributeValues.length && attributeValues[value][1] <= offset) value++;
-    return value < attributeValues.length && attributeValues[value][0] <= offset;
+    let low = 0;
+    let high = attributeValues.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const [start, end] = attributeValues[mid];
+      if (offset < start) high = mid - 1;
+      else if (offset >= end) low = mid + 1;
+      else return true;
+    }
+    return false;
   };
 
   // Reset regex state (global regex)
@@ -121,7 +145,14 @@ export function parseMacros(text: string): MacroNode[] {
   // Spindle tokenizes a complete bracket link as one token, so a macro head
   // inside it is label text. Whichever of `[[` and a macro head comes first
   // wins; an unclosed link is text.
-  let linkStart = text.indexOf('[[');
+  // A `[[` inside an HTML attribute value starts no link: the tag consumes
+  // the value whole.
+  const nextLinkStart = (from: number): number => {
+    let at = text.indexOf('[[', from);
+    while (at !== -1 && inAttributeValue(at)) at = text.indexOf('[[', at + 1);
+    return at;
+  };
+  let linkStart = nextLinkStart(0);
 
   while ((match = macroHeadRegex.exec(text)) !== null) {
     const matchStart = match.index;
@@ -129,14 +160,14 @@ export function parseMacros(text: string): MacroNode[] {
     while (linkStart !== -1 && linkStart < matchStart) {
       const end = bracketLinkEnd(text, linkStart);
       if (end === -1) {
-        linkStart = text.indexOf('[[', linkStart + 2);
+        linkStart = nextLinkStart(linkStart + 2);
       } else if (end > matchStart) {
         macroHeadRegex.lastIndex = end;
-        linkStart = text.indexOf('[[', end);
+        linkStart = nextLinkStart(end);
         insideLink = true;
         break;
       } else {
-        linkStart = text.indexOf('[[', end);
+        linkStart = nextLinkStart(end);
       }
     }
     if (insideLink) continue;
@@ -153,7 +184,7 @@ export function parseMacros(text: string): MacroNode[] {
     }
     const matchEnd = closeIdx + 1;
     macroHeadRegex.lastIndex = matchEnd;
-    if (linkStart !== -1 && linkStart < matchEnd) linkStart = text.indexOf('[[', matchEnd);
+    if (linkStart !== -1 && linkStart < matchEnd) linkStart = nextLinkStart(matchEnd);
 
     const closeSlash = match[1];
     const cssPrefix = match[2] || '';
@@ -191,12 +222,24 @@ export function parseMacros(text: string): MacroNode[] {
 /**
  * Pair opening and closing macros the way Spindle's AST builder nests them.
  *
- * Block macros (isBlock(name) is true) share a single stack, so containers
- * must close in the reverse order they were opened. A closing macro pairs
- * with the nearest open container of the same name; containers opened after
- * that one are left unclosed (crossed nesting such as `{if}{for}{/if}{/for}`
- * leaves `{for}` and `{/for}` unpaired). A closing macro with no open
- * container of its name stays unpaired.
+ * Block macros (isBlock(name) is true) share a single stack, and Spindle's
+ * buildAST (markup/ast.ts) accepts a closing macro only when its container
+ * is on top of that stack: `{/name}` over anything else throws "Expected
+ * {/other} but found {/name}" and the passage is not rendered. A pairing
+ * therefore pairs a closer with the container on top. Where the closer
+ * does not match, it is the closer Spindle rejects, and the container(s)
+ * above the one it names decide how the rest of the passage reads:
+ *
+ *  - If one of them is closed later in the passage, the containers cross
+ *    (`{wrap}{if}{/wrap}{/if}`): the closer is the error and stays
+ *    unpaired, the stack is unchanged, and the later closer pairs as
+ *    buildAST would pair it.
+ *  - Otherwise their closers are missing (`{if}{for}{/if}`): the
+ *    containers above the named one are left unclosed and the closer pairs
+ *    with its opener.
+ *
+ * A closing macro with no open container of its name stays unpaired and
+ * disturbs nothing, like the "Unexpected closing" Spindle throws.
  *
  * `passageStartLines` lists the header lines of the passages in the text.
  * Each passage is rendered on its own, so the stack is reset at every
@@ -214,14 +257,36 @@ export function pairMacros(
   let nextBoundary = 0;
   let stack: MacroNode[] = [];
 
-  for (const macro of macros) {
+  // Closers still to come in the current passage, by lowercase name
+  let pending = new Map<string, number>();
+  let segmentEnd = 0;
+  const countClosers = (from: number, until: number) => {
+    pending = new Map();
+    for (let i = from; i < until; i++) {
+      const macro = macros[i];
+      if (macro.open || !isBlock(macro.name)) continue;
+      const name = macro.name.toLowerCase();
+      pending.set(name, (pending.get(name) ?? 0) + 1);
+    }
+  };
+
+  for (let index = 0; index < macros.length; index++) {
+    const macro = macros[index];
     // Entering a new passage: anything still open stays unmatched.
     let crossed = false;
     while (nextBoundary < boundaries.length && macro.range.start.line >= boundaries[nextBoundary]) {
       nextBoundary++;
       crossed = true;
     }
-    if (crossed) stack = [];
+    if (crossed || index === 0) {
+      if (crossed) stack = [];
+      segmentEnd = index;
+      while (
+        segmentEnd < macros.length &&
+        (nextBoundary >= boundaries.length || macros[segmentEnd].range.start.line < boundaries[nextBoundary])
+      ) segmentEnd++;
+      countClosers(index, segmentEnd);
+    }
 
     if (!isBlock(macro.name)) continue;
 
@@ -230,19 +295,55 @@ export function pairMacros(
       continue;
     }
 
-    // Closing macro — find the nearest open container with the same name
     const name = macro.name.toLowerCase();
+    pending.set(name, (pending.get(name) ?? 1) - 1);
+
+    // The nearest open container of this name
+    let target = -1;
     for (let i = stack.length - 1; i >= 0; i--) {
       if (stack[i].name.toLowerCase() === name) {
-        const opener = stack[i];
-        opener.pair = macro.id;
-        macro.pair = opener.id;
-        // Containers opened inside it but never closed remain unmatched
-        stack.length = i;
+        target = i;
         break;
       }
     }
+    if (target === -1) continue;
+
+    // A container above it that is closed later: the containers cross
+    let crossing = false;
+    for (let i = target + 1; i < stack.length; i++) {
+      if ((pending.get(stack[i].name.toLowerCase()) ?? 0) > 0) {
+        crossing = true;
+        break;
+      }
+    }
+    if (crossing) {
+      macro.expected = stack[stack.length - 1].name;
+      continue;
+    }
+
+    const opener = stack[target];
+    opener.pair = macro.id;
+    macro.pair = opener.id;
+    // Containers opened inside it but never closed remain unmatched
+    stack.length = target;
   }
+}
+
+/**
+ * The macros of a whole document as Spindle runs them: the bodies of passages
+ * it does not tokenize as markup are masked first (see
+ * maskNonMarkupPassages()), and, when `isBlock` is given, containers are
+ * paired per passage by pairMacros(). Every consumer that reads macros from
+ * a document, rather than from one passage's markup, goes through here.
+ */
+export function parseDocumentMacros(
+  text: string,
+  passages: Array<PassageRole & { range: Range }>,
+  isBlock?: (name: string) => boolean,
+): MacroNode[] {
+  const macros = parseMacros(maskNonMarkupPassages(text, passages));
+  if (isBlock) pairMacros(macros, isBlock, passages.map(p => p.range.start.line));
+  return macros;
 }
 
 /** A macro head's name as written in source, with the span of just the name. */
@@ -252,10 +353,15 @@ export interface MacroHeadName {
   range: Range;
 }
 
-/** Passage-scoped closer pairing for {@link macroHeadNames}. */
+/**
+ * Passage-scoped closer pairing for {@link macroHeadNames}: the passages of
+ * the document, whose bodies are masked when Spindle does not tokenize them
+ * as markup (see maskNonMarkupPassages()) and which bound each closer's
+ * container.
+ */
 export interface MacroHeadPairing {
   isBlock: (name: string) => boolean;
-  passageStartLines: number[];
+  passages: Array<PassageRole & { range: Range }>;
 }
 
 /**
@@ -265,12 +371,16 @@ export interface MacroHeadPairing {
  * their notion of a call matches what Spindle's tokenizer executes.
  */
 export function macroHeadNames(text: string, pairing?: MacroHeadPairing): MacroHeadName[] {
-  const macros = parseMacros(text);
-  if (pairing) pairMacros(macros, pairing.isBlock, pairing.passageStartLines);
+  const macros = pairing
+    ? parseDocumentMacros(text, pairing.passages, pairing.isBlock)
+    : parseMacros(text);
   return macros
-    // Spindle rejects a closer with no open container in its passage
-    // ("Unexpected closing"), so it never executes as a call.
-    .filter((macro) => !pairing || macro.open || !pairing.isBlock(macro.name) || macro.pair !== -1)
+    // Spindle rejects a closer with no open container of its name in its
+    // passage ("Unexpected closing"), so that is no call. A closer that
+    // crosses another container (`{wrap}{if}{/wrap}{/if}`) is the closer of
+    // an open container, written out of order: it stays with its widget.
+    .filter((macro) => !pairing || macro.open || !pairing.isBlock(macro.name)
+      || macro.pair !== -1 || macro.expected !== undefined)
     .map((macro) => {
     const skip = 1 + (macro.open ? (macro.cssPrefix ? macro.cssPrefix.length + 1 : 0) : 1);
     const { start } = macro.range;

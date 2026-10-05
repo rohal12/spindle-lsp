@@ -134,10 +134,17 @@ describe('SP102: HTML element structure Spindle cannot render', () => {
     expect(diagnose(':: Start\n<a title="{">x</i>\n')).toEqual([]);
     // Whitespace around = makes Spindle re-read the text after `<`.
     expect(diagnose(':: Start\n<a href = "x">x\n')).toEqual([]);
-    // A link that never closes.
-    expect(diagnose(':: Start\n[[unclosed <b>\n')).toEqual([]);
     // Later versions keep a {do} body as JavaScript; 0.45.1 reads the tag.
     expect(sp102(diagnose(':: Start\n{do} el.innerHTML = "<b>hi"; {/do}\n'))).toEqual([]);
+  });
+
+  it('reads on after a link that never closes, as Spindle does', () => {
+    // The tokenizer reads `[[unclosed ` as text and the <b> as a tag that
+    // buildAST never sees closed.
+    expect(diagnose(':: Start\n[[unclosed <b>\n').map(d => d.message)).toEqual(
+      [expect.stringMatching(/^Malformed element: unclosed <b>/)],
+    );
+    expect(diagnose(':: Start\n[[unclosed <b>x</b>\n')).toEqual([]);
   });
 
   it('does not report after a macro Spindle reads but the macro parser does not', () => {

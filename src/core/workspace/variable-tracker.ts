@@ -1,5 +1,6 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
-import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
+import { parsePassageHeader, isMarkupPassage, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
+import { findBracketLinks, linkInterpolationRanges } from '../parsing/link-parser.js';
 import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
 import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
 import { checkDeclaration, declaredName } from './declaration-check.js';
@@ -19,10 +20,12 @@ const transientRefRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
  */
 const DECLARATION_RE = { '$': /^\$(\w+)\s*=\s*(.*)$/, '%': /^%(\w+)\s*=\s*(.*)$/ } as const;
 
-/** Passages excluded from variable scanning. */
-const EXCLUDED_PASSAGES = new Set([
-  'StoryVariables', 'StoryTransients', 'StoryData', 'StoryScript',
-]);
+/**
+ * `StoryScript` is not a passage Spindle treats specially, but its text is
+ * script, not an executable usage (C-V73); the other passages Spindle does
+ * not tokenize as markup come from isMarkupPassage().
+ */
+const STORY_SCRIPT_PASSAGE = 'StoryScript';
 
 /**
  * A `$name` reference as Spindle's startup validation (validatePassages in
@@ -130,6 +133,33 @@ const QUOTED_RECEIVER_RE = new RegExp(
   String.raw`(?<!\\)(\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+(["']))\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])`,
   'g',
 );
+
+/**
+ * Blank the text of the bracket links in `code` (`content` with its comments
+ * blanked), apart from the `{$x}`-style blocks Spindle interpolates in a
+ * link: the tokenizer reads a link whole, so macros and `$x` words in a
+ * label or target are text, not code. Links are found in `content`, which
+ * is what the tokenizer reads, comments included.
+ */
+function blankLinkText(content: string, code: string): string {
+  if (!content.includes('[[')) return code;
+  let result = '';
+  let copied = 0;
+  for (const link of findBracketLinks(content)) {
+    const keep = linkInterpolationRanges(content, link);
+    let at = link.start;
+    const blankTo = (to: number) => {
+      result += code.slice(copied, at) + blank(code.slice(at, to));
+      copied = to;
+    };
+    for (const [start, end] of keep) {
+      blankTo(start);
+      at = end;
+    }
+    blankTo(link.end);
+  }
+  return result + code.slice(copied);
+}
 
 /** Replace every character except line terminators with a space. */
 function blank(text: string): string {
@@ -595,8 +625,7 @@ export class VariableTracker {
     // Scan each passage's content
     for (let pi = 0; pi < passageBoundaries.length; pi++) {
       const passage = passageBoundaries[pi];
-      if (EXCLUDED_PASSAGES.has(passage.name)) continue;
-      if (isScriptOrStylesheetPassage(passage)) continue;
+      if (!isMarkupPassage(passage) || passage.name === STORY_SCRIPT_PASSAGE) continue;
 
       const contentStartLine = passage.startLine + 1;
       const contentEndLine = pi + 1 < passageBoundaries.length
@@ -612,6 +641,7 @@ export class VariableTracker {
       for (const pattern of COMMENT_PATTERNS) {
         uncommented = uncommented.replace(pattern, blank);
       }
+      uncommented = blankLinkText(content, uncommented);
       const cleaned = replaceCodeLiterals(uncommented, blank);
       let referenced = replaceCodeLiterals(uncommented, blankLiteralText);
 

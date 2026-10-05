@@ -1,6 +1,6 @@
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { buildLineStarts, parseMacros } from '../core/parsing/macro-parser.js';
+import { buildLineStarts, parseDocumentMacros } from '../core/parsing/macro-parser.js';
 import { isTransientAt } from './references.js';
 
 // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ function blankStringLiterals(code: string): string {
  * (Spindle 0.45.1 has no keyword sugar at runtime; this marks where an
  * expression is evaluated, which is the only place such words could be code.)
  */
-function keywordCandidateLines(text: string, macros: ReturnType<typeof parseMacros>): string[] {
+function keywordCandidateLines(text: string, macros: ReturnType<typeof parseDocumentMacros>): string[] {
   const lineStarts = buildLineStarts(text);
   const offset = (p: { line: number; character: number }) => lineStarts[p.line] + p.character;
   const mask: string[] = text.split('').map(ch => (ch === '\n' ? '\n' : ' '));
@@ -197,7 +197,7 @@ export function computeSemanticTokensAbsolute(
   }
 
   // Macro name tokens
-  const macros = parseMacros(text);
+  const macros = parseDocumentMacros(text, passages);
   for (const macro of macros) {
     const macroLine = macro.range.start.line;
     const macroChar = macro.range.start.character;

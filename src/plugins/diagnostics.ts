@@ -11,7 +11,7 @@ import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
 import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
-import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
+import { isScriptOrStylesheetPassage, isMarkupPassage, maskNonMarkupPassages } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
@@ -160,24 +160,6 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   }
 }
 
-/**
- * Replace the body of every non-markup passage with spaces, keeping
- * line breaks so that offsets and positions are unchanged.
- */
-function maskNonMarkupPassages(text: string, passages: Passage[]): string {
-  const excluded = passages.filter(p => !isMarkupPassage(p));
-  if (excluded.length === 0) return text;
-
-  const lines = text.split('\n');
-  for (const passage of excluded) {
-    const last = Math.min(passage.range.end.line, lines.length - 1);
-    for (let i = passage.range.start.line + 1; i <= last; i++) {
-      lines[i] = lines[i].replace(/[^\r]/g, ' ');
-    }
-  }
-  return lines.join('\n');
-}
-
 // ---------------------------------------------------------------------------
 // Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
 // ---------------------------------------------------------------------------
@@ -219,10 +201,14 @@ function validateMacros(
           `Malformed container: no matching {/${macro.name}}`,
         ));
       } else if (!macro.open && macro.pair === -1) {
+        // A closer over a container that is closed later is the one Spindle
+        // rejects: "Expected {/for} but found {/if}"
         diagnostics.push(makeDiag(
           macro.range,
           DiagnosticCode.MalformedContainer,
-          `Malformed container: no matching {${macro.name}}`,
+          macro.expected
+            ? `Malformed container: expected {/${macro.expected}} but found {/${macro.name}}`
+            : `Malformed container: no matching {${macro.name}}`,
         ));
       }
 
@@ -305,24 +291,6 @@ function innermostContainer(
 
 /** An entry of Spindle's AST stack: a paired container macro or an HTML element. */
 type StackEntry = { macro: number } | { element: HtmlTag };
-
-/**
- * Passages that Spindle never tokenizes as markup. The compiler turns
- * StoryTitle and StoryData into story attributes; Spindle reads
- * StoryVariables and StoryTransients as declarations (parseStoryVariables)
- * and runs SaveTitle as a JavaScript function body. Script and stylesheet
- * passages become the story's JavaScript and CSS. Every other passage can
- * be rendered: Spindle tokenizes StoryInit, StoryInterface, StoryLoading
- * and the Passage* passages itself, widget passages at startup, and any
- * passage it navigates to, includes or opens in a dialog.
- */
-const NON_MARKUP_PASSAGES = new Set([
-  'StoryTitle', 'StoryData', 'StoryVariables', 'StoryTransients', 'SaveTitle',
-]);
-
-function isMarkupPassage(passage: Passage): boolean {
-  return !NON_MARKUP_PASSAGES.has(passage.name) && !isScriptOrStylesheetPassage(passage);
-}
 
 /** What replaying Spindle's AST stack over a document's passages found. */
 interface ElementReplay {

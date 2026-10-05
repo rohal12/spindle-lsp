@@ -2,7 +2,7 @@ import type { Range } from '../types.js';
 import { buildLineStarts, offsetToPosition, parseMacros } from './macro-parser.js';
 import { ArgType, lexArguments } from './argument-lexer.js';
 import { attributeValueSpans } from './html-scanner.js';
-import { isScriptOrStylesheetPassage } from './passage-parser.js';
+import { HAS_PASSAGE_HEADER, maskNonMarkupPassages, passageBodies } from './passage-parser.js';
 import { decodeStringLiteralBody, type JsQuote } from './js-string-literal.js';
 
 /**
@@ -25,27 +25,8 @@ export interface PassageRef {
   quote?: JsQuote;
 }
 
-/** The passage minimum needed to mask code passages. */
-type MaskablePassage = { tags?: string[]; range: Range };
-
-/**
- * Replace the body of every script/stylesheet passage with spaces, keeping
- * line breaks so offsets and positions are unchanged. Those bodies hold
- * JS/CSS, not story markup, so they contain no links or macro targets.
- */
-export function maskScriptAndStylesheetPassages(text: string, passages: MaskablePassage[]): string {
-  const excluded = passages.filter(isScriptOrStylesheetPassage);
-  if (excluded.length === 0) return text;
-
-  const lines = text.split('\n');
-  for (const passage of excluded) {
-    const last = Math.min(passage.range.end.line, lines.length - 1);
-    for (let i = passage.range.start.line + 1; i <= last; i++) {
-      lines[i] = lines[i].replace(/[^\r]/g, ' ');
-    }
-  }
-  return lines.join('\n');
-}
+/** The passage minimum needed to mask non-markup passages. */
+type MaskablePassage = { name?: string; tags?: string[]; range: Range };
 
 /**
  * Offset spans where `[[` is literal text rather than a link: macro tags
@@ -63,6 +44,17 @@ function literalSpans(text: string, lineStarts: number[]): Array<[number, number
     }
   }
   return spans.sort((a, b) => a[0] - b[0]);
+}
+
+/** Sorted spans merged into disjoint ones. */
+function mergeSpans(spans: Array<[number, number]>): Array<[number, number]> {
+  const merged: Array<[number, number]> = [];
+  for (const [start, end] of spans) {
+    const last = merged[merged.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  }
+  return merged;
 }
 
 /**
@@ -159,11 +151,45 @@ export function bracketLinkEnd(text: string, linkStart: number): number {
   return close === -1 ? -1 : close + 2;
 }
 
-export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
-  const lineStarts = buildLineStarts(text);
-  const refs: PassageRef[] = [];
-  const literals = text.includes('[[') ? literalSpans(text, lineStarts) : [];
-  const inLiteral = (offset: number) => literals.some(([a, b]) => a <= offset && offset < b);
+/** A complete bracket link as Spindle's tokenizer reads it. */
+export interface BracketLink {
+  /** Offset of the opening `[[`. */
+  start: number;
+  /** Offset just past the closing `]]`. */
+  end: number;
+  /** Offset of the inner text (after `[[` and any `.class#id ` prefix). */
+  innerStart: number;
+  /** Offset of the closing `]]`. */
+  innerEnd: number;
+}
+
+/**
+ * The complete bracket links of a text, in order: the tokens Spindle's
+ * tokenizer reads as links. Nothing inside a link is markup. A `[[` inside a
+ * macro tag or an HTML attribute value starts no link, and one that never
+ * closes is text (the scan resumes right after its `[[`).
+ */
+export function findBracketLinks(text: string): BracketLink[] {
+  // Spindle renders each passage on its own: a link never spans a header
+  if (!HAS_PASSAGE_HEADER.test(text)) return findBracketLinksInPassage(text);
+  return passageBodies(text).flatMap(body =>
+    findBracketLinksInPassage(text.slice(body.start, body.end)).map(link => ({
+      start: link.start + body.start,
+      end: link.end + body.start,
+      innerStart: link.innerStart + body.start,
+      innerEnd: link.innerEnd + body.start,
+    })));
+}
+
+function findBracketLinksInPassage(text: string): BracketLink[] {
+  const links: BracketLink[] = [];
+  if (!text.includes('[[')) return links;
+  const literals = mergeSpans(literalSpans(text, buildLineStarts(text)));
+  let literal = 0;
+  const inLiteral = (offset: number) => {
+    while (literal < literals.length && literals[literal][1] <= offset) literal++;
+    return literal < literals.length && literals[literal][0] <= offset;
+  };
 
   let i = text.indexOf('[[');
   while (i !== -1) {
@@ -171,43 +197,138 @@ export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
       i = text.indexOf('[[', i + 1);
       continue;
     }
-    const linkStart = i;
+    const start = i;
     i += 2;
     if (text[i] === '.' || text[i] === '#') {
       i = skipSelectors(text, i);
       if (text[i] === ' ') i++;
     }
-
-    // Find the closing ]], allowing nested [[...]]
     const innerStart = i;
     const close = findLinkClose(text, innerStart);
-
     if (close === -1) {
       // Unclosed link: Spindle treats it as text and rescans after `[[`
-      i = text.indexOf('[[', linkStart + 2);
+      i = text.indexOf('[[', start + 2);
       continue;
     }
-    i = close;
+    links.push({ start, end: close + 2, innerStart, innerEnd: close });
+    i = text.indexOf('[[', close + 2);
+  }
+  return links;
+}
 
-    const target = locateTarget(text.slice(innerStart, i));
-    if (target.end > target.start) {
-      const nameStart = innerStart + target.start;
-      const nameEnd = innerStart + target.end;
-      const startPos = offsetToPosition(nameStart, lineStarts);
-      const endPos = offsetToPosition(nameEnd, lineStarts);
-
-      refs.push({
-        name: text.slice(nameStart, nameEnd),
-        range: {
-          start: { line: startPos.line + lineOffset, character: startPos.character },
-          end: { line: endPos.line + lineOffset, character: endPos.character },
-        },
-        source: 'link',
-        form: 'bracket',
-      });
+/**
+ * The text of a bracket link that Spindle evaluates, as sorted [start, end)
+ * source offsets. The tokenizer reads a link as one token and renders it as
+ * `{link "display" "target"}` with `.class#id` selectors; that macro
+ * interpolates its arguments and selectors (`interpolate: true`), so a
+ * `{$x}`-style block in them is read, while everything else in the link is
+ * plain text: `{if $x}` or `{goto "X"}` in a label execute nothing.
+ *
+ * The blocks are found the way Spindle's interpolate() finds them in the
+ * arguments `"display" "target"` it builds (display and target as
+ * parseLink() splits and trims them). A block that runs across the
+ * separator holds the quotes Spindle adds, so it is no expression and reads
+ * nothing.
+ */
+export function linkInterpolationRanges(text: string, link: BracketLink): Array<[number, number]> {
+  // The arguments Spindle builds, with the source offset of each character
+  // (-1 for the ones it adds)
+  let raw = '';
+  const origin: number[] = [];
+  const add = (literal: string) => {
+    raw += literal;
+    for (let i = 0; i < literal.length; i++) origin.push(-1);
+  };
+  const addSpan = (from: number, to: number) => {
+    for (let i = from; i < to; i++) {
+      raw += text[i];
+      origin.push(i);
     }
+  };
 
-    i = text.indexOf('[[', i + 2);
+  // Selectors (`[[.cls{$k} … ]]`) are interpolated as they are
+  addSpan(link.start + 2, link.innerStart);
+  add('\n');
+
+  const inner = text.slice(link.innerStart, link.innerEnd);
+  const trimmed = (from: number, to: number): [number, number] => {
+    while (from < to && /\s/.test(inner[from])) from++;
+    while (to > from && /\s/.test(inner[to - 1])) to--;
+    return [from, to];
+  };
+  const pipe = inner.indexOf('|');
+  const arrow = inner.indexOf('->');
+  const reverse = inner.indexOf('<-');
+  let display: [number, number];
+  let target: [number, number];
+  if (pipe !== -1) {
+    display = trimmed(0, pipe);
+    target = trimmed(pipe + 1, inner.length);
+  } else if (arrow !== -1) {
+    display = trimmed(0, arrow);
+    target = trimmed(arrow + 2, inner.length);
+  } else if (reverse !== -1) {
+    target = trimmed(0, reverse);
+    display = trimmed(reverse + 2, inner.length);
+  } else {
+    display = target = trimmed(0, inner.length);
+  }
+  add('"');
+  addSpan(link.innerStart + display[0], link.innerStart + display[1]);
+  add('" "');
+  addSpan(link.innerStart + target[0], link.innerStart + target[1]);
+  add('"');
+
+  // interpolate() runs only where hasInterpolation() finds `{` and a sigil
+  const ranges: Array<[number, number]> = [];
+  if (!/\{[$_@%]\w/.test(raw)) return ranges;
+  let i = 0;
+  while (i < raw.length) {
+    if (raw[i] !== '{') {
+      i++;
+      continue;
+    }
+    i++;
+    if (!'$_@%'.includes(raw[i] ?? '')) continue;
+    let depth = 1;
+    let j = i;
+    while (j < raw.length && depth > 0) {
+      j++;
+      if (raw[j] === '{') depth++;
+      else if (raw[j] === '}') depth--;
+    }
+    if (depth !== 0) continue;
+    // A block that runs across the separator holds the quotes Spindle adds
+    // (`{$a" "b}`): its expression does not parse, so it reads nothing.
+    let whole = true;
+    for (let k = i - 1; k <= j; k++) if (origin[k] === -1) whole = false;
+    if (whole) ranges.push([origin[i - 1], origin[j] + 1]);
+    i = j + 1;
+  }
+  return ranges;
+}
+
+export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
+  const lineStarts = buildLineStarts(text);
+  const refs: PassageRef[] = [];
+
+  for (const link of findBracketLinks(text)) {
+    const target = locateTarget(text.slice(link.innerStart, link.innerEnd));
+    if (target.end <= target.start) continue;
+    const nameStart = link.innerStart + target.start;
+    const nameEnd = link.innerStart + target.end;
+    const startPos = offsetToPosition(nameStart, lineStarts);
+    const endPos = offsetToPosition(nameEnd, lineStarts);
+
+    refs.push({
+      name: text.slice(nameStart, nameEnd),
+      range: {
+        start: { line: startPos.line + lineOffset, character: startPos.character },
+        end: { line: endPos.line + lineOffset, character: endPos.character },
+      },
+      source: 'link',
+      form: 'bracket',
+    });
   }
 
   return refs;
@@ -230,12 +351,13 @@ export function findPassageRefAt(
 
 /**
  * All executable passage references of a document: `[[links]]` and literal
- * macro targets, excluding script/stylesheet bodies, macro-argument strings
+ * macro targets, excluding the bodies of passages Spindle does not tokenize
+ * as markup (script, stylesheet, StoryData, StoryVariables, ...), macro-argument strings
  * and HTML attribute values. This is the one extraction every navigation,
  * rename, link and diagnostic consumer shares.
  */
 export function parseDocumentPassageRefs(text: string, passages: MaskablePassage[]): PassageRef[] {
-  const markup = maskScriptAndStylesheetPassages(text, passages);
+  const markup = maskNonMarkupPassages(text, passages);
   return [...parseLinks(markup), ...parseMacroPassageRefs(markup)];
 }
 

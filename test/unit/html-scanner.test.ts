@@ -110,10 +110,11 @@ describe('scanHtmlTags', () => {
     expect(tags('[[a [[<b>]] c]]<i>')).toEqual(['<i>']);
   });
 
-  it('stops at an unclosed link', () => {
+  it('reads on after an unclosed link, as Spindle does', () => {
+    // The tokenizer reads `[[x <i>` as text and resumes right after `[[`.
     const scan = scanHtmlTags('<b>[[x <i>');
-    expect(scan.tags.map(show)).toEqual(['<b>']);
-    expect(scan.stoppedAt).toBe(3);
+    expect(scan.tags.map(show)).toEqual(['<b>', '<i>']);
+    expect(scan.stoppedAt).toBe(-1);
   });
 
   it('stops when Spindle versions disagree on the end of a macro', () => {
@@ -240,9 +241,17 @@ describe('attributeValueSpans', () => {
     expect(attributeValueSpans(text)).toEqual([]);
   });
 
-  it('stops where the scan stops', () => {
-    // `<a href = "x">` makes Spindle re-read the text after `<`.
+  it('reads what Spindle versions disagree on as 0.45.1 does', () => {
+    // 0.45.1 reads `<a href = "x">` as text (later versions as a tag); the
+    // tag after it is read either way.
     const text = ':: A\n<a href = "x"> <b title="{if $x}y{/if}">\n';
-    expect(attributeValueSpans(text)).toEqual([]);
+    expect(attributeValueSpans(text).map(([s, e]) => text.slice(s, e))).toEqual(['{if $x}y{/if}']);
+  });
+
+  it('stops only where its work budget runs out', () => {
+    const text = '<a b="'.repeat(20000) + ' <p title="x">';
+    const t0 = performance.now();
+    attributeValueSpans(text);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 });

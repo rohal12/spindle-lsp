@@ -64,6 +64,19 @@ const DISPLAY_NAME_CHAR = /[\w.]/;
 /** Marks a construct the scan cannot follow; see scanHtmlTags(). */
 const GIVE_UP = -2;
 
+/** Thrown when a scan has spent its work budget; see scanHtmlTags(). */
+class BudgetExceeded extends Error {}
+
+/**
+ * How scanHtmlTags() treats the constructs on which Spindle versions differ.
+ *  - `conservative` (the default): stop at the first such construct, so that
+ *    a caller draws no conclusion that holds for only some versions.
+ *  - `installed`: read them as Spindle 0.45.1 does, the version this package
+ *    is verified against. A caller that must decide where markup ends (not
+ *    only whether an element is open) follows one version rather than guess.
+ */
+export type ScanPolicy = 'conservative' | 'installed';
+
 /**
  * For every `{`, the index of the `}` that a plain depth count from it
  * reaches, as Spindle 0.45.1's tokenizer finds the end of a macro or a
@@ -92,9 +105,10 @@ function plainBraceMatches(input: string): Int32Array {
  * HTML comments and `<script>`/`<style>` bodies included. A tag that does
  * not end in `>` is text.
  *
- * Where Spindle versions read the markup differently, or following
- * Spindle would cost more than linear time, the scan stops and records the
- * offset in `stoppedAt`, so that callers draw no conclusions from the rest:
+ * Where Spindle versions read the markup differently, the `conservative`
+ * policy stops the scan and records the offset in `stoppedAt`, so that
+ * callers draw no conclusions from the rest (the `installed` policy reads
+ * such text as 0.45.1 does):
  *  - a macro or display whose closing brace depends on whether string
  *    literals are skipped (0.45.1 does not, later versions do);
  *  - a quoted attribute value containing braces that the two versions end
@@ -103,17 +117,28 @@ function plainBraceMatches(input: string): Int32Array {
  *    text up to the first `{/do}`, or a `{do}` body whose `{/do}` 0.45.1
  *    reads as part of another token;
  *  - an even run of backslashes before a brace (`\\{`), where 0.45.1
- *    escapes the brace and later versions escape a backslash;
- *  - a link that never closes, or a tag that fails after reading
- *    attributes (`<a href = "x">`, `x <y and z.`): Spindle reads the text
- *    again from the character after `<`, which can take quadratic time.
+ *    escapes the brace and later versions escape a backslash.
+ *
+ * A link that never closes is text: Spindle reads on from just after its
+ * `[[`, and so does the scan. So does the `installed` policy for a tag that
+ * fails after reading attributes (`<a href = "x">`, `x <y and z.`), where
+ * `conservative` stops, since whether later versions accept such a tag is
+ * unknown. Re-reading can take quadratic time, so a scan has a work budget
+ * linear in the text; one that spends it stops, in either policy.
  */
-export function scanHtmlTags(text: string): HtmlScan {
+export function scanHtmlTags(text: string, policy: ScanPolicy = 'conservative'): HtmlScan {
+  const installed = policy === 'installed';
   const n = text.length;
   const tags: HtmlTag[] = [];
   const macros: number[] = [];
   const code = createCodeScanner(text);
   const plain = plainBraceMatches(text);
+
+  let budget = 64 * n + 100000;
+  const spend = (units: number) => {
+    budget -= units;
+    if (budget < 0) throw new BudgetExceeded();
+  };
 
   /**
    * `{do}` bodies as later versions read them: from the end of the `{do}`
@@ -123,6 +148,7 @@ export function scanHtmlTags(text: string): HtmlScan {
   let doCloses: number[] | undefined;
   let nextDoClose = 0;
   const rawBody = (end: number) => {
+    if (installed) return;
     doCloses ??= [...text.matchAll(/\{\/do\s*\}/gi)].map(match => match.index);
     while (nextDoClose < doCloses.length && doCloses[nextDoClose] < end) nextDoClose++;
     if (nextDoClose < doCloses.length) rawBodies.push([end, doCloses[nextDoClose]]);
@@ -151,8 +177,8 @@ export function scanHtmlTags(text: string): HtmlScan {
 
   /** End of the brace-delimited token opening at `open`, or GIVE_UP. */
   const braceEnd = (open: number): number => {
-    const close = code.closeBrace(open + 1);
-    if (close !== plain[open]) return GIVE_UP;
+    const close = installed ? plain[open] : code.closeBrace(open + 1);
+    if (!installed && close !== plain[open]) return GIVE_UP;
     return close === -1 ? open + 1 : close + 1;
   };
 
@@ -200,6 +226,7 @@ export function scanHtmlTags(text: string): HtmlScan {
     const nameStart = j;
     while (j < n && TAG_NAME_CHAR.test(text[j])) j++;
     const name = text.slice(nameStart, j);
+    spend(j - i);
     if (!name || !LETTER.test(name[0])) return i + 1;
     const isVoid = VOID_ELEMENTS.has(name.toLowerCase());
 
@@ -222,7 +249,9 @@ export function scanHtmlTags(text: string): HtmlScan {
       tags.push({ name, kind: selfClosing ? 'void' : 'open', start: i, end: j + 1, values: attrs.values });
       return j + 1;
     }
-    return attrs.count > 0 ? GIVE_UP : i + 1;
+    // Spindle reads on from just after the `<`. Whether a later version
+    // accepts the tag (`<a href = "x">`) is not known.
+    return attrs.count > 0 && !installed ? GIVE_UP : i + 1;
   };
 
   /**
@@ -232,6 +261,7 @@ export function scanHtmlTags(text: string): HtmlScan {
   const readAttributes = (j: number): { end: number; count: number; values: Array<[number, number]> } => {
     let count = 0;
     const values: Array<[number, number]> = [];
+    const from = j;
     while (j < n) {
       while (j < n && WHITESPACE.test(text[j])) j++;
       if (j >= n || text[j] === '>' || (text[j] === '/' && text[j + 1] === '>')) break;
@@ -245,14 +275,17 @@ export function scanHtmlTags(text: string): HtmlScan {
       if (quote === '"' || quote === "'") {
         const close = quotedValueEnd(j + 1, quote);
         if (close === GIVE_UP) return { end: GIVE_UP, count, values };
+        spend(close - j);
         values.push([j + 1, close]);
         j = close < n ? close + 1 : close;
       } else {
         const start = j;
         while (j < n && !WHITESPACE.test(text[j]) && text[j] !== '>') j++;
+        spend(j - start);
         values.push([start, j]);
       }
     }
+    spend(j - from + 1);
     return { end: j, count, values };
   };
 
@@ -277,7 +310,7 @@ export function scanHtmlTags(text: string): HtmlScan {
         break;
       }
     }
-    if (!sawBrace) return k;
+    if (!sawBrace || installed) return k;
 
     let d = from;
     while (d < n) {
@@ -297,6 +330,7 @@ export function scanHtmlTags(text: string): HtmlScan {
 
   let i = 0;
   let stoppedAt = -1;
+  try {
   while (i < n) {
     const c = text[i];
     let next: number;
@@ -305,10 +339,12 @@ export function scanHtmlTags(text: string): HtmlScan {
       // versions only after an odd run.
       let k = i + 1;
       while (text[k] === '\\') k++;
-      if (text[k] === '{' || text[k] === '}') next = (k - i) % 2 === 1 ? k + 1 : GIVE_UP;
+      if (text[k] === '{' || text[k] === '}') next = installed || (k - i) % 2 === 1 ? k + 1 : GIVE_UP;
       else next = k;
     } else if (c === '[' && text[i + 1] === '[') {
-      next = linkEnd(text, i);
+      next = linkEnd(text, i, spend);
+      // Spindle reads an unclosed link as text and goes on after its `[[`
+      if (next === -1) next = i + 2;
     } else if (c === '{') {
       next = afterBrace(i);
     } else if (c === '<') {
@@ -321,6 +357,10 @@ export function scanHtmlTags(text: string): HtmlScan {
       break;
     }
     i = next;
+  }
+  } catch (error) {
+    if (!(error instanceof BudgetExceeded)) throw error;
+    stoppedAt = i;
   }
 
   // Where the versions read a {do} body differently, stop there
@@ -359,12 +399,11 @@ function selectorsEnd(text: string, i: number): number {
 }
 
 /**
- * The end of the `[[link]]` opening at i, with nested `[[…]]` counted, or
- * GIVE_UP when it never closes (Spindle then reads on from i + 2, and
- * following it there can take quadratic time). Selectors after `[[` hold
- * no brackets, so the count can start right after the `[[`.
+ * The end of the `[[link]]` opening at i, with nested `[[…]]` counted, or -1
+ * when it never closes. Selectors after `[[` hold no brackets, so the count
+ * can start right after the `[[`.
  */
-function linkEnd(text: string, i: number): number {
+function linkEnd(text: string, i: number, spend: (units: number) => void): number {
   const n = text.length;
   let depth = 1;
   let j = i + 2;
@@ -373,20 +412,26 @@ function linkEnd(text: string, i: number): number {
       depth++;
       j += 2;
     } else if (text[j] === ']' && text[j + 1] === ']') {
-      if (--depth === 0) return j + 2;
+      if (--depth === 0) {
+        spend(j - i);
+        return j + 2;
+      }
       j += 2;
     } else {
       j++;
     }
   }
-  return GIVE_UP;
+  spend(n - i);
+  return -1;
 }
 
 /**
  * The attribute values of the tags Spindle reads in a Twee document, as
  * sorted [start, end) offsets: scanHtmlTags() run on each passage on its own
- * (a line starting with `::` starts the next one). Where a scan stops, the
- * values from there on are unknown and left out.
+ * (a line starting with `::` starts the next one), reading what Spindle
+ * versions disagree on as 0.45.1 does (the `installed` policy): a caller
+ * deciding where markup is must follow some version. Only a scan that
+ * spends its work budget stops, and the values from there on are left out.
  */
 export function attributeValueSpans(text: string): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
@@ -395,7 +440,7 @@ export function attributeValueSpans(text: string): Array<[number, number]> {
   const scan = (from: number, to: number) => {
     const content = text.slice(from, to);
     if (!content.includes('<')) return;
-    for (const tag of scanHtmlTags(content).tags) {
+    for (const tag of scanHtmlTags(content, 'installed').tags) {
       for (const [start, end] of tag.values ?? []) spans.push([from + start, from + end]);
     }
   };
