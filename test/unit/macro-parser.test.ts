@@ -111,3 +111,47 @@ describe('pairMacros', () => {
     expect(macros[0].pair).toBe(-1);
   });
 });
+
+describe('pairMacros nesting and passage boundaries', () => {
+  const isBlock = (name: string) => name === 'if' || name === 'for';
+
+  it('does not pair crossed containers', () => {
+    const macros = parseMacros('{if true}{for @x of []}{/if}{/for}');
+    pairMacros(macros, isBlock);
+    // {/if} closes {if}; the {for} opened inside it is left unclosed
+    expect(macros[0].pair).toBe(macros[2].id);
+    expect(macros[2].pair).toBe(macros[0].id);
+    expect(macros[1].pair).toBe(-1);
+    expect(macros[3].pair).toBe(-1);
+  });
+
+  it('pairs different containers nested in order', () => {
+    const macros = parseMacros('{if true}{for @x of []}{/for}{/if}');
+    pairMacros(macros, isBlock);
+    expect(macros[0].pair).toBe(macros[3].id);
+    expect(macros[1].pair).toBe(macros[2].id);
+  });
+
+  it('leaves a stray closing tag unpaired without disturbing open containers', () => {
+    const macros = parseMacros('{if true}{/for}{/if}');
+    pairMacros(macros, isBlock);
+    expect(macros[1].pair).toBe(-1);
+    expect(macros[0].pair).toBe(macros[2].id);
+  });
+
+  it('does not pair across passage boundaries', () => {
+    const text = ':: Start\n{if true}\n:: Other\n{/if}';
+    const macros = parseMacros(text);
+    pairMacros(macros, isBlock, [0, 2]);
+    expect(macros[0].pair).toBe(-1);
+    expect(macros[1].pair).toBe(-1);
+  });
+
+  it('pairs within each passage when boundaries are given', () => {
+    const text = ':: A\n{if true}\n{/if}\n:: B\n{for @x of []}\n{/for}';
+    const macros = parseMacros(text);
+    pairMacros(macros, isBlock, [0, 3]);
+    expect(macros[0].pair).toBe(macros[1].id);
+    expect(macros[2].pair).toBe(macros[3].id);
+  });
+});

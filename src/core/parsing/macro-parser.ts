@@ -105,32 +105,57 @@ export function parseMacros(text: string): MacroNode[] {
 }
 
 /**
- * Pair opening and closing macros using a name-keyed stack algorithm.
+ * Pair opening and closing macros the way Spindle's AST builder nests them.
  *
- * For each opening macro where isBlock(name) returns true, push onto a
- * per-name stack. For each closing macro, pop the matching opening macro
- * and set both their pair fields to each other's id.
+ * Block macros (isBlock(name) is true) share a single stack, so containers
+ * must close in the reverse order they were opened. A closing macro pairs
+ * with the nearest open container of the same name; containers opened after
+ * that one are left unclosed (crossed nesting such as `{if}{for}{/if}{/for}`
+ * leaves `{for}` and `{/for}` unpaired). A closing macro with no open
+ * container of its name stays unpaired.
+ *
+ * `passageStartLines` lists the header lines of the passages in the text.
+ * Each passage is rendered on its own, so the stack is reset at every
+ * passage boundary and containers never pair across passages. When omitted,
+ * the whole text is treated as one passage.
  *
  * Unmatched macros keep pair = -1.
  */
-export function pairMacros(macros: MacroNode[], isBlock: (name: string) => boolean): void {
-  const stacks: Record<string, number[]> = {};
+export function pairMacros(
+  macros: MacroNode[],
+  isBlock: (name: string) => boolean,
+  passageStartLines: number[] = [],
+): void {
+  const boundaries = [...passageStartLines].sort((a, b) => a - b);
+  let nextBoundary = 0;
+  let stack: MacroNode[] = [];
 
   for (const macro of macros) {
-    const name = macro.name.toLowerCase();
+    // Entering a new passage: anything still open stays unmatched.
+    let crossed = false;
+    while (nextBoundary < boundaries.length && macro.range.start.line >= boundaries[nextBoundary]) {
+      nextBoundary++;
+      crossed = true;
+    }
+    if (crossed) stack = [];
 
     if (!isBlock(macro.name)) continue;
 
     if (macro.open) {
-      if (!stacks[name]) stacks[name] = [];
-      stacks[name].push(macro.id);
-    } else {
-      // Closing macro — pop the matching opening macro
-      const stack = stacks[name];
-      if (stack && stack.length > 0) {
-        const openId = stack.pop()!;
-        macros[openId].pair = macro.id;
-        macro.pair = openId;
+      stack.push(macro);
+      continue;
+    }
+
+    // Closing macro — find the nearest open container with the same name
+    const name = macro.name.toLowerCase();
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (stack[i].name.toLowerCase() === name) {
+        const opener = stack[i];
+        opener.pair = macro.id;
+        macro.pair = opener.id;
+        // Containers opened inside it but never closed remain unmatched
+        stack.length = i;
+        break;
       }
     }
   }

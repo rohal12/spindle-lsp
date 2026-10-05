@@ -43,7 +43,11 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 
     // Parse macros for the whole document
     const macros = parseMacros(text);
-    pairMacros(macros, (name) => workspace.macros.isBlock(name));
+    pairMacros(
+      macros,
+      (name) => workspace.macros.isBlock(name),
+      passages.map(p => p.range.start.line),
+    );
 
     // Collect all passage names across workspace for link validation
     const allPassages = workspace.passages.getAllPassages();
