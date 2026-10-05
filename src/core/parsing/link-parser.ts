@@ -1,4 +1,5 @@
 import type { Range } from '../types.js';
+import { buildLineStarts, offsetToPosition } from './macro-parser.js';
 
 export interface PassageRef {
   name: string;
@@ -7,50 +8,62 @@ export interface PassageRef {
 }
 
 /**
- * Regex for [[display|target]] and [[target]] link syntax.
- * Group 1: optional display text followed by pipe
- * Group 2: passage name (target)
+ * Skip a `.class#id` selector prefix starting at `i`, the way Spindle's
+ * tokenizer does for `[[.cls#id ...]]` links (including `{$var}`, `{_var}`
+ * and `{@var}` interpolations inside a selector name).
+ * Returns the index after the last selector.
  */
-const linkRegex = /\[\[([^\]]*?\|)?([^\]]+?)\]\]/g;
-
-/**
- * Build an array of line-start offsets from text.
- * lineStarts[i] is the character offset where line i begins.
- */
-function buildLineStarts(text: string): number[] {
-  const starts = [0];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\n') {
-      starts.push(i + 1);
+function skipSelectors(text: string, i: number): number {
+  while (text[i] === '.' || text[i] === '#') {
+    i++;
+    for (;;) {
+      if (/[a-zA-Z0-9_-]/.test(text[i] ?? '')) {
+        i++;
+        continue;
+      }
+      const interpolation = /^\{[$_@][\w.]*\}/.exec(text.slice(i));
+      if (!interpolation) break;
+      i += interpolation[0].length;
     }
   }
-  return starts;
+  return i;
 }
 
 /**
- * Convert a character offset to a line/character Position
- * using precomputed line-start offsets.
+ * Locate the target inside a link's inner text, mirroring Spindle's
+ * `parseLink`: `display|target`, then `display->target`, then
+ * `target<-display`, else the whole text. Returns offsets relative to
+ * `inner`, with surrounding whitespace excluded.
  */
-function offsetToPosition(offset: number, lineStarts: number[]): { line: number; character: number } {
-  let low = 0;
-  let high = lineStarts.length - 1;
-  while (low < high) {
-    const mid = (low + high + 1) >> 1;
-    if (lineStarts[mid] <= offset) {
-      low = mid;
-    } else {
-      high = mid - 1;
-    }
+function locateTarget(inner: string): { start: number; end: number } {
+  let start = 0;
+  let end = inner.length;
+
+  const pipeIdx = inner.indexOf('|');
+  const arrowIdx = inner.indexOf('->');
+  const revIdx = inner.indexOf('<-');
+  if (pipeIdx !== -1) {
+    start = pipeIdx + 1;
+  } else if (arrowIdx !== -1) {
+    start = arrowIdx + 2;
+  } else if (revIdx !== -1) {
+    end = revIdx;
   }
-  return { line: low, character: offset - lineStarts[low] };
+
+  while (start < end && /\s/.test(inner[start])) start++;
+  while (end > start && /\s/.test(inner[end - 1])) end--;
+  return { start, end };
 }
 
 /**
  * Parse all passage references from bracket links in the given text.
  *
- * Supports:
+ * Follows Spindle's tokenizer: an optional `.class#id ` prefix after `[[`,
+ * nested `[[...]]` inside the link, and the target forms
  *   [[PassageName]]
  *   [[Display Text|Target]]
+ *   [[Display Text->Target]]
+ *   [[Target<-Display Text]]
  *
  * @param text - the text to parse
  * @param lineOffset - optional line offset added to all line numbers (default 0)
@@ -59,32 +72,54 @@ export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
   const lineStarts = buildLineStarts(text);
   const refs: PassageRef[] = [];
 
-  linkRegex.lastIndex = 0;
-  let match: RegExpExecArray | null;
+  let i = text.indexOf('[[');
+  while (i !== -1) {
+    const linkStart = i;
+    i += 2;
+    if (text[i] === '.' || text[i] === '#') {
+      i = skipSelectors(text, i);
+      if (text[i] === ' ') i++;
+    }
 
-  while ((match = linkRegex.exec(text)) !== null) {
-    const passageName = match[2].trim();
-    if (!passageName) continue;
+    // Find the closing ]], allowing nested [[...]]
+    const innerStart = i;
+    let depth = 1;
+    while (i < text.length) {
+      if (text.startsWith('[[', i)) {
+        depth++;
+        i += 2;
+      } else if (text.startsWith(']]', i)) {
+        if (--depth === 0) break;
+        i += 2;
+      } else {
+        i++;
+      }
+    }
 
-    // Position of the target capture: after `[[` and any `display|` part,
-    // skipping leading whitespace inside the target.
-    const leadingSpace = match[2].length - match[2].trimStart().length;
-    const nameStart = match.index + 2 + (match[1]?.length ?? 0) + leadingSpace;
-    const nameEnd = nameStart + passageName.length;
+    if (depth !== 0) {
+      // Unclosed link: Spindle treats it as text and rescans after `[[`
+      i = text.indexOf('[[', linkStart + 2);
+      continue;
+    }
 
-    const startPos = offsetToPosition(nameStart, lineStarts);
-    const endPos = offsetToPosition(nameEnd, lineStarts);
+    const target = locateTarget(text.slice(innerStart, i));
+    if (target.end > target.start) {
+      const nameStart = innerStart + target.start;
+      const nameEnd = innerStart + target.end;
+      const startPos = offsetToPosition(nameStart, lineStarts);
+      const endPos = offsetToPosition(nameEnd, lineStarts);
 
-    const range: Range = {
-      start: { line: startPos.line + lineOffset, character: startPos.character },
-      end: { line: endPos.line + lineOffset, character: endPos.character },
-    };
+      refs.push({
+        name: text.slice(nameStart, nameEnd),
+        range: {
+          start: { line: startPos.line + lineOffset, character: startPos.character },
+          end: { line: endPos.line + lineOffset, character: endPos.character },
+        },
+        source: 'link',
+      });
+    }
 
-    refs.push({
-      name: passageName,
-      range,
-      source: 'link',
-    });
+    i = text.indexOf('[[', i + 2);
   }
 
   return refs;
