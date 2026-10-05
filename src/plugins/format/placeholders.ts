@@ -114,7 +114,8 @@ export function replaceSvgBlocks(html: string): PlaceholderResult {
 export function restoreSvgBlocks(text: string, tokens: string[]): string {
   let result = text;
   for (let i = 0; i < tokens.length; i++) {
-    result = result.replace(`<!--SVG:${i}-->`, tokens[i]);
+    // Callback form: a replacement string would expand `$&`, `$'`, etc.
+    result = result.replace(`<!--SVG:${i}-->`, () => tokens[i]);
   }
   return result;
 }
@@ -190,8 +191,9 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
 export function restoreSpindleTokens(text: string, tokens: string[]): string {
   let result = text;
   for (let i = 0; i < tokens.length; i++) {
-    result = result.replace(`<!--SP:${i}-->`, tokens[i]);
-    result = result.replace(`__SP${i}__`, tokens[i]);
+    // Callback form: a replacement string would expand `$&`, `$'`, etc.
+    result = result.replace(`<!--SP:${i}-->`, () => tokens[i]);
+    result = result.replace(`__SP${i}__`, () => tokens[i]);
   }
   return result;
 }

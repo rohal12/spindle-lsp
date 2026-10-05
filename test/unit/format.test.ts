@@ -418,6 +418,27 @@ describe('formatDocument', () => {
     expect(svgLine).toContain('viewBox="0 0 24 24"');
   });
 
+  // -- Literal placeholder restoration (issue #15) ---------------------------
+
+  it('restores tokens and SVG containing replacement patterns literally', async () => {
+    for (const seq of ['$&', "$'", '$`', '$$', '$1']) {
+      const input = [
+        ':: Start',
+        '<div>',
+        `{print "${seq}"}`,
+        `<span class="{print '${seq}'}">x</span>`,
+        `<svg><text>${seq}</text></svg>`,
+        '</div>',
+        '',
+      ].join('\n');
+      const result = await formatDocument(input);
+      expect(result).toContain(`{print "${seq}"}`);
+      expect(result).toContain(`class="{print '${seq}'}"`);
+      expect(result).toContain(`<svg><text>${seq}</text></svg>`);
+      expect(result).not.toMatch(/<!--S(P|VG):\d+-->|__SP\d+__/);
+    }
+  });
+
   // -- Expression interpolation in style attributes (issue #8) ----------------
 
   it('does not split style attributes with expression interpolations', async () => {
