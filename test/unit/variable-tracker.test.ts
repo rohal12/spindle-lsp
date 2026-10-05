@@ -92,6 +92,25 @@ describe('VariableTracker', () => {
     expect(usages.length).toBe(0);
   });
 
+  it('skips passages tagged script or stylesheet', () => {
+    const tracker = new VariableTracker();
+    const text = [
+      ':: Code [script]',
+      'const $el = $("#x"); const m = a %mod;',
+      ':: More [script extra]',
+      'window.$helper = 1;',
+      ':: Styles [stylesheet]',
+      '.a::after { content: "$nope"; }',
+      ':: Start',
+      '{$real}',
+    ].join('\n');
+    tracker.scanDocument('file:///story.tw', text, []);
+    expect(tracker.getUsages('el')).toEqual([]);
+    expect(tracker.getUsages('helper')).toEqual([]);
+    expect(tracker.getTransientUsages('mod')).toEqual([]);
+    expect(tracker.getUndeclared('file:///story.tw').map(u => u.name)).toEqual(['real']);
+  });
+
   it('detects null declarations in StoryVariables', () => {
     const tracker = new VariableTracker();
     tracker.parseStoryVariables(`$name = "player"\n$bad = null\n$ok = 0`, 5);

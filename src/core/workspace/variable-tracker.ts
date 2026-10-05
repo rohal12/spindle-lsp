@@ -12,6 +12,9 @@ const EXCLUDED_PASSAGES = new Set([
   'StoryVariables', 'StoryTransients', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface',
 ]);
 
+/** Passage tags whose content is compiled as JS/CSS rather than story markup. */
+const EXCLUDED_TAGS = new Set(['script', 'stylesheet']);
+
 /** Patterns that should be stripped before scanning for variable references. */
 const CLEAN_PATTERNS = [
   /<!--[\s\S]*?-->/g,                           // HTML comments
@@ -261,11 +264,11 @@ export class VariableTracker {
     const transientUsages: VariableUsage[] = [];
 
     // Find all passage boundaries in the document
-    const passageBoundaries: Array<{ name: string; startLine: number }> = [];
+    const passageBoundaries: Array<{ name: string; tags: string[]; startLine: number }> = [];
     for (let i = 0; i < lines.length; i++) {
       const header = parsePassageHeader(lines[i], i);
       if (header) {
-        passageBoundaries.push({ name: header.name, startLine: i });
+        passageBoundaries.push({ name: header.name, tags: header.tags, startLine: i });
       }
     }
 
@@ -273,6 +276,7 @@ export class VariableTracker {
     for (let pi = 0; pi < passageBoundaries.length; pi++) {
       const passage = passageBoundaries[pi];
       if (EXCLUDED_PASSAGES.has(passage.name)) continue;
+      if (passage.tags.some(tag => EXCLUDED_TAGS.has(tag))) continue;
 
       const contentStartLine = passage.startLine + 1;
       const contentEndLine = pi + 1 < passageBoundaries.length
