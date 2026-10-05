@@ -170,6 +170,19 @@ describe('CLI check --config', () => {
       expect(sp100For(output)).toEqual(['Unrecognized macro: {other}']);
     }));
 
+  it('applies discovered macros, with config taking precedence', () =>
+    withProject({
+      'custom.yaml': 'macros:\n  box:\n    container: false\n',
+      'story.twee': ':: StoryInit\n{do}\nStory.defineMacro({name: "box", block: true, render: () => null});\nStory.defineMacro({name: "hello", render: () => null});\n{/do}\n\n:: Start\n{hello}\n{box}\n',
+    }, async (dir) => {
+      const { exitCode, output } = await captureStdout(() =>
+        runCheck(['--config', join(dir, 'custom.yaml'), '--format', 'json', join(dir, 'story.twee')]),
+      );
+      // {box} would be a malformed container (SP101) if discovery won over config
+      expect(exitCode).toBe(0);
+      expect(JSON.parse(output).files).toEqual([]);
+    }));
+
   it('fails with a clear error for a missing config file', () =>
     withProject({
       'spindle.config.json': '{"macros":{"custom":{}}}',

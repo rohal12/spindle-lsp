@@ -85,7 +85,7 @@ function createWorkspace(files: string[]): WorkspaceModel {
   workspace.initialize(fileContents);
 
   if (Object.keys(projectConfig.macros).length > 0) {
-    workspace.macros.loadSupplements(projectConfig.macros);
+    workspace.macros.loadConfig(projectConfig.macros);
   }
 
   return workspace;

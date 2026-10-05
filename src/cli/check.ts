@@ -196,7 +196,7 @@ export async function runCheck(args: string[]): Promise<number> {
 
   // Load user macros from config
   if (Object.keys(projectConfig.macros).length > 0) {
-    workspace.macros.loadSupplements(projectConfig.macros);
+    workspace.macros.loadConfig(projectConfig.macros);
   }
 
   // Compute diagnostics for each file

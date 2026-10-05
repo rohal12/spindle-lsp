@@ -85,7 +85,7 @@ export function startServer(_args: string[]): void {
 
     // Load user-defined macros from project config
     if (Object.keys(projectConfig.macros).length > 0) {
-      workspace.macros.loadSupplements(projectConfig.macros);
+      workspace.macros.loadConfig(projectConfig.macros);
       console.error('[spindle-lsp] loaded config macros:', Object.keys(projectConfig.macros).length);
     }
 
