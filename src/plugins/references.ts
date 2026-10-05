@@ -3,6 +3,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { findPassageRefAt, parseLinks, parseMacroPassageRefs } from '../core/parsing/link-parser.js';
 import { parseMacros } from '../core/parsing/macro-parser.js';
+import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
 // Core references function (no LSP dependency)
@@ -150,6 +151,7 @@ export function findPassageReferences(
   // Scan all documents for [[links]] and macro references
   // ({goto}, {include}, {link "label" "passage"})
   for (const docUri of workspace.documents.getUris()) {
+    if (isMacroSource(docUri)) continue;
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
@@ -241,6 +243,7 @@ export function findWidgetReferences(
   const isBlock = widget?.block ?? false;
 
   for (const docUri of workspace.documents.getUris()) {
+    if (isMacroSource(docUri)) continue;
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
