@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { DocumentStore } from './document-store.js';
 import { PassageIndex } from './passage-index.js';
 import { MacroRegistry } from './macro-registry.js';
-import { VariableTracker } from './variable-tracker.js';
+import { VariableTracker, BUILTIN_STORE_VAR_MACROS } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
 import { parseMacros } from '../parsing/macro-parser.js';
 import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
@@ -244,12 +244,16 @@ export class WorkspaceModel extends EventEmitter {
     }
 
     // Rescan variable usages and macro invocations across all documents
+    const storeVarMacros = new Set(BUILTIN_STORE_VAR_MACROS);
+    for (const m of this.macros.getAllMacros()) {
+      if (m.storeVar) storeVarMacros.add(m.name.toLowerCase());
+    }
     this.widgets.clearInvocations();
     for (const uri of this.documents.getUris()) {
       const text = this.documents.getText(uri);
       if (text) {
         const macros = parseMacros(text);
-        this.variables.scanDocument(uri, text, macros);
+        this.variables.scanDocument(uri, text, macros, storeVarMacros);
         this.widgets.recordInvocations(uri, macros);
       }
     }

@@ -250,3 +250,62 @@ describe('VariableTracker usage ranges after masked exclusions', () => {
     expect(tracker.getTransientUsages('t')[0].range.start).toEqual({ line: 4, character: 1 });
   });
 });
+
+describe('VariableTracker references outside diagnostics (#44)', () => {
+  const text = [
+    ':: StoryInit',
+    '{set $init = 1} {set %initT = 1}',
+    ':: Start',
+    '{textbox "$box"} {checkbox \'$check\' "Label"}',
+    '{print `${$tpl}`} {print `${%tplT}`}',
+    '{link "{$label}"}go{/link} {button "{%btnT}"}{/button}',
+    '{print "plain $literal"} {foo "$notInput"}',
+  ].join('\n');
+
+  function scanned(): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$declared = 0');
+    tracker.parseStoryTransients('%declaredT = 0');
+    tracker.scanDocument('file:///story.tw', text, []);
+    return tracker;
+  }
+
+  it('records executable references for references and rename', () => {
+    const tracker = scanned();
+    expect(tracker.getUsages('init')[0].range.start).toEqual({ line: 1, character: 5 });
+    expect(tracker.getUsages('box')[0].range).toEqual({
+      start: { line: 3, character: 10 },
+      end: { line: 3, character: 14 },
+    });
+    expect(tracker.getUsages('check')).toHaveLength(1);
+    expect(tracker.getUsages('tpl')[0].range.start).toEqual({ line: 4, character: 10 });
+    expect(tracker.getUsages('label')[0].range.start).toEqual({ line: 5, character: 8 });
+    expect(tracker.getTransientUsages('initT')).toHaveLength(1);
+    expect(tracker.getTransientUsages('tplT')).toHaveLength(1);
+    expect(tracker.getTransientUsages('btnT')).toHaveLength(1);
+  });
+
+  it('still ignores literal string text', () => {
+    const tracker = scanned();
+    expect(tracker.getUsages('literal')).toEqual([]);
+    expect(tracker.getUsages('notInput')).toEqual([]);
+  });
+
+  it('keeps these references out of undeclared-variable diagnostics', () => {
+    const tracker = scanned();
+    expect(tracker.getUndeclared('file:///story.tw')).toEqual([]);
+    expect(tracker.getUndeclaredTransient('file:///story.tw')).toEqual([]);
+  });
+
+  it('keeps these references out of array member diagnostics', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$list = []');
+    tracker.scanDocument(
+      'file:///story.tw',
+      ':: StoryInit\n{set $list.bogus = 1}\n:: Start\n{print `${$list.nope}`}',
+      [],
+    );
+    expect(tracker.getUsages('list')).toHaveLength(2);
+    expect(tracker.getArrayMemberAccesses('file:///story.tw')).toEqual([]);
+  });
+});
