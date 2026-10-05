@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { Parameters } from '../../src/core/parsing/parameter-validator.js';
 import { getSignatureHelp } from '../../src/plugins/signature.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
@@ -161,8 +162,8 @@ describe('H79: signature schema and active argument (#79)', () => {
   }
 
   for (const [macro, args, activeIndex, labels] of [
-    ['textbox', '$name ', 1, ['receiver', '[text]']],
-    ['radiobutton', '$name "yes" ', 2, ['receiver', 'text', '[text]']],
+    ['textbox', '$name ', 1, ['variable', '[placeholder]']],
+    ['radiobutton', '$name "yes" ', 2, ['variable', 'value', '[label]']],
   ] as const) {
     it(`H79-${macro}: schema describes each active argument`, () => {
       const { result, sig } = active(`{${macro} ${args}`);
@@ -187,10 +188,10 @@ describe('H79: signature schema and active argument (#79)', () => {
     ws.initialize(new Map([[uri, `:: Start\n${body}`]]));
     const result = getSignatureHelp(uri, { line: 1, character: body.length }, ws)!;
     expect(result.signatures.map(s => s.parameters.map(p => p.label))).toEqual([
-      ['[text]', '[text]'],
-      ['text'],
+      ['[label]', '[more]'],
+      ['label'],
     ]);
-    expect(result.signatures.map(s => s.label)).toEqual(['{option [text] [text]}', '{option text}']);
+    expect(result.signatures.map(s => s.label)).toEqual(['{option [label] [more]}', '{option label}']);
     expect(result.activeSignature).toBe(0);
     expect(result.activeParameter).toBe(1);
   });
@@ -198,7 +199,130 @@ describe('H79: signature schema and active argument (#79)', () => {
   it('H79-repetition: a repeated position stays active for further arguments', () => {
     const result = help('{set $a to 1, $b to 2, $c ')!;
     const sig = result.signatures[result.activeSignature];
-    expect(sig.parameters.map(p => p.label)).toEqual(['...text']);
+    expect(sig.parameters.map(p => p.label)).toEqual(['...assignment']);
     expect(result.activeParameter).toBe(0);
+  });
+});
+
+describe('N-sig: active signature follows typed arguments; parameters are named', () => {
+  const uri = 'file:///story.tw';
+  type Config = Record<string, { parameters: string[]; parameterDocs?: Array<{ name: string; documentation?: string }> }>;
+  function helpWith(body: string, macros: Config = {}) {
+    const ws = new WorkspaceModel();
+    ws.initialize(new Map([[uri, `:: StoryVariables\n$name = ""\n:: Start\n${body}`]]));
+    ws.macros.loadConfig(macros);
+    return getSignatureHelp(uri, { line: 3, character: body.length }, ws)!;
+  }
+  const alt: Config = {
+    pick: {
+      parameters: ['bool &+ text', "number &+ 'a'", 'string &+ number'],
+      parameterDocs: [{ name: 'flag' }, { name: 'second' }],
+    },
+  };
+  const names = (r: ReturnType<typeof helpWith>) => r.signatures[r.activeSignature].parameters.map(p => p.label);
+
+  it('N-sig-type-1: a boolean first argument selects the boolean alternative', () => {
+    const r = helpWith('{pick true ', alt);
+    expect(r.signatures).toHaveLength(3);
+    expect(r.activeSignature).toBe(0);
+    expect(r.activeParameter).toBe(1);
+  });
+
+  it('N-sig-type-2: a number first argument skips the boolean alternative', () => {
+    const r = helpWith('{pick 5 ', alt);
+    expect(names(r)).toEqual(['flag: number', "second: 'a'"]);
+    expect(r.activeSignature).toBe(1);
+    expect(r.activeParameter).toBe(1);
+  });
+
+  it('N-sig-type-3: a string first argument selects the string alternative', () => {
+    const r = helpWith('{pick "x" ', alt);
+    expect(names(r)).toEqual(['flag: string', 'second: number']);
+    expect(r.activeSignature).toBe(2);
+    const s = helpWith('{pick "x" 5', { pick: { parameters: ['number &+ text', 'string &+ number'] } });
+    expect(s.activeSignature).toBe(1);
+  });
+
+  it('N-sig-type-4: a variable fits every alternative, so the first with the position wins', () => {
+    expect(helpWith('{pick $name ', alt).activeSignature).toBe(0);
+  });
+
+  it('N-sig-type-5: the argument still being typed does not narrow the choice', () => {
+    expect(helpWith('{pick 5', alt).activeSignature).toBe(0);
+    expect(helpWith('{pick "x', alt).activeSignature).toBe(0);
+  });
+
+  it('N-sig-type-6: a typed literal in a later position narrows to the literal alternative', () => {
+    const cfg: Config = { pick: { parameters: ["number &+ 'a' &+ text", 'number &+ text &+ number'] } };
+    expect(helpWith("{pick 1 'a' ", cfg).activeSignature).toBe(0);
+    expect(helpWith('{pick 1 "b" ', cfg).activeSignature).toBe(1);
+    expect(helpWith('{pick 1 "b" ', cfg).activeParameter).toBe(2);
+  });
+
+  it('N-sig-type-7: when nothing accepts the prefix, a signature with the position still wins', () => {
+    const r = helpWith('{pick null ', alt);
+    expect(r.activeParameter).toBe(1);
+    expect(r.signatures[r.activeSignature].parameters.length).toBeGreaterThan(1);
+  });
+
+  it('N-sig-type-8: built-in textbox/radiobutton keep their single alternative', () => {
+    expect(helpWith('{textbox $name "p" ').activeSignature).toBe(0);
+    expect(helpWith('{radiobutton $name "a" "b" ').activeSignature).toBe(0);
+  });
+
+  it('N-sig-type-9: built-in option alternatives: two arguments need the two-position signature', () => {
+    const r = helpWith('{listbox $name}{option "a" ');
+    expect(r.activeSignature).toBe(0);
+    expect(r.signatures[r.activeSignature].label).toBe('{option [label] [more]}');
+  });
+
+  it('N-sig-type-10: built-in link/dialog/set: typed prefix keeps the right active parameter', () => {
+    expect(helpWith('{link "go" ').activeParameter).toBe(1);
+    expect(helpWith('{dialog "open" ').signatures[0].parameters.map(p => p.label)).toEqual(['label', '[noclose]']);
+    expect(helpWith('{set $a to 1, $b to 2 ').activeParameter).toBe(0);
+  });
+
+  it('N-sig-name-1: parameters carry descriptive names and documentation, not slot type names', () => {
+    const r = helpWith('{textbox $name ');
+    const [variable, placeholder] = r.signatures[0].parameters;
+    expect(variable.label).toBe('variable');
+    expect(variable.documentation).toContain('Story variable');
+    expect(variable.documentation).toContain('Type: receiver');
+    expect(placeholder.label).toBe('[placeholder]');
+    expect(r.signatures[0].label).toBe('{textbox variable [placeholder]}');
+  });
+
+  it('N-sig-name-2: every built-in macro with parameters names and documents every position', () => {
+    const ws = new WorkspaceModel();
+    ws.initialize(new Map([[uri, ':: Start\n']]));
+    const unnamed: string[] = [];
+    for (const macro of ws.macros.getAllMacros()) {
+      if (!macro.parameters?.some(p => p !== '')) continue;
+      const docs = macro.parameterDocs ?? [];
+      const longest = Math.max(
+        ...macro.parameters.map(p => Math.max(0, ...new Parameters([p]).describe().map(seq => seq.length))),
+      );
+      if (docs.length < longest || docs.some(d => !d.name || !d.documentation)) unnamed.push(macro.name);
+    }
+    expect(unnamed).toEqual([]);
+  });
+
+  it('N-sig-name-3: user config parameterDocs override the names; absent docs fall back to the type', () => {
+    const r = helpWith('{mine 1 ', { mine: { parameters: ['number &+ text'], parameterDocs: [{ name: 'count', documentation: 'How many.' }] } });
+    expect(r.signatures[0].parameters.map(p => p.label)).toEqual(['count', 'text']);
+    expect(r.signatures[0].parameters[0].documentation).toContain('How many.');
+  });
+
+  it('N-sig-wire: LSP parameter labels are offsets that slice the signature label', async () => {
+    const { signaturePlugin } = await import('../../src/plugins/signature.js');
+    let handler: ((p: unknown) => any) | undefined;
+    const ws = new WorkspaceModel();
+    const body = '{textbox $name ';
+    ws.initialize(new Map([[uri, `:: Start\n${body}`]]));
+    signaturePlugin.initialize!({ connection: { onSignatureHelp: (h: any) => { handler = h; } }, workspace: ws } as any);
+    const out = handler!({ textDocument: { uri }, position: { line: 1, character: body.length } });
+    const sig = out.signatures[0];
+    expect(sig.parameters.map((p: any) => sig.label.slice(p.label[0], p.label[1]))).toEqual(['variable', '[placeholder]']);
+    expect(sig.parameters[0].documentation).toContain('Story variable');
   });
 });

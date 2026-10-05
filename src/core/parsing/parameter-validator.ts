@@ -487,6 +487,12 @@ export interface ParameterSlot {
   optional: boolean;
   /** The position may repeat (`...`). */
   repeat: boolean;
+  /**
+   * Whether a typed argument can occupy this position, judged by the same
+   * format-tree crawl the validator uses (variables and expressions always
+   * pass; a type warning is not a rejection).
+   */
+  accepts(arg: Arg): boolean;
 }
 
 const DESCRIBE_ALTERNATIVE_LIMIT = 16;
@@ -495,15 +501,19 @@ const DESCRIBE_ALTERNATIVE_LIMIT = 16;
  * Expand a format into its alternative positional sequences. `|` yields one
  * sequence per branch, `|+` yields the sequence with its right side optional.
  */
+function slotAccepts(leaf: Format): (arg: Arg) => boolean {
+  return (arg) => crawlValidate(leaf, [arg], 0).status === CrawlStatus.Success;
+}
+
 function describeFormat(format: Format): ParameterSlot[][] {
   const cap = (list: ParameterSlot[][]) => list.slice(0, DESCRIBE_ALTERNATIVE_LIMIT);
   const join = (lefts: ParameterSlot[][], rights: ParameterSlot[][]) =>
     cap(lefts.flatMap((l) => rights.map((r) => [...l, ...r])));
   switch (format.kind) {
     case FormatKind.Type:
-      return [[{ label: format.type.name[0], optional: false, repeat: false }]];
+      return [[{ label: format.type.name[0], optional: false, repeat: false, accepts: slotAccepts(format) }]];
     case FormatKind.Literal:
-      return [[{ label: `'${format.value}'`, optional: false, repeat: false }]];
+      return [[{ label: `'${format.value}'`, optional: false, repeat: false, accepts: slotAccepts(format) }]];
     case FormatKind.AndNext:
       return join(describeFormat(format.left), describeFormat(format.right));
     case FormatKind.MaybeNext: {

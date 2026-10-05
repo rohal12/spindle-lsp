@@ -28,9 +28,16 @@ export interface MacroInfo {
   source: 'builtin' | 'user';
   description?: string;
   parameters?: string[];
+  /** Descriptive name and help for each argument position of `parameters`. */
+  parameterDocs?: ParameterDoc[];
   children?: ChildConstraint[];
   parents?: string[];
   skipArgs?: boolean;
+}
+
+export interface ParameterDoc {
+  name: string;
+  documentation?: string;
 }
 
 export interface ChildConstraint {

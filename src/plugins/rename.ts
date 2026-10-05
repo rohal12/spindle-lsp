@@ -64,24 +64,39 @@ export function computeRename(
 
   switch (symbol.kind) {
     case 'passage': {
+      // Each reference spells its target in its own context (bracket link,
+      // JavaScript string, MacroLink string); encode per reference and fail
+      // before returning any edit when a spelling cannot hold the name. The
+      // error names the reference that cannot.
+      const refEdits: Array<{ uri: string; range: Range; text: string }> = [];
+      for (const { uri: refUri, ref } of findPassageRefs(symbol.name, workspace)) {
+        try {
+          refEdits.push({ uri: refUri, range: ref.range, text: encodePassageRefName(ref, newName) });
+        } catch (error) {
+          if (error instanceof RenameError) throw error.at(refUri, ref.range);
+          throw error;
+        }
+      }
       // The header spells the name with Twee escapes (`A\[B`); links and
       // macro arguments use the plain name.
       const declaration = workspace.passages.getPassage(symbol.name);
       if (declaration) {
+        const problem = passageHeaderProblem(newName);
+        if (problem) throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: ${problem}.`).at(declaration.uri, declaration.nameRange);
         addEdit(declaration.uri, declaration.nameRange, escapePassageName(newName));
       }
-      // Each reference spells its target in its own context (bracket link,
-      // JavaScript string, MacroLink string); encode per reference and fail
-      // before returning any edit when a spelling cannot hold the name.
-      for (const { uri: refUri, ref } of findPassageRefs(symbol.name, workspace)) {
-        addEdit(refUri, ref.range, encodePassageRefName(ref, newName));
-      }
+      for (const { uri: refUri, range, text } of refEdits) addEdit(refUri, range, text);
       break;
     }
 
     case 'variable': {
       const bareName = newName.startsWith('$') ? newName.slice(1) :
                        newName.startsWith('%') ? newName.slice(1) : newName;
+      if (!/^[A-Za-z_$][\w$]*$/.test(bareName)) {
+        throw new RenameError(
+          `Cannot rename to ${JSON.stringify(newName)}: a variable name must be a JavaScript identifier (letters, digits, _ and $, not starting with a digit).`,
+        ).at(uri, symbol.range);
+      }
       const refs = symbol.sigil === '%'
         ? findTransientReferences(symbol.name, workspace, true)
         : findVariableReferences(symbol.name, workspace, true);
@@ -98,6 +113,16 @@ export function computeRename(
     }
 
     case 'widget': {
+      if (!/^[A-Za-z][\w-]*$/.test(newName)) {
+        throw new RenameError(
+          `Cannot rename to ${JSON.stringify(newName)}: a widget name must start with a letter and contain only letters, digits, _ and - to be called as {name}.`,
+        ).at(uri, symbol.range);
+      }
+      if (workspace.macros.getMacro(newName)) {
+        throw new RenameError(
+          `Cannot rename to ${JSON.stringify(newName)}: a macro of that name exists and takes precedence over the widget.`,
+        ).at(uri, symbol.range);
+      }
       // Rename invocations
       const invocationRefs = findWidgetReferences(symbol.name, workspace, false);
       for (const ref of invocationRefs) {
@@ -116,8 +141,33 @@ export function computeRename(
   return edits;
 }
 
-/** A rename that cannot be applied without corrupting a reference. */
-export class RenameError extends Error {}
+/**
+ * A rename that cannot be applied without corrupting a reference. The whole
+ * request fails (a partial WorkspaceEdit would leave the story inconsistent);
+ * `uri` and `range` locate the offending reference or declaration.
+ */
+export class RenameError extends Error {
+  uri?: string;
+  range?: Range;
+
+  /** The same error, naming the 1-based position it concerns. */
+  at(uri: string, range: Range): RenameError {
+    const located = new RenameError(
+      `${this.message} (at ${uri}:${range.start.line + 1}:${range.start.character + 1})`,
+    );
+    located.uri = uri;
+    located.range = range;
+    return located;
+  }
+}
+
+/** Why a passage header cannot hold `name`, or null when it can. */
+function passageHeaderProblem(name: string): string | null {
+  if (name.trim() === '') return 'a passage name cannot be empty';
+  if (/[\r\n]/.test(name)) return 'a passage header is a single line, so the name cannot contain a line break';
+  if (name !== name.trim()) return 'a passage name cannot start or end with whitespace';
+  return null;
+}
 
 /**
  * Spell `newName` for the reference's context so that Spindle reads the
