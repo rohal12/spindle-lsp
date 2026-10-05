@@ -10,6 +10,10 @@ describe('diagnostic codes', () => {
     expect(getSeverity(DiagnosticCode.MalformedContainer)).toBe('error');
   });
 
+  it('SP102 is error severity, like the render failure it predicts', () => {
+    expect(getSeverity(DiagnosticCode.MalformedElement)).toBe('error');
+  });
+
   it('SP400 is hint severity', () => {
     expect(getSeverity(DiagnosticCode.DeadEndPassage)).toBe('hint');
   });
