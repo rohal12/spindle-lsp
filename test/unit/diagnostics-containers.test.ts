@@ -129,6 +129,29 @@ describe('branch macros sit directly inside their parent', () => {
   });
 });
 
+describe('{stop} only works inside {repeat}', () => {
+  // Spindle's Stop.tsx calls stop() from RepeatContext, which only
+  // {repeat} provides; elsewhere it is a no-op.
+  const vars = ':: StoryVariables\n$x = 1\n';
+
+  it('flags {stop} in a {for} loop', () => {
+    const diags = diagnose(':: Start\n{for @i of [1, 2, 3]}\n{@i}\n{stop}\n{/for}\n');
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('{repeat}');
+    expect(diags[0].message).not.toContain('for');
+  });
+
+  it('flags {stop} outside any loop', () => {
+    expect(codes(diagnose(':: Start\n{stop}\n'))).toEqual(['SP107']);
+  });
+
+  it('accepts {stop} anywhere inside {repeat}', () => {
+    expect(diagnose(':: Start\n{repeat 1s}\n{stop}\n{/repeat}\n')).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n{repeat 1s}\n{if $x}\n{stop}\n{/if}\n{/repeat}\n`)).toEqual([]);
+    expect(diagnose(':: Start\n{repeat 1s}\n{for @i of [1, 2]}\n{stop}\n{/for}\n{/repeat}\n')).toEqual([]);
+  });
+});
+
 describe('container child constraints ignore capitalization', () => {
   it('counts an upper-case {CASE} towards {switch}\'s minimum', () => {
     expect(diagnose(':: Start\n{switch 1}\n{CASE 1}\none\n{/switch}\n')).toEqual([]);
