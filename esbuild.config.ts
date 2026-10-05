@@ -3,13 +3,16 @@ import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8'));
 
+// Tests build into a temporary location with this; releases use dist/bin.js.
+const outfile = process.env.SPINDLE_LSP_OUTFILE || 'dist/bin.js';
+
 await build({
   entryPoints: ['src/bin.ts'],
   bundle: true,
   platform: 'node',
   target: 'node18',
   format: 'esm',
-  outfile: 'dist/bin.js',
+  outfile,
   external: [
     'prettier',
   ],
