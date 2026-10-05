@@ -55,8 +55,9 @@ small fixture, parse its declaration, or inspect the exact runtime call path.
 Record normalization done by the compiler, such as CRLF to LF. Upstream main is
 additional evidence, not a replacement for the installed dependency. A syntax
 case accepted by another runtime version is not automatically a defect here.
-The current audit covers Spindle 0.45.1; compatibility across the package's
-entire `>=0.34.0` peer range remains unverified.
+The current audit covers Spindle 0.45.1. Peer-range results (green on
+0.43.0-0.50.0; see [2026-10-06-peer-range.md](2026-10-06-peer-range.md)) are
+produced by `scripts/peer-matrix.sh <version>`.
 
 Different runtime consumers have different contracts:
 
