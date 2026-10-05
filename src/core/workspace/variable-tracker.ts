@@ -1,4 +1,4 @@
-import type { DeclaredVariable, MacroNode, Range, Position } from '../types.js';
+import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
 import { parsePassageHeader } from '../parsing/passage-parser.js';
 
 /** Regex to match $variable references including dot notation. */
@@ -33,6 +33,85 @@ interface VariableUsage {
   baseName: string;
   fullName: string;
   range: Range;
+}
+
+/** A `$var.member` / `%var.member` access on a variable declared as an array. */
+export interface ArrayMemberAccess {
+  sigil: '$' | '%';
+  name: string;
+  member: string;
+  range: Range;
+}
+
+/**
+ * Every property name a JavaScript array has: own and inherited members of
+ * Array.prototype, plus recent additions that older Node runtimes may lack.
+ */
+const ARRAY_MEMBERS: ReadonlySet<string> = new Set([
+  ...Object.getOwnPropertyNames(Array.prototype),
+  ...Object.getOwnPropertyNames(Object.prototype),
+  'at', 'flat', 'flatMap', 'includes',
+  'findLast', 'findLastIndex',
+  'toReversed', 'toSorted', 'toSpliced', 'with',
+]);
+
+/**
+ * Find the index of the character that closes the literal starting at
+ * `start` (a bracket, brace or quote). Strings and nested brackets are
+ * skipped. Returns -1 when the literal is unterminated or contains a
+ * template interpolation.
+ */
+function findLiteralEnd(text: string, start: number): number {
+  const open = text[start];
+  if (open === '"' || open === "'" || open === '`') {
+    for (let i = start + 1; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '\\') { i++; continue; }
+      if (open === '`' && ch === '$' && text[i + 1] === '{') return -1;
+      if (ch === open) return i;
+    }
+    return -1;
+  }
+
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const end = findLiteralEnd(text, i);
+      if (end === -1) return -1;
+      i = end;
+      continue;
+    }
+    if (ch === '[' || ch === '{' || ch === '(') depth++;
+    else if (ch === ']' || ch === '}' || ch === ')') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Infer the type of a StoryVariables/StoryTransients default from its
+ * expression text, the way Spindle's inferSchema() would see the evaluated
+ * value. Only single literals are recognised: anything else (for example
+ * `[1, 2].length` or `makeDefaults()`) returns undefined rather than a guess.
+ */
+export function inferLiteralType(expr: string): VariableValueType | undefined {
+  const e = expr.trim();
+  if (e === '') return undefined;
+  if (e === 'true' || e === 'false') return 'boolean';
+  if (/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(e)) return 'number';
+
+  const first = e[0];
+  if (first !== '[' && first !== '{' && first !== '"' && first !== "'" && first !== '`') {
+    return undefined;
+  }
+  if (findLiteralEnd(e, 0) !== e.length - 1) return undefined;
+
+  if (first === '[') return 'array';
+  if (first === '{') return 'object';
+  return 'string';
 }
 
 /**
@@ -91,6 +170,8 @@ export class VariableTracker {
       }
 
       const decl: DeclaredVariable = { name, sigil: '$' };
+      const type = inferLiteralType(expr);
+      if (type) decl.type = type;
 
       // Extract top-level object fields for dot-notation validation
       if (expr.startsWith('{')) {
@@ -146,6 +227,8 @@ export class VariableTracker {
       }
 
       const decl: DeclaredVariable = { name, sigil: '%' };
+      const type = inferLiteralType(expr);
+      if (type) decl.type = type;
 
       // Extract top-level object fields for dot-notation validation
       if (expr.startsWith('{')) {
@@ -348,6 +431,31 @@ export class VariableTracker {
   /** Whether a StoryTransients passage has been parsed. */
   hasStoryTransients(): boolean {
     return this._hasStoryTransients;
+  }
+
+  /**
+   * Get `$var.member` / `%var.member` accesses in a document where `var` is
+   * declared with an array literal default and `member` is not a property
+   * that JavaScript arrays have (so the access always yields undefined).
+   */
+  getArrayMemberAccesses(uri: string): ArrayMemberAccess[] {
+    const results: ArrayMemberAccess[] = [];
+    const sources: Array<['$' | '%', VariableUsage[] | undefined, Map<string, DeclaredVariable>]> = [
+      ['$', this.usagesByUri.get(uri), this.declared],
+      ['%', this.transientUsagesByUri.get(uri), this.declaredTransient],
+    ];
+
+    for (const [sigil, usages, declared] of sources) {
+      if (!usages) continue;
+      for (const u of usages) {
+        const member = u.fullName.split('.')[1];
+        if (member === undefined) continue;
+        if (declared.get(u.baseName)?.type !== 'array') continue;
+        if (ARRAY_MEMBERS.has(member)) continue;
+        results.push({ sigil, name: u.baseName, member, range: u.range });
+      }
+    }
+    return results;
   }
 
   /** Get variables declared with null values in StoryVariables. */

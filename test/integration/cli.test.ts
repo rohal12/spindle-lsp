@@ -83,4 +83,35 @@ describe('CLI check command', () => {
     expect(output).toContain('Found');
     expect(output).toContain('problem');
   });
+
+  it('reports runtime pitfalls (SP205, SP206, SP302, SP303) at their severities', async () => {
+    const file = join(fixturesDir, 'runtime-pitfalls.tw');
+    const { exitCode, output } = await captureStdout(() =>
+      runCheck(['--format', 'json', '--severity', 'hint', file]),
+    );
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(output);
+    const diags: Array<{ code: string; severity: string; message: string }> = parsed.files[0].diagnostics;
+    const byCode = (code: string) => diags.filter(d => d.code === code);
+
+    expect(byCode('SP205')).toHaveLength(1);
+    expect(byCode('SP205')[0].message).toContain("'_b'");
+    expect(byCode('SP206')).toHaveLength(1);
+    expect(byCode('SP206')[0].message).toContain('$flags.discovered_corruption');
+    expect(byCode('SP302')).toHaveLength(1);
+    expect(byCode('SP302')[0].message).toContain('{ActResist}');
+    expect(byCode('SP303')).toHaveLength(1);
+    expect(byCode('SP303')[0]).toMatchObject({ severity: 'hint' });
+    expect(byCode('SP303')[0].message).toContain('"ActResist"');
+  });
+
+  it('hides the SP303 hint at --severity warning', async () => {
+    const file = join(fixturesDir, 'runtime-pitfalls.tw');
+    const { output } = await captureStdout(() =>
+      runCheck(['--format', 'json', '--severity', 'warning', file]),
+    );
+    const codes = JSON.parse(output).files[0].diagnostics.map((d: { code: string }) => d.code);
+    expect(codes).not.toContain('SP303');
+    expect(codes).toEqual(expect.arrayContaining(['SP205', 'SP206', 'SP302']));
+  });
 });

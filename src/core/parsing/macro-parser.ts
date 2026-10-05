@@ -20,7 +20,7 @@ const macroRegex = /(?<!\\)\{(\/)?(?:((?:[#.][a-zA-Z][\w-]*\s*)*)([A-Za-z][\w-]*
  * Build an array of line-start offsets from text.
  * lineStarts[i] is the character offset where line i begins.
  */
-function buildLineStarts(text: string): number[] {
+export function buildLineStarts(text: string): number[] {
   const starts = [0];
   for (let i = 0; i < text.length; i++) {
     if (text[i] === '\n') {
@@ -34,7 +34,7 @@ function buildLineStarts(text: string): number[] {
  * Convert a character offset to a line/character Position
  * using precomputed line-start offsets.
  */
-function offsetToPosition(offset: number, lineStarts: number[]): { line: number; character: number } {
+export function offsetToPosition(offset: number, lineStarts: number[]): { line: number; character: number } {
   // Binary search for the line containing this offset
   let low = 0;
   let high = lineStarts.length - 1;
