@@ -66,9 +66,10 @@ export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
     const passageName = match[2].trim();
     if (!passageName) continue;
 
-    // Calculate position of the passage name within the match
-    const nameStartInMatch = match[0].indexOf(passageName);
-    const nameStart = match.index + nameStartInMatch;
+    // Position of the target capture: after `[[` and any `display|` part,
+    // skipping leading whitespace inside the target.
+    const leadingSpace = match[2].length - match[2].trimStart().length;
+    const nameStart = match.index + 2 + (match[1]?.length ?? 0) + leadingSpace;
     const nameEnd = nameStart + passageName.length;
 
     const startPos = offsetToPosition(nameStart, lineStarts);

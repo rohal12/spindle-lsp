@@ -46,4 +46,11 @@ describe('passage rename', () => {
       ':: Renamed\nText\n:: Start\n[[Renamed]]',
     );
   });
+
+  it('edits the link target and keeps display text equal to it', () => {
+    const content = ':: Start\n[[Target|Target]] [[Target page|Target]]\n:: Target\nText';
+    expect(renamePassage(content, 'Target', 'Renamed')).toBe(
+      ':: Start\n[[Target|Renamed]] [[Target page|Renamed]]\n:: Renamed\nText',
+    );
+  });
 });

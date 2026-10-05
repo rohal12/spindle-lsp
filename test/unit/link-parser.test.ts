@@ -37,4 +37,18 @@ describe('parseLinks', () => {
     expect(refs[0].range.start.line).toBe(1);
     expect(refs[1].range.start.line).toBe(3);
   });
+
+  it('locates the target, not display text equal to it', () => {
+    const refs = parseLinks('[[Target|Target]]');
+    expect(refs).toHaveLength(1);
+    expect(refs[0].range.start.character).toBe(9);
+    expect(refs[0].range.end.character).toBe(15);
+  });
+
+  it('locates the target when the display text contains it', () => {
+    const refs = parseLinks('[[Go to Target now| Target ]]');
+    expect(refs[0].name).toBe('Target');
+    expect(refs[0].range.start.character).toBe(20);
+    expect(refs[0].range.end.character).toBe(26);
+  });
 });
