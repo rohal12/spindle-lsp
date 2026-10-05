@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { glob } from 'glob';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
+import { addProjectMacroSources } from '../core/workspace/macro-sources.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
 import { formatDocument } from '../plugins/format.js';
 import type { Diagnostic } from '../core/types.js';
@@ -42,16 +43,19 @@ async function resolveFiles(pattern: string, cwd: string): Promise<string[]> {
   return [...new Set(matches)];
 }
 
-/**
- * Find the config root by walking up from the common directory of matched files.
- */
-function findConfigRoot(files: string[]): string {
-  const dirs = files.map(f => resolve(f, '..'));
-  let configRoot = dirs.reduce((a, b) => {
+/** The common directory of the matched files. */
+function commonDirectory(files: string[]): string {
+  return files.map(f => resolve(f, '..')).reduce((a, b) => {
     while (!b.startsWith(a)) a = resolve(a, '..');
     return a;
   });
+}
 
+/**
+ * Find the config root by walking up from the common directory of matched files.
+ */
+function findConfigRoot(commonDir: string): string {
+  let configRoot = commonDir;
   let search = configRoot;
   for (let i = 0; i < 10; i++) {
     if (findConfigFile(search)) { configRoot = search; break; }
@@ -63,10 +67,12 @@ function findConfigRoot(files: string[]): string {
 }
 
 /**
- * Create a workspace model loaded with the given files and project config.
+ * Create a workspace model loaded with the given files, the project's JS/TS
+ * macro sources (for macro discovery) and the project config.
  */
-function createWorkspace(files: string[]): WorkspaceModel {
-  const configRoot = findConfigRoot(files);
+async function createWorkspace(files: string[]): Promise<WorkspaceModel> {
+  const commonDir = commonDirectory(files);
+  const configRoot = findConfigRoot(commonDir);
   const projectConfig = loadConfigFromDisk(configRoot);
 
   const workspace = new WorkspaceModel({ workspaceRoot: configRoot });
@@ -82,6 +88,7 @@ function createWorkspace(files: string[]): WorkspaceModel {
     }
   }
 
+  await addProjectMacroSources(fileContents, commonDir);
   workspace.initialize(fileContents);
 
   if (Object.keys(projectConfig.macros).length > 0) {
@@ -89,6 +96,65 @@ function createWorkspace(files: string[]): WorkspaceModel {
   }
 
   return workspace;
+}
+
+/** A diagnostic as returned by the `spindle_check` tool. */
+export interface CheckResult {
+  file: string;
+  line: number;
+  column: number;
+  severity: string;
+  code: string;
+  message: string;
+}
+
+/**
+ * Run diagnostics on the files matching `pattern` (the `spindle_check` tool).
+ * File paths in the results are relative to `cwd` when inside it.
+ */
+export async function checkFiles(
+  pattern: string,
+  severity?: 'error' | 'warning' | 'info' | 'hint',
+  cwd: string = process.cwd(),
+): Promise<CheckResult[]> {
+  const files = await resolveFiles(pattern, cwd);
+  if (files.length === 0) return [];
+
+  const workspace = await createWorkspace(files);
+
+  try {
+    const results: CheckResult[] = [];
+
+    for (const filePath of files) {
+      const uri = pathToFileURL(filePath).toString();
+      // Unreadable files were skipped
+      if (!workspace.documents.has(uri)) continue;
+      let diags = computeDiagnostics(uri, workspace);
+
+      if (severity) {
+        diags = filterBySeverity(diags, severity);
+      }
+
+      const relativePath = filePath.startsWith(cwd)
+        ? filePath.slice(cwd.length + 1)
+        : filePath;
+
+      for (const d of diags) {
+        results.push({
+          file: relativePath,
+          line: d.range.start.line + 1,
+          column: d.range.start.character + 1,
+          severity: d.severity,
+          code: d.code,
+          message: d.message,
+        });
+      }
+    }
+
+    return results;
+  } finally {
+    workspace.dispose();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,57 +179,10 @@ export async function startMcpServer(): Promise<void> {
       severity: z.enum(['error', 'warning', 'info', 'hint']).optional().describe('Minimum severity to include'),
     },
     async (args) => {
-      const cwd = process.cwd();
-      const files = await resolveFiles(args.path, cwd);
-
-      if (files.length === 0) {
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify([], null, 2) }],
-        };
-      }
-
-      const workspace = createWorkspace(files);
-
-      try {
-        const results: Array<{
-          file: string;
-          line: number;
-          column: number;
-          severity: string;
-          code: string;
-          message: string;
-        }> = [];
-
-        for (const [uri] of workspace.documents.getUris().map(u => [u] as const)) {
-          let diags = computeDiagnostics(uri, workspace);
-
-          if (args.severity) {
-            diags = filterBySeverity(diags, args.severity);
-          }
-
-          const filePath = fileURLToPath(uri);
-          const relativePath = filePath.startsWith(cwd)
-            ? filePath.slice(cwd.length + 1)
-            : filePath;
-
-          for (const d of diags) {
-            results.push({
-              file: relativePath,
-              line: d.range.start.line + 1,
-              column: d.range.start.character + 1,
-              severity: d.severity,
-              code: d.code,
-              message: d.message,
-            });
-          }
-        }
-
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }],
-        };
-      } finally {
-        workspace.dispose();
-      }
+      const results = await checkFiles(args.path, args.severity);
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }],
+      };
     },
   );
 
