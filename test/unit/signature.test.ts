@@ -95,3 +95,40 @@ describe('getSignatureHelp for widget arguments', () => {
     expect(activeParameter('$a + 1, ')).toBe(1);
   });
 });
+
+describe('getSignatureHelp finds the enclosing macro', () => {
+  function help(content: string) {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "counter" @count @label}\n{@count} {@label}\n{/widget}',
+      },
+      { name: 'test.tw', content },
+    );
+    // The cursor sits at the end of the document
+    const lines = content.split('\n');
+    const position = { line: lines.length - 1, character: lines[lines.length - 1].length };
+    return getSignatureHelp('file:///test.tw', position, ws);
+  }
+
+  it('looks past braces inside arguments', () => {
+    expect(help(':: Start\n{counter {a: 1}, ')?.activeParameter).toBe(1);
+    expect(help(':: Start\n{counter "x}", ')?.activeParameter).toBe(1);
+    expect(help(':: Start\n{counter `${1}}`, ')?.activeParameter).toBe(1);
+  });
+
+  it('follows arguments across lines', () => {
+    const result = help(':: Start\n{counter {\n  a: 1\n}, ');
+    expect(result?.signatures[0].label).toContain('counter');
+    expect(result?.activeParameter).toBe(1);
+  });
+
+  it('returns null after the macro has closed', () => {
+    expect(help(':: Start\n{counter {a: 1}} after ')).toBeNull();
+    expect(help(':: Start\n{counter "}"} after ')).toBeNull();
+  });
+
+  it('does not reach into the previous passage', () => {
+    expect(help(':: A\n{counter 5\n:: B\ntext ')).toBeNull();
+  });
+});
