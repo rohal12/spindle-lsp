@@ -35,6 +35,15 @@ describe('classifyPassage', () => {
     expect(classifyPassage(':: Start [widget]')).toBe('normal');
   });
 
+  it('detects script/stylesheet within a multi-tag list', () => {
+    expect(classifyPassage(':: JS [script extra]')).toBe('script');
+    expect(classifyPassage(':: JS [extra script]')).toBe('script');
+    expect(classifyPassage(':: JS [a  script\tb]')).toBe('script');
+    expect(classifyPassage(':: CSS [stylesheet extra]')).toBe('stylesheet');
+    expect(classifyPassage(':: CSS [extra stylesheet]')).toBe('stylesheet');
+    expect(classifyPassage(':: Start [scripted extra]')).toBe('normal');
+  });
+
   it('handles case-insensitive tags', () => {
     expect(classifyPassage(':: Init [Script]')).toBe('script');
     expect(classifyPassage(':: Styles [Stylesheet]')).toBe('stylesheet');

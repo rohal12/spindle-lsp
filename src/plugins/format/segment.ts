@@ -65,7 +65,8 @@ export function splitPassages(text: string): Passage[] {
 export function classifyPassage(header: string): 'script' | 'stylesheet' | 'normal' {
   const tagMatch = header.match(/\[([^\]]*)\]/g);
   if (!tagMatch) return 'normal';
-  const tags = tagMatch.map(t => t.slice(1, -1).trim().toLowerCase());
+  // A bracket holds a whitespace-separated tag list: `[script extra]`
+  const tags = tagMatch.flatMap(t => t.slice(1, -1).toLowerCase().split(/\s+/));
   if (tags.includes('script')) return 'script';
   if (tags.includes('stylesheet')) return 'stylesheet';
   return 'normal';

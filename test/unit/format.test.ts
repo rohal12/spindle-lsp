@@ -255,6 +255,17 @@ describe('formatDocument', () => {
     expect(result).toContain('color: red;');
   });
 
+  it('formats code in passages with multiple tags (issue #35)', async () => {
+    for (const tags of ['[script extra]', '[extra script]']) {
+      const result = await formatDocument(`:: JS ${tags}\nconst x={a:1};\n`);
+      expect(result).toBe(`:: JS ${tags}\nconst x = { a: 1 };\n`);
+    }
+    for (const tags of ['[stylesheet extra]', '[extra stylesheet]']) {
+      const result = await formatDocument(`:: CSS ${tags}\n.foo{color:red}\n`);
+      expect(result).toContain('color: red;');
+    }
+  });
+
   // -- Inline <script> formatting ----------------------------------------
 
   it('formats JavaScript inside <script> tags', async () => {
