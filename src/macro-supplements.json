@@ -23,9 +23,6 @@
   },
   "for": {
     "name": "for",
-    "children": [
-      { "name": "stop" }
-    ],
     "container": true,
     "description": "Loop block. Usage: `{for @item of $list}...{/for}` or `{for @item, @index of $list}...{/for}`",
     "skipArgs": true
@@ -38,8 +35,8 @@
   },
   "stop": {
     "name": "stop",
-    "parents": ["for", "repeat"],
-    "description": "Breaks out of a `{for}` or `{repeat}` loop.\n\nUsage: `{stop}`",
+    "parents": ["repeat"],
+    "description": "Stops the enclosing `{repeat}` loop. It has no effect anywhere else, including in a `{for}` loop.\n\nUsage: `{stop}`",
     "parameters": []
   },
   "switch": {
@@ -108,8 +105,8 @@
       { "name": "next" }
     ],
     "container": true,
-    "description": "Displays its contents after a specified delay.\n\nUsage:\n\n```\n{timed delay}\n  ...\n  {next delay}\n  ...\n{/timed}\n```",
-    "parameters": ["text"]
+    "description": "Displays its contents after a specified delay (immediately when omitted).\n\nUsage:\n\n```\n{timed delay}\n  ...\n  {next delay}\n  ...\n{/timed}\n```",
+    "parameters": ["text", ""]
   },
   "repeat": {
     "name": "repeat",
