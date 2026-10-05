@@ -120,3 +120,91 @@ const CODE_PASSAGE_TAGS = new Set(['script', 'stylesheet']);
 export function isScriptOrStylesheetPassage(passage: { tags?: string[] }): boolean {
   return passage.tags?.some(t => CODE_PASSAGE_TAGS.has(t)) ?? false;
 }
+
+/**
+ * Passages that Spindle never tokenizes as markup. The compiler turns
+ * StoryTitle and StoryData into story attributes; Spindle reads
+ * StoryVariables and StoryTransients as declarations (parseStoryVariables)
+ * and runs SaveTitle as a JavaScript function body. Script and stylesheet
+ * passages become the story's JavaScript and CSS. Every other passage can
+ * be rendered: Spindle tokenizes StoryInit, StoryInterface, StoryLoading
+ * and the Passage* passages itself, widget passages at startup, and any
+ * passage it navigates to, includes or opens in a dialog.
+ */
+export const NON_MARKUP_PASSAGES: ReadonlySet<string> = new Set([
+  'StoryTitle', 'StoryData', 'StoryVariables', 'StoryTransients', 'SaveTitle',
+]);
+
+/** What the role of a passage depends on. */
+export interface PassageRole {
+  name?: string;
+  tags?: string[];
+}
+
+/** Whether Spindle tokenizes the passage's body as story markup. */
+export function isMarkupPassage(passage: PassageRole): boolean {
+  return !(passage.name !== undefined && NON_MARKUP_PASSAGES.has(passage.name)) && !isScriptOrStylesheetPassage(passage);
+}
+
+/**
+ * Replace the body of every passage Spindle does not tokenize as markup
+ * (see isMarkupPassage()) with spaces, keeping line breaks so offsets and
+ * positions are unchanged. This is the one masking every consumer of
+ * macros, links and widget calls shares, so that code or data in such a
+ * passage is never read as markup. `range.start.line` is the header line.
+ */
+export function maskNonMarkupPassages(text: string, passages: Array<PassageRole & { range: Range }>): string {
+  const excluded = passages.filter(passage => !isMarkupPassage(passage));
+  if (excluded.length === 0) return text;
+
+  const lines = text.split('\n');
+  for (const passage of excluded) {
+    const last = Math.min(passage.range.end.line, lines.length - 1);
+    for (let i = passage.range.start.line + 1; i <= last; i++) {
+      lines[i] = lines[i].replace(/[^\r]/g, ' ');
+    }
+  }
+  return lines.join('\n');
+}
+
+/** A line starting with `::` (lines end at `\n`, as everywhere else in the server). */
+export const HAS_PASSAGE_HEADER = /(?<![^\n])::/;
+const PASSAGE_HEADER_LINE = /(?<![^\n])::[^\r\n]*/g;
+
+/** A passage body of a Twee document: the text between two header lines. */
+export interface PassageBody {
+  /** Offset of the first character after the header line (its line start). */
+  start: number;
+  /** Offset of the next header line, or the end of the text. */
+  end: number;
+  /** Line of `start`. */
+  line: number;
+}
+
+/**
+ * Split a Twee document at its passage header lines (a line starting with
+ * `::`). Spindle renders each passage on its own, so the tokenizer never
+ * reads a macro, link or tag across a header; the header lines themselves are
+ * not in any body. Text before the first header is one body, as for a text
+ * that is a single passage's content.
+ */
+export function passageBodies(text: string): PassageBody[] {
+  const bodies: PassageBody[] = [];
+  let start = 0;
+  let line = 0;
+  for (const header of text.matchAll(PASSAGE_HEADER_LINE)) {
+    if (header.index > start) bodies.push({ start, end: header.index, line });
+    // Count the lines up to the one after the header
+    line += countLines(text, start, header.index) + 1;
+    const newline = text.indexOf('\n', header.index);
+    start = newline === -1 ? text.length : newline + 1;
+  }
+  if (start < text.length) bodies.push({ start, end: text.length, line });
+  return bodies;
+}
+
+function countLines(text: string, from: number, to: number): number {
+  let count = 0;
+  for (let i = text.indexOf('\n', from); i !== -1 && i < to; i = text.indexOf('\n', i + 1)) count++;
+  return count;
+}

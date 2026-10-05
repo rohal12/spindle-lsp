@@ -2,7 +2,7 @@ import type { CompletionItem } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseMacros, pairMacros, buildLineStarts } from '../core/parsing/macro-parser.js';
+import { parseDocumentMacros, buildLineStarts } from '../core/parsing/macro-parser.js';
 import { inAttributeValue } from '../core/parsing/html-scanner.js';
 
 // ---------------------------------------------------------------------------
@@ -116,12 +116,7 @@ function getClosingMacroCompletions(
   range: Range,
 ): CompletionItem[] {
   const passages = workspace.passages.getPassagesInDocument(uri);
-  const macros = parseMacros(text);
-  pairMacros(
-    macros,
-    (name) => workspace.isContainer(name),
-    passages.map(p => p.range.start.line),
-  );
+  const macros = parseDocumentMacros(text, passages, (name) => workspace.isContainer(name));
 
   // Only containers opened in the cursor's passage can be closed here
   const passageStart = workspace.passages.getPassageAt(uri, position.line)?.range.start.line ?? 0;

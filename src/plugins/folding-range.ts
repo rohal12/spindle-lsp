@@ -1,7 +1,7 @@
 import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseMacros, pairMacros } from '../core/parsing/macro-parser.js';
+import { parseDocumentMacros } from '../core/parsing/macro-parser.js';
 import { FoldingRangeKind } from 'vscode-languageserver';
 
 // ---------------------------------------------------------------------------
@@ -42,12 +42,7 @@ export function computeFoldingRanges(uri: string, workspace: WorkspaceModel): Fo
   }
 
   // Block macro folding ranges
-  const macros = parseMacros(text);
-  pairMacros(
-    macros,
-    (name) => workspace.isContainer(name),
-    passages.map(p => p.range.start.line),
-  );
+  const macros = parseDocumentMacros(text, passages, (name) => workspace.isContainer(name));
 
   for (const macro of macros) {
     if (macro.open && macro.pair !== -1) {

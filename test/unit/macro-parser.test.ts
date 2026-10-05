@@ -398,14 +398,25 @@ describe('pairMacros', () => {
 describe('pairMacros nesting and passage boundaries', () => {
   const isBlock = (name: string) => name === 'if' || name === 'for';
 
-  it('does not pair crossed containers', () => {
+  it('does not pair a closer over a container that is closed later (crossed containers)', () => {
     const macros = parseMacros('{if true}{for @x of []}{/if}{/for}');
     pairMacros(macros, isBlock);
-    // {/if} closes {if}; the {for} opened inside it is left unclosed
+    // buildAST throws "Expected {/for} but found {/if}" at {/if}: that closer
+    // is the error; {for} and {/for} pair as the builder would pair them.
+    expect(macros[2].pair).toBe(-1);
+    expect(macros[2].expected).toBe('for');
+    expect(macros[1].pair).toBe(macros[3].id);
+    expect(macros[3].pair).toBe(macros[1].id);
+    expect(macros[0].pair).toBe(-1);
+  });
+
+  it('pairs a closer with its opener when the containers above it are never closed', () => {
+    const macros = parseMacros('{if true}{for @x of []}{/if}');
+    pairMacros(macros, isBlock);
     expect(macros[0].pair).toBe(macros[2].id);
     expect(macros[2].pair).toBe(macros[0].id);
     expect(macros[1].pair).toBe(-1);
-    expect(macros[3].pair).toBe(-1);
+    expect(macros[2].expected).toBeUndefined();
   });
 
   it('pairs different containers nested in order', () => {

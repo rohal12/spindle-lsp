@@ -4,7 +4,7 @@ import { PassageIndex } from './passage-index.js';
 import { MacroRegistry } from './macro-registry.js';
 import { VariableTracker, BUILTIN_STORE_VAR_MACROS } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
-import { parseMacros } from '../parsing/macro-parser.js';
+import { parseDocumentMacros, type MacroHeadPairing } from '../parsing/macro-parser.js';
 import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 import { isMacroSource } from './macro-sources.js';
@@ -150,10 +150,10 @@ export class WorkspaceModel extends EventEmitter {
   }
 
   /** Per-passage closer pairing for the macro heads of document `uri`. */
-  macroHeadPairing(uri: string): { isBlock: (name: string) => boolean; passageStartLines: number[] } {
+  macroHeadPairing(uri: string): MacroHeadPairing {
     return {
       isBlock: (name) => this.isContainer(name),
-      passageStartLines: this.passages.getPassagesInDocument(uri).map((p) => p.range.start.line),
+      passages: this.passages.getPassagesInDocument(uri),
     };
   }
 
@@ -349,7 +349,7 @@ export class WorkspaceModel extends EventEmitter {
       const text = this.documents.getText(uri);
       // Empty documents are scanned too, dropping their previous usages
       if (text !== undefined && !isMacroSource(uri)) {
-        const macros = parseMacros(text);
+        const macros = parseDocumentMacros(text, this.passages.getPassagesInDocument(uri));
         this.variables.scanDocument(uri, text, macros, storeVarMacros);
         this.widgets.recordInvocations(uri, macros);
       }

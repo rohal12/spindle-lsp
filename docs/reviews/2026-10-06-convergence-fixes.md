@@ -142,3 +142,24 @@ variable (must be an identifier after optional sigil), widget (callable
 whatever `prepareRename` accepts can be renamed to its own placeholder.
 Tests: `N-rename-*` in `test/unit/rename.test.ts` (8 new; 6 fail on the
 previous code).
+
+## Markup contexts: links, passage roles, attributes, crossing (branch `fix/close-l-refs`)
+
+Spindle 0.45.1 tokenizer, `interpolate()` and `buildAST` are the oracles
+(`test/unit/markup-differential.test.ts`, `markup-contexts.test.ts`,
+`macro-pairing-runtime.test.ts`; LF and CRLF). Normal gate: 66 files / 1,587
+tests (base 63 / 1,422); `npm run typecheck` clean.
+
+| Contract | Result |
+| --- | --- |
+| L1 macro-looking bracket-link labels | Passage references already followed the link token (control tests added). Variable usage did not: `linkInterpolationRanges()` now limits a link's executable text to the `{$x}`-style blocks `interpolate()` reads (display, target, selectors); everything else in a link is text. Startup validation of raw `$x` is unchanged. |
+| L2 passage-role masking | `maskNonMarkupPassages()` / `isMarkupPassage()` in `passage-parser.ts` are the one role mask: diagnostics, `parseDocumentPassageRefs`, closer pairing (`macroHeadNames`), document links, completions, folding, inlay hints, semantic tokens, widget invocations and variable usage. Passage headers are also boundaries: no macro or link spans one (`passageBodies()`). |
+| L3 `attributeValueSpans` | Differential against `tokenize()` found the scan stopped at unclosed links, failed tags and version-dependent constructs, and `parseMacros` let a `[[` inside an attribute value start a link. `scanHtmlTags(text, 'installed')` follows 0.45.1 for what versions disagree on, with a linear work budget; `conservative` (SP102) still stops there. |
+| L4 crossed containers | `pairMacros` blames the closer `buildAST` rejects (`{wrap}{if}{/wrap}{/if}`: `{/wrap}`), pairs `{if}`/`{/if}`, keeps the crossed closer with its widget for rename, and SP101 reports Spindle's "expected {/if} but found {/wrap}". Missing closers (`{if}{for}{/if}`) still pair the closer with its opener. |
+
+Observed, not changed: Spindle's link macro reads `"display" "target"` with a
+quote regex, so a label containing `"` navigates elsewhere at runtime
+(`[[{goto "X"}->Target]]` goes to `}`); references follow the link token
+(control `C-D1-quote`). Macro heads whose names contain other characters
+(`{a=b}`) are macros to the tokenizer but not to the macro grammar.
+HTML elements are not on the pairing stack (SP102 replays them).

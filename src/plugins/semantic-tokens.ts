@@ -1,6 +1,6 @@
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseMacros } from '../core/parsing/macro-parser.js';
+import { parseDocumentMacros } from '../core/parsing/macro-parser.js';
 import { isTransientAt } from './references.js';
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ export function computeSemanticTokensAbsolute(
   }
 
   // Macro name tokens
-  const macros = parseMacros(text);
+  const macros = parseDocumentMacros(text, passages);
   for (const macro of macros) {
     const macroLine = macro.range.start.line;
     const macroChar = macro.range.start.character;

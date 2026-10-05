@@ -32,8 +32,9 @@ describe('SP101: container nesting and passage boundaries', () => {
   it('reports crossed containers in one passage', () => {
     const sp101 = codes(':: Start\n{if true}{for @x of []}{/if}{/for}', 'SP101');
     expect(sp101).toHaveLength(2);
-    expect(sp101.some(d => d.message.includes('no matching {/for}'))).toBe(true);
-    expect(sp101.some(d => d.message.includes('no matching {for}'))).toBe(true);
+    // Spindle throws "Expected {/for} but found {/if}" at the first closer
+    expect(sp101.some(d => d.message.includes('expected {/for} but found {/if}'))).toBe(true);
+    expect(sp101.some(d => d.message.includes('no matching {/if}'))).toBe(true);
   });
 
   it('accepts properly nested containers', () => {
