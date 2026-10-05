@@ -156,7 +156,7 @@ function getMacroCompletions(workspace: WorkspaceModel): CompletionItem[] {
       kind: 3, // CompletionItemKind.Function
       detail: `(widget) ${widget.name}`,
       documentation: widget.params.length > 0
-        ? `Parameters: ${widget.params.map(p => `@${p}`).join(', ')}`
+        ? `Parameters: ${widget.params.join(', ')}`
         : undefined,
     });
   }

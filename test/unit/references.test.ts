@@ -115,6 +115,48 @@ describe('findWidgetReferences', () => {
     // 1 definition + 1 invocation
     expect(refs.length).toBe(2);
   });
+
+  it('includes closing tags of block widgets only', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: W [widget]\n{widget "wrap"}<div>{@children}</div>{/widget}\n{widget "plain"}x{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{wrap}hello{/wrap}\n{plain}{/plain}',
+      },
+    );
+    expect(findWidgetReferences('wrap', ws, false).map(r => r.range)).toEqual([
+      { start: { line: 1, character: 1 }, end: { line: 1, character: 5 } },
+      { start: { line: 1, character: 13 }, end: { line: 1, character: 17 } },
+    ]);
+    expect(findWidgetReferences('plain', ws, false)).toHaveLength(1);
+    // Starting from the closing tag
+    expect(findReferences('file:///test.tw', { line: 1, character: 14 }, ws, false)).toHaveLength(2);
+    // A stray closing tag of a non-block widget is not a reference
+    expect(findReferences('file:///test.tw', { line: 2, character: 10 }, ws, false)).toHaveLength(0);
+  });
+
+  it('matches invocations case-insensitively', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "Greeting" @name}Hello {@name}!{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{greeting "World"} {GREETING "Earth"}',
+      },
+    );
+    const refs = findWidgetReferences('Greeting', ws, false);
+    expect(refs.map(r => r.range)).toEqual([
+      { start: { line: 1, character: 1 }, end: { line: 1, character: 9 } },
+      { start: { line: 1, character: 20 }, end: { line: 1, character: 28 } },
+    ]);
+    // Starting from an invocation spelled differently from the definition
+    expect(findReferences('file:///test.tw', { line: 1, character: 3 }, ws, false)).toHaveLength(2);
+  });
 });
 
 describe('findReferences (top-level)', () => {
