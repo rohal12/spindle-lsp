@@ -1,6 +1,6 @@
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseMacros } from '../core/parsing/macro-parser.js';
+import { buildLineStarts, parseMacros } from '../core/parsing/macro-parser.js';
 import { isTransientAt } from './references.js';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +50,44 @@ export interface AbsoluteToken {
   tokenModifiers: number;
 }
 
+/** Replace the characters of every string/template literal in `code` with spaces. */
+function blankStringLiterals(code: string): string {
+  let out = '';
+  for (let i = 0; i < code.length; i++) {
+    const quote = code[i];
+    if (quote !== '"' && quote !== "'" && quote !== '`') {
+      out += quote;
+      continue;
+    }
+    let end = i + 1;
+    while (end < code.length && code[end] !== quote) end += code[end] === '\\' ? 2 : 1;
+    // An unterminated literal runs to the end of the arguments
+    const stop = Math.min(end, code.length - 1);
+    out += code.slice(i, stop + 1).replace(/[^\n]/g, ' ');
+    i = stop;
+  }
+  return out;
+}
+
+/**
+ * The text with everything but sugar-keyword candidates replaced by spaces
+ * (newlines kept): the arguments of macros, minus string literals. Prose,
+ * macro names, passage content outside macros and strings are not code.
+ */
+function keywordCandidateLines(text: string, macros: ReturnType<typeof parseMacros>): string[] {
+  const lineStarts = buildLineStarts(text);
+  const offset = (p: { line: number; character: number }) => lineStarts[p.line] + p.character;
+  const mask: string[] = Array.from(text, ch => (ch === '\n' ? '\n' : ' '));
+  for (const macro of macros) {
+    if (!macro.open || !macro.rawArgs) continue;
+    const end = offset(macro.range.end) - 1; // the closing brace
+    const start = end - macro.rawArgs.length;
+    const code = blankStringLiterals(text.slice(start, end));
+    for (let i = 0; i < code.length; i++) mask[start + i] = code[i] === '\r' ? ' ' : code[i];
+  }
+  return mask.join('').split('\n');
+}
+
 /**
  * Compute semantic tokens for a document.
  *
@@ -59,7 +97,9 @@ export interface AbsoluteToken {
  *  - Temp variables (_var) -> 'variable' + 'local'
  *  - Local variables (@var) -> 'variable' + 'readonly'
  *  - Transient variables (%var) -> 'variable' + 'defaultLibrary'
- *  - Sugar keywords -> 'keyword'
+ *  - Sugar keywords -> 'keyword', only as words of a macro's arguments
+ *    outside string/template literals (not inside variable names, property
+ *    paths, prose or strings)
  *  - Passage headers -> 'namespace'
  *
  * Returns absolute tokens (for testing). Use `encodeTokens` to delta-encode.
@@ -129,7 +169,8 @@ export function computeSemanticTokensAbsolute(
   const tempVarRegex = /(?<!\w)_([A-Za-z_$][\w$]*)/g;
   const localVarRegex = /(?<!\w)@([A-Za-z_$][\w$]*)/g;
   const transientVarRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
-  const sugarKeywordRegex = /\b(to|is|isnot|eq|neq|gt|gte|lt|lte|and|or|not|def|ndef)\b/g;
+  const sugarKeywordRegex = /(?<![\w$@%.])(to|is|isnot|eq|neq|gt|gte|lt|lte|and|or|not|def|ndef)(?![\w$])/g;
+  const candidateLines = keywordCandidateLines(text, macros);
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     if (headerLines.has(lineIndex)) continue;
@@ -187,7 +228,8 @@ export function computeSemanticTokensAbsolute(
 
     // Sugar keywords
     sugarKeywordRegex.lastIndex = 0;
-    while ((m = sugarKeywordRegex.exec(line)) !== null) {
+    const candidates = candidateLines[lineIndex] ?? '';
+    while ((m = sugarKeywordRegex.exec(candidates)) !== null) {
       tokens.push({
         line: lineIndex,
         startChar: m.index,
@@ -201,7 +243,14 @@ export function computeSemanticTokensAbsolute(
   // Sort by line, then by start character
   tokens.sort((a, b) => a.line - b.line || a.startChar - b.startChar);
 
-  return tokens;
+  // Clients may not support overlapping tokens: keep the first of any overlap
+  const result: AbsoluteToken[] = [];
+  for (const token of tokens) {
+    const prev = result[result.length - 1];
+    if (prev && prev.line === token.line && token.startChar < prev.startChar + prev.length) continue;
+    result.push(token);
+  }
+  return result;
 }
 
 /**

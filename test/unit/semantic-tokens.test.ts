@@ -199,3 +199,51 @@ describe('semantic tokens inside HTML attribute values', () => {
     expect(functionTokens.map(t => t.startChar)).toEqual([37, 46]);
   });
 });
+
+describe('S80: variable identifiers do not overlap keyword semantic tokens (#80)', () => {
+  const uri = 'file:///story.tw';
+  const tokensOf = (text: string) => computeSemanticTokensAbsolute(uri, createWorkspace({ name: 'story.tw', content: text }));
+  const spans = (text: string, type: string) =>
+    tokensOf(text).filter(t => t.tokenType === typeIdx(type)).map(t => [t.line, t.startChar, t.startChar + t.length]);
+
+  function expectNoOverlap(text: string) {
+    const tokens = tokensOf(text);
+    for (let i = 1; i < tokens.length; i++) {
+      if (tokens[i].line === tokens[i - 1].line) {
+        expect(tokens[i].startChar).toBeGreaterThanOrEqual(tokens[i - 1].startChar + tokens[i - 1].length);
+      }
+    }
+  }
+
+  it('S80: declarations and usages of $is are a single variable token', () => {
+    const text = ':: StoryVariables\n$is = 1\n:: Start\n{$is}';
+    expectNoOverlap(text);
+    expect(spans(text, 'variable')).toEqual([[1, 0, 3], [3, 1, 4]]);
+    expect(spans(text, 'keyword')).toEqual([]);
+  });
+
+  it('S80-names: other sugar words as variable names and property paths', () => {
+    const text = ':: StoryVariables\n$to = 1\n$not = 2\n$o = {"is": 1}\n:: Start\n{if $to is $not and _or is @and}x{/if}{print $o.is}';
+    expectNoOverlap(text);
+    // only the real operators are keywords: `is`, `and`, `is`
+    expect(spans(text, 'keyword')).toEqual([[5, 8, 10], [5, 16, 19], [5, 24, 26]]);
+    expect(spans(text, 'variable')).toContainEqual([5, 4, 7]);
+  });
+
+  it('S80-operators: real sugar operators in macro arguments stay keywords', () => {
+    const text = ':: Start\n{if $a gte 1 and not $b}x{/if}';
+    expect(spans(text, 'keyword')).toEqual([[1, 7, 10], [1, 13, 16], [1, 17, 20]]);
+    expect(spans(text, 'variable')).toEqual([[1, 4, 6], [1, 21, 23]]);
+  });
+
+  it('S80-text: sugar-looking words in prose and strings are not keywords', () => {
+    const text = ':: Start\nthis is not a drill, to be or not to be\n{print "this is not it"}{set $x to \'a or b\'}';
+    expectNoOverlap(text);
+    expect(spans(text, 'keyword')).toEqual([[2, 32, 34]]);
+  });
+
+  it('S80-multiline: keywords in multiline macro arguments keep their position', () => {
+    const text = ':: Start\n{if $a\n  is 1}x{/if}';
+    expect(spans(text, 'keyword')).toEqual([[2, 2, 4]]);
+  });
+});

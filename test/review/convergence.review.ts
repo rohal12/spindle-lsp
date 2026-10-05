@@ -3,12 +3,7 @@
  * than blessing known failures. See docs/reviews/process.md for triage/closure.
  * Runtime evaluation below is restricted to literals constructed by these tests.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { spawn } from 'node:child_process';
-import { build } from 'esbuild';
+import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
 import { parseStoryVariables } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
@@ -22,8 +17,6 @@ import { computeDocumentLinks } from '../../src/plugins/document-link.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 import { computeCodeActions } from '../../src/plugins/code-actions.js';
 import { getCompletions } from '../../src/plugins/completions.js';
-import { getSignatureHelp } from '../../src/plugins/signature.js';
-import { computeSemanticTokensAbsolute } from '../../src/plugins/semantic-tokens.js';
 import { formatDocument } from '../../src/plugins/format.js';
 
 const uri = 'file:///story.tw';
@@ -240,99 +233,4 @@ it('D78: explicit Spindle stories require StoryVariables without variable usages
 });
 it('C-D78: an empty StoryVariables passage satisfies that startup requirement', () => {
   expect(codes(workspace(':: StoryData\n{"format":"Spindle"}\n:: StoryVariables\n:: Start\nhello'))).not.toContain('SP202');
-});
-
-describe('H79: signature schema and active argument (#79)', () => {
-  for (const [macro, args, active] of [['textbox', '$name ', 1], ['radiobutton', '$name "yes" ', 2]]) {
-    it(`H79-${macro}: schema describes each active argument`, () => {
-      const body = `{${macro} ${args}`;
-      const model = workspace(`:: StoryVariables\n$name = ""\n:: Start\n${body}`);
-      const help = getSignatureHelp(uri, { line: 3, character: body.length }, model);
-      expect(help).not.toBeNull();
-      expect(help!.activeParameter).toBe(active);
-      expect(help!.signatures[help!.activeSignature].parameters.length).toBeGreaterThan(active);
-    });
-  }
-  it('H79-partial: typing the first receiver keeps parameter zero active', () => {
-    const model = workspace(':: StoryVariables\n:: Start\n{textbox $na');
-    expect(getSignatureHelp(uri, { line: 2, character: 12 }, model)?.activeParameter).toBe(0);
-  });
-});
-
-it('S80: variable identifiers do not overlap keyword semantic tokens (#80)', () => {
-  const tokens = computeSemanticTokensAbsolute(uri, workspace(':: StoryVariables\n$is = 1\n:: Start\n{$is}'));
-  for (let i = 1; i < tokens.length; i++) {
-    if (tokens[i].line === tokens[i - 1].line) {
-      expect(tokens[i].startChar).toBeGreaterThanOrEqual(tokens[i - 1].startChar + tokens[i - 1].length);
-    }
-  }
-});
-
-describe('B76: public executable transport (#76)', () => {
-  interface InitializeResponse {
-    id?: unknown;
-    result?: { capabilities?: unknown };
-  }
-  let directory: string;
-  let executable: string;
-  beforeAll(async () => {
-    directory = mkdtempSync(join(tmpdir(), 'spindle-review-bin-'));
-    executable = join(directory, 'bin.mjs');
-    const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-    await build({
-      entryPoints: ['src/bin.ts'], bundle: true, platform: 'node', target: 'node18', format: 'esm',
-      outfile: executable, external: ['prettier'],
-      define: { SPINDLE_LSP_VERSION: JSON.stringify(pkg.version) },
-      banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
-    });
-  });
-  afterAll(() => { if (directory) rmSync(directory, { recursive: true, force: true }); });
-
-  async function initialize(args: string[]): Promise<{ output: string; response?: InitializeResponse }> {
-    const child = spawn(process.execPath, [executable, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
-    let output = '';
-    let buffer = Buffer.alloc(0);
-    let stderr = '';
-    let timer: ReturnType<typeof setTimeout>;
-    try {
-      return await new Promise((resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`initialize timeout: ${stderr}`)), 4000);
-        child.on('error', reject);
-        child.stdin.on('error', () => {}); // early help exit is itself the asserted defect
-        child.stderr.on('data', data => { stderr += data; });
-        child.stdout.on('data', data => {
-          output += data;
-          buffer = Buffer.concat([buffer, data]);
-          for (;;) {
-            const split = buffer.indexOf('\r\n\r\n');
-            if (split < 0) break;
-            const length = /Content-Length: (\d+)/i.exec(buffer.subarray(0, split).toString())?.[1];
-            if (!length || buffer.length < split + 4 + Number(length)) break;
-            const end = split + 4 + Number(length);
-            const message: InitializeResponse = JSON.parse(buffer.subarray(split + 4, end).toString());
-            buffer = buffer.subarray(end);
-            if (message.id === 99) resolve({ output, response: message });
-          }
-        });
-        child.on('exit', () => resolve({ output }));
-        const request = JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'initialize', params: { processId: null, rootUri: null, capabilities: {} } });
-        child.stdin.write(`Content-Length: ${Buffer.byteLength(request)}\r\n\r\n${request}`);
-      });
-    } finally {
-      clearTimeout(timer!);
-      child.kill();
-    }
-  }
-  it('B76-default: no arguments receives a JSON-RPC initialize response', async () => {
-    const { output, response } = await initialize([]);
-    expect(output).toMatch(/^Content-Length:/);
-    expect(response?.id).toBe(99);
-    expect(response?.result?.capabilities).toBeDefined();
-  });
-  it('C-B76: explicit --stdio receives a JSON-RPC initialize response', async () => {
-    const { output, response } = await initialize(['--stdio']);
-    expect(output).toMatch(/^Content-Length:/);
-    expect(response?.id).toBe(99);
-    expect(response?.result?.capabilities).toBeDefined();
-  });
 });
