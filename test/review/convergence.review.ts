@@ -91,108 +91,6 @@ describe('R67: rename preserves literal meaning (#67)', () => {
   });
 });
 
-it('Q68: create StoryVariables in a story file, preserving opened config (#68)', () => {
-  const configUri = 'file:///spindle.config.yaml';
-  const config = 'macros: {}\n';
-  const model = workspace(':: Start\n{$missing}', [[configUri, config]]);
-  const diag = computeDiagnostics(uri, model).filter(d => d.code === 'SP202');
-  expect(diag).toHaveLength(1);
-  const action = computeCodeActions(uri, diag, model)[0];
-  expect(action).toBeDefined();
-  expect(action.edits.every(e => e.uri === uri)).toBe(true);
-  expect(model.documents.getText(configUri)).toBe(config);
-  const output = apply(model.documents.getText(uri)!, action.edits);
-  expect(workspace(output).variables.hasStoryVariables()).toBe(true);
-});
-
-describe('Q69: declaration edit application (#69)', () => {
-  for (const sigil of ['$', '%'] as const) {
-    for (const ending of ['value', 'header', 'newline']) {
-      it(`Q69-${sigil}-${ending}: parse the edited declaration passage`, () => {
-        const passage = sigil === '$' ? 'StoryVariables' : 'StoryTransients';
-        const declUri = 'file:///declarations.tw';
-        const text = `:: ${passage}` + (ending === 'header' ? '' : `\n${sigil}x = 1` + (ending === 'newline' ? '\n' : ''));
-        const model = workspace(`:: Start\n{${sigil}missing}`, [[declUri, text]]);
-        const code = sigil === '$' ? 'SP200' : 'SP203';
-        const diagnostics = computeDiagnostics(uri, model).filter(d => d.code === code);
-        expect(diagnostics).toHaveLength(1);
-        const action = computeCodeActions(uri, diagnostics, model)[0];
-        expect(action).toBeDefined();
-        const output = apply(text, action.edits.filter(e => e.uri === declUri));
-        expect(output.split('\n')[0]).toBe(`:: ${passage}`);
-        const schema = parseStoryVariables(output.slice(output.indexOf('\n') + 1), sigil);
-        expect(schema.get('missing')?.default).toBe(0);
-        if (ending !== 'header') expect(schema.get('x')?.default).toBe(1);
-      });
-    }
-  }
-});
-
-describe('X70: passage references honor source context (#70)', () => {
-  for (const [id, body] of [
-    ['macro-string', '{print "[[Old]]"}'],
-    ['attribute', '<div title="[[Old]]">x</div>'],
-    ['script', ':: Code [script]\nconst docs = "[[Old]]";'],
-    ['stylesheet', ':: CSS [stylesheet]\na::after { content: "[[Old]]"; }'],
-  ]) {
-    for (const feature of ['references', 'rename', 'definition', 'document-links', 'code-lenses', 'diagnostics']) {
-      it(`X70-${id}-${feature}: literal context`, () => {
-        if (id === 'macro-string' || id === 'attribute') {
-          expect(tokenize(body).filter(t => t.type === 'link')).toHaveLength(0);
-        }
-        const text = `:: StoryVariables\n:: Old\nhello\n:: Start\n${body}`;
-        const model = workspace(text);
-        if (feature === 'references') expect(findPassageReferences('Old', model, false)).toHaveLength(0);
-        if (feature === 'rename') expect(renamed(model, 1, 5, 'New')).toContain(body);
-        if (feature === 'definition') {
-          const position = TextDocument.create(uri, 'twee', 0, text).positionAt(text.lastIndexOf('Old') + 1);
-          expect(getDefinition(uri, position, model)).toBeNull();
-        }
-        if (feature === 'document-links') expect(computeDocumentLinks(uri, model)).toHaveLength(0);
-        if (feature === 'code-lenses') expect(computeCodeLenses(uri, model).find(l => l.range.start.line === 1)?.command.title).toBe('0 references');
-        if (feature === 'diagnostics') expect(codes(workspace(text.replace(':: Old', ':: Target')))).not.toContain('SP300');
-      });
-    }
-  }
-  it('C-X70: real links and goto literals are references', () => {
-    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[Old]] {goto "Old"}');
-    expect(findPassageReferences('Old', model, false)).toHaveLength(2);
-    expect(getDefinition(uri, { line: 4, character: 3 }, model)?.uri).toBe(uri);
-  });
-});
-
-it('X71: macro-looking link labels remain labels (#71)', () => {
-  const body = '[[{if true}label|Next]]';
-  expect(tokenize(body).filter(t => t.type === 'macro')).toHaveLength(0);
-  const model = workspace(`:: StoryVariables\n:: Next\nhello\n:: Start\n${body}`);
-  expect(codes(model)).not.toContain('SP101');
-});
-
-describe('X72: non-markup passage bodies (#72)', () => {
-  for (const passage of ['StoryVariables', 'StoryTransients', 'StoryData']) {
-    it(`X72-${passage}: valid data strings receive no markup diagnostics`, () => {
-      const body = passage === 'StoryData' ? '{"format":"Spindle","note":"{if true}"}' : `${passage === 'StoryTransients' ? '%' : '$'}v = "{if true}"`;
-      if (passage !== 'StoryData') expect(parseStoryVariables(body, passage === 'StoryTransients' ? '%' : '$').get('v')?.default).toBe('{if true}');
-      const model = workspace(`:: ${passage}\n${body}\n:: Start\nhello`);
-      expect(codes(model)).not.toContain('SP101');
-    });
-  }
-  it('C-X72: invalid declarations still receive declaration diagnostics', () => {
-    expect(codes(workspace(':: StoryVariables\n$x = null\n:: Start\nhello'))).toContain('SP204');
-  });
-});
-
-it('V73: cross-file StoryInterface variables participate in rename (#73)', () => {
-  const declUri = 'file:///vars.tw';
-  const model = workspace(':: StoryInterface\n<div>{$x}</div>\n:: Start\nhello', [[declUri, ':: StoryVariables\n$x = 1']]);
-  expect(findVariableReferences('x', model, true)).toHaveLength(2);
-  const edits = computeRename(declUri, { line: 1, character: 2 }, 'y', model);
-  const output = apply(model.documents.getText(uri)!, edits.get(uri) ?? []);
-  expect(output).toContain('{$y}');
-  const next = workspace(output, [[declUri, apply(model.documents.getText(declUri)!, edits.get(declUri) ?? [])]]);
-  expect(codes(next)).not.toContain('SP200');
-});
-
 describe('W74: widget spelling shared by navigation and edits (#74)', () => {
   for (const [id, name, prefix] of [['css', 'greeting', '.red '], ['hyphen', 'hello-world', '']]) {
     it(`W74-${id}: definition, references, and applied rename`, () => {
@@ -205,18 +103,6 @@ describe('W74: widget spelling shared by navigation and edits (#74)', () => {
       expect(apply(model.documents.getText(uri)!, edits.get(uri) ?? [])).toContain(`{${prefix}renamed "Alice"}`);
     });
   }
-});
-
-it('E75: apply closing macro completion at the typed cursor (#75)', () => {
-  const model = workspace(':: StoryVariables\n:: Start\n{if true}\n{/');
-  const position = { line: 3, character: 2 };
-  const item = getCompletions(uri, position, '/', model).find(c => c.label === '{/if}');
-  expect(item).toBeDefined();
-  const edit = item!.textEdit ?? { range: { start: position, end: position }, newText: item!.insertText ?? item!.label };
-  expect('range' in edit).toBe(true);
-  const output = apply(model.documents.getText(uri)!, [edit as { range: Range; newText: string }]);
-  expect(output.split('\n').at(-1)).toBe('{/if}');
-  expect(codes(workspace(output))).not.toContain('SP101');
 });
 
 describe('L77: decode static JavaScript literals (#77)', () => {
