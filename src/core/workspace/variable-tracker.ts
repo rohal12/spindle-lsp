@@ -14,10 +14,21 @@ const EXCLUDED_PASSAGES = new Set([
 ]);
 
 /**
- * Passages whose references are real (references, rename) but which
- * diagnostics do not check.
+ * A `$name` reference as Spindle's startup validation (validatePassages in
+ * story-variables.ts) matches it in the raw passage text, and the `{for}`
+ * locals it skips there.
  */
-const UNCHECKED_PASSAGES = new Set(['StoryInit']);
+const VALIDATED_REF_RE = /\$(\w+(?:\.\w+)*)/g;
+const VALIDATED_FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
+
+/**
+ * Passages Spindle does not validate: the declaration passages it skips, and
+ * the ones the compiler turns into story data instead of passages.
+ * Script and stylesheet passages become the story JavaScript and CSS.
+ */
+const UNVALIDATED_PASSAGES = new Set([
+  'StoryVariables', 'StoryTransients', 'StoryData', 'StoryTitle',
+]);
 
 /** Patterns that never contain variable references. */
 const COMMENT_PATTERNS = [
@@ -135,11 +146,12 @@ interface VariableUsage {
   baseName: string;
   fullName: string;
   range: Range;
-  /**
-   * Whether diagnostics check this usage. References in StoryInit and inside
-   * string literals are only used for references and rename.
-   */
-  checked: boolean;
+}
+
+/** A `$name` reference Spindle validates against StoryVariables at startup. */
+interface ValidatedReference {
+  baseName: string;
+  range: Range;
 }
 
 /** A `$var.member` / `%var.member` access on a variable declared as an array. */
@@ -243,6 +255,50 @@ function declarationLocation(
 }
 
 /**
+ * The `$name` references Spindle checks against StoryVariables when the
+ * story starts. Like validatePassages, this matches the raw text of every
+ * passage it sees (string text, comments and prose included) and skips the
+ * names that a `{for @local of …}` in the same passage binds.
+ */
+function validatedReferences(
+  lines: string[],
+  passages: Array<{ name: string; tags: string[]; startLine: number }>,
+): ValidatedReference[] {
+  const refs: ValidatedReference[] = [];
+  for (let pi = 0; pi < passages.length; pi++) {
+    const passage = passages[pi];
+    if (UNVALIDATED_PASSAGES.has(passage.name) || isScriptOrStylesheetPassage(passage)) continue;
+
+    const contentStartLine = passage.startLine + 1;
+    const contentEndLine = pi + 1 < passages.length ? passages[pi + 1].startLine : lines.length;
+    const contentLines = lines.slice(contentStartLine, contentEndLine);
+
+    const forLocals = new Set<string>();
+    for (const m of contentLines.join('\n').matchAll(VALIDATED_FOR_LOCAL_RE)) {
+      forLocals.add(m[1]);
+      if (m[2]) forLocals.add(m[2]);
+    }
+
+    // A reference never spans lines: \w excludes line terminators.
+    for (let i = 0; i < contentLines.length; i++) {
+      for (const m of contentLines[i].matchAll(VALIDATED_REF_RE)) {
+        const baseName = m[1].split('.')[0];
+        if (forLocals.has(baseName)) continue;
+        const line = contentStartLine + i;
+        refs.push({
+          baseName,
+          range: {
+            start: { line, character: m.index },
+            end: { line, character: m.index + m[0].length },
+          },
+        });
+      }
+    }
+  }
+  return refs;
+}
+
+/**
  * Tracks declared variables (from StoryVariables) and variable usages across documents.
  */
 export class VariableTracker {
@@ -259,6 +315,9 @@ export class VariableTracker {
 
   /** Per-URI list of transient variable usages. */
   private transientUsagesByUri = new Map<string, VariableUsage[]>();
+
+  /** Per-URI list of the `$` references Spindle validates at startup. */
+  private validatedRefsByUri = new Map<string, ValidatedReference[]>();
 
   /**
    * Parse the StoryVariables passage content for declarations.
@@ -406,6 +465,7 @@ export class VariableTracker {
     // Clear previous usages for this URI
     this.usagesByUri.delete(uri);
     this.transientUsagesByUri.delete(uri);
+    this.validatedRefsByUri.delete(uri);
 
     const lines = text.split('\n');
     const usages: VariableUsage[] = [];
@@ -457,16 +517,13 @@ export class VariableTracker {
         if (cleaned[i] === '\n') lineOffsets.push(i + 1);
       }
 
-      // References in code are checked by diagnostics (outside StoryInit);
-      // references kept only in `referenced` serve references and rename.
-      const checkedPassage = !UNCHECKED_PASSAGES.has(passage.name);
       const scans: Array<[RegExp, VariableUsage[]]> = [
         [varRefRegex, usages],
         [transientRefRegex, transientUsages],
       ];
       for (const [regex, out] of scans) {
         const seen = new Set<number>();
-        for (const [source, checked] of [[cleaned, checkedPassage], [referenced, false]] as const) {
+        for (const source of [cleaned, referenced]) {
           const re = new RegExp(regex.source, 'g');
           let match;
           while ((match = re.exec(source)) !== null) {
@@ -491,7 +548,7 @@ export class VariableTracker {
               end: { line: absoluteLine, character: character + match[0].length },
             };
 
-            out.push({ uri, baseName, fullName, range, checked });
+            out.push({ uri, baseName, fullName, range });
           }
         }
       }
@@ -503,12 +560,18 @@ export class VariableTracker {
     if (transientUsages.length > 0) {
       this.transientUsagesByUri.set(uri, transientUsages);
     }
+
+    const validated = validatedReferences(lines, passageBoundaries);
+    if (validated.length > 0) {
+      this.validatedRefsByUri.set(uri, validated);
+    }
   }
 
   /** Forget the usages recorded for a document, e.g. after it was deleted. */
   removeDocument(uri: string): void {
     this.usagesByUri.delete(uri);
     this.transientUsagesByUri.delete(uri);
+    this.validatedRefsByUri.delete(uri);
   }
 
   /** Get all declared variables. */
@@ -529,16 +592,19 @@ export class VariableTracker {
     return results;
   }
 
-  /** Get undeclared variable usages in a specific document. */
+  /**
+   * Get undeclared variable references in a specific document: the ones
+   * Spindle rejects when the story starts, wherever they are in the text.
+   */
   getUndeclared(uri: string): Array<{ name: string; range: Range }> {
-    const usages = this.usagesByUri.get(uri);
-    if (!usages) return [];
+    const refs = this.validatedRefsByUri.get(uri);
+    if (!refs) return [];
 
     const results: Array<{ name: string; range: Range }> = [];
     const seen = new Set<string>();
 
-    for (const u of usages) {
-      if (u.checked && !this.declared.has(u.baseName) && !seen.has(u.baseName)) {
+    for (const u of refs) {
+      if (!this.declared.has(u.baseName) && !seen.has(u.baseName)) {
         seen.add(u.baseName);
         results.push({ name: u.baseName, range: u.range });
       }
@@ -578,7 +644,7 @@ export class VariableTracker {
     const seen = new Set<string>();
 
     for (const u of usages) {
-      if (u.checked && !this.declaredTransient.has(u.baseName) && !seen.has(u.baseName)) {
+      if (!this.declaredTransient.has(u.baseName) && !seen.has(u.baseName)) {
         seen.add(u.baseName);
         results.push({ name: u.baseName, range: u.range });
       }
@@ -606,7 +672,6 @@ export class VariableTracker {
     for (const [sigil, usages, declared] of sources) {
       if (!usages) continue;
       for (const u of usages) {
-        if (!u.checked) continue;
         const member = u.fullName.split('.')[1];
         if (member === undefined) continue;
         if (declared.get(u.baseName)?.type !== 'array') continue;

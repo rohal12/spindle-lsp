@@ -799,3 +799,53 @@ describe('SP303: unused widget', () => {
     expect(codes).toContain('SP302');
   });
 });
+
+describe('SP200/SP203/SP206 in StoryInit, string interpolations and receivers (#62)', () => {
+  const story = [
+    ':: StoryVariables',
+    '$x = 1',
+    '$list = []',
+    ':: StoryTransients',
+    '%t = 0',
+    ':: StoryInit',
+    '{set $missingInit = 2} {set %initT = 1}',
+    ':: Start',
+    '{print `${$missingTemplate}`} {print `${%tplT}`}',
+    '{textbox "$missingReceiver"}',
+    '{print $missingCode}',
+    'It costs $missingProse today.',
+    '{print "costs $missingLiteral"} {print `${$list.nope}`}',
+  ].join('\n');
+
+  function diagnostics() {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: story });
+    return computeDiagnostics('file:///test.tw', workspace);
+  }
+
+  it('reports every undeclared $variable Spindle rejects at startup', () => {
+    const sp200 = diagnostics().filter(d => d.code === 'SP200');
+    expect(sp200.map(d => d.message)).toEqual([
+      "Variable '$missingInit' is not declared in StoryVariables",
+      "Variable '$missingTemplate' is not declared in StoryVariables",
+      "Variable '$missingReceiver' is not declared in StoryVariables",
+      "Variable '$missingCode' is not declared in StoryVariables",
+      "Variable '$missingProse' is not declared in StoryVariables",
+      "Variable '$missingLiteral' is not declared in StoryVariables",
+    ]);
+    expect(sp200.every(d => d.severity === 'error')).toBe(true);
+  });
+
+  it('reports undeclared transients in StoryInit and template interpolations', () => {
+    const sp203 = diagnostics().filter(d => d.code === 'SP203');
+    expect(sp203.map(d => d.message)).toEqual([
+      "Transient variable '%initT' is not declared in StoryTransients",
+      "Transient variable '%tplT' is not declared in StoryTransients",
+    ]);
+  });
+
+  it('reports array member access inside a template interpolation', () => {
+    const sp206 = diagnostics().filter(d => d.code === 'SP206');
+    expect(sp206).toHaveLength(1);
+    expect(sp206[0].message).toContain("'$list.nope'");
+  });
+});

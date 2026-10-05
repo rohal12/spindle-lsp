@@ -135,6 +135,38 @@ describe('CLI check command', () => {
     }
   });
 
+  it('reports undeclared variables in StoryInit, interpolations, receivers and strings (#62)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-undeclared-'));
+    try {
+      const file = join(dir, 'story.twee');
+      writeFileSync(file, [
+        ':: StoryVariables',
+        '$x = 1',
+        ':: StoryInit',
+        '{set $missingInit = 2}',
+        ':: Start',
+        '{print `${$missingTemplate}`}',
+        '{textbox "$missingReceiver"}',
+        '{print $missingCode}',
+        'It costs $missingProse today.',
+        '{print "costs $missingLiteral"}',
+        '',
+      ].join('\n'));
+      const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', file]));
+      expect(exitCode).toBe(1);
+      const diags: Array<{ code: string; message: string }> = JSON.parse(output).files[0].diagnostics;
+      const names = diags
+        .filter(d => d.code === 'SP200')
+        .map(d => /'\$(\w+)'/.exec(d.message)?.[1]);
+      expect(names).toEqual([
+        'missingInit', 'missingTemplate', 'missingReceiver',
+        'missingCode', 'missingProse', 'missingLiteral',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('hides the SP303 hint at --severity warning', async () => {
     const file = join(fixturesDir, 'runtime-pitfalls.tw');
     const { output } = await captureStdout(() =>

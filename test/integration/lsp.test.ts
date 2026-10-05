@@ -936,6 +936,33 @@ describe('Integration: LSP server over stdio', () => {
     expect(session.latest(uri)).toEqual([]);
   });
 
+  it('publishes SP200 for undeclared variables in StoryInit, interpolations and receivers (#62)', async () => {
+    const dir = makeTempWorkspace({
+      'story.twee': [
+        ':: StoryVariables',
+        '$x = 1',
+        ':: StoryInit',
+        '{set $missingInit = 2}',
+        ':: Start',
+        '{print `${$missingTemplate}`}',
+        '{textbox "$missingReceiver"}',
+        '{print $missingCode}',
+        'It costs $missingProse today.',
+        '',
+      ].join('\n'),
+    });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    const diags = await session.waitForDiagnostics(uri, hasCode('SP200'));
+    expect(diags.filter(d => d.code === 'SP200').map(d => d.message)).toEqual([
+      "Variable '$missingInit' is not declared in StoryVariables",
+      "Variable '$missingTemplate' is not declared in StoryVariables",
+      "Variable '$missingReceiver' is not declared in StoryVariables",
+      "Variable '$missingCode' is not declared in StoryVariables",
+      "Variable '$missingProse' is not declared in StoryVariables",
+    ]);
+  });
+
   it('clears diagnostics for a file deleted on disk (#31)', async () => {
     const dir = makeTempWorkspace({
       'start.twee': ':: Start\nHello.\n',

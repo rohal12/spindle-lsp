@@ -251,7 +251,7 @@ describe('VariableTracker usage ranges after masked exclusions', () => {
   });
 });
 
-describe('VariableTracker references outside diagnostics (#44)', () => {
+describe('VariableTracker references in StoryInit and strings (#44, #62)', () => {
   const text = [
     ':: StoryInit',
     '{set $init = 1} {set %initT = 1}',
@@ -291,13 +291,19 @@ describe('VariableTracker references outside diagnostics (#44)', () => {
     expect(tracker.getUsages('notInput')).toEqual([]);
   });
 
-  it('keeps these references out of undeclared-variable diagnostics', () => {
+  it('reports these references when undeclared, as Spindle does at startup (#62)', () => {
     const tracker = scanned();
-    expect(tracker.getUndeclared('file:///story.tw')).toEqual([]);
-    expect(tracker.getUndeclaredTransient('file:///story.tw')).toEqual([]);
+    // Spindle validates every $name in a passage's raw text, string text included
+    expect(tracker.getUndeclared('file:///story.tw').map(u => u.name)).toEqual([
+      'init', 'box', 'check', 'tpl', 'label', 'literal', 'notInput',
+    ]);
+    // Transients are checked where they are evaluated, not in plain string text
+    expect(tracker.getUndeclaredTransient('file:///story.tw').map(u => u.name)).toEqual([
+      'initT', 'tplT', 'btnT',
+    ]);
   });
 
-  it('keeps these references out of array member diagnostics', () => {
+  it('checks these references for array member access (#62)', () => {
     const tracker = new VariableTracker();
     tracker.parseStoryVariables('$list = []');
     tracker.scanDocument(
@@ -306,7 +312,9 @@ describe('VariableTracker references outside diagnostics (#44)', () => {
       [],
     );
     expect(tracker.getUsages('list')).toHaveLength(2);
-    expect(tracker.getArrayMemberAccesses('file:///story.tw')).toEqual([]);
+    expect(tracker.getArrayMemberAccesses('file:///story.tw').map(a => a.member)).toEqual([
+      'bogus', 'nope',
+    ]);
   });
 });
 
@@ -357,6 +365,124 @@ describe('VariableTracker string literals in prose and code', () => {
     expect(tracker.getUsages('b')).toEqual([]);
     expect(tracker.getUsages('c')).toEqual([]);
     expect(tracker.getUsages('declared')).toHaveLength(2);
-    expect(undeclaredNames(tracker)).toEqual([]);
+    // Spindle still validates them at startup (#62)
+    expect(undeclaredNames(tracker)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('VariableTracker undeclared references as Spindle validates them (#62)', () => {
+  const uri = 'file:///story.tw';
+
+  function scan(text: string): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$x = 1\n$list = []\n$obj = { a: 1 }');
+    tracker.parseStoryTransients('%t = 0');
+    tracker.scanDocument(uri, text, []);
+    return tracker;
+  }
+
+  function undeclaredNames(text: string): string[] {
+    return scan(text).getUndeclared(uri).map(u => u.name);
+  }
+
+  it('reports StoryInit, template, receiver, code and prose references (issue example)', () => {
+    const text = [
+      ':: StoryVariables',
+      '$x = 1',
+      ':: StoryInit',
+      '{set $missingInit = 2}',
+      ':: Start',
+      '{print `${$missingTemplate}`}',
+      '{textbox "$missingReceiver"}',
+      '{print $missingCode}',
+      'It costs $missingProse today.',
+    ].join('\n');
+    const tracker = scan(text);
+    expect(tracker.getUndeclared(uri)).toEqual([
+      { name: 'missingInit', range: { start: { line: 3, character: 5 }, end: { line: 3, character: 17 } } },
+      { name: 'missingTemplate', range: { start: { line: 5, character: 10 }, end: { line: 5, character: 26 } } },
+      { name: 'missingReceiver', range: { start: { line: 6, character: 10 }, end: { line: 6, character: 26 } } },
+      { name: 'missingCode', range: { start: { line: 7, character: 7 }, end: { line: 7, character: 19 } } },
+      { name: 'missingProse', range: { start: { line: 8, character: 9 }, end: { line: 8, character: 22 } } },
+    ]);
+  });
+
+  it('reports {$…} blocks inside strings and quoted receivers of any input macro', () => {
+    expect(undeclaredNames([
+      ':: Start',
+      '{link "{$label}"}go{/link}',
+      '{checkbox \'$check\' "Label"} {numberbox "$num"}',
+    ].join('\n'))).toEqual(['label', 'check', 'num']);
+  });
+
+  it('reports plain text in macro string literals, which Spindle scans too', () => {
+    const tracker = scan(':: Start\n{print "costs $price"} {foo \'$quoted\'} {set $x = `a $tpl b`}');
+    expect(tracker.getUndeclared(uri).map(u => u.name)).toEqual(['price', 'quoted', 'tpl']);
+    expect(tracker.getUndeclared(uri)[0].range).toEqual({
+      start: { line: 1, character: 14 },
+      end: { line: 1, character: 20 },
+    });
+    // String text is still not a reference for rename
+    expect(tracker.getUsages('price')).toEqual([]);
+  });
+
+  it('reports references in HTML comments and inline script/style elements', () => {
+    expect(undeclaredNames([
+      ':: Start',
+      '<!-- $inComment -->',
+      '<script>let v = $inScript;</script>',
+      '<style>/* $inStyle */</style>',
+    ].join('\n'))).toEqual(['inComment', 'inScript', 'inStyle']);
+  });
+
+  it('reports $ followed by digits and escaped dollars, like Spindle\'s \\w+ match', () => {
+    expect(undeclaredNames(':: Start\nIt costs $5.50, or \\$cash.')).toEqual(['5', 'cash']);
+  });
+
+  it('validates dotted paths by their root, as Spindle does', () => {
+    expect(undeclaredNames(
+      ':: Start\n{$obj.a.deep} {$obj.unknown} {$list.length} {$nope.a.b}',
+    )).toEqual(['nope']);
+  });
+
+  it('does not report names a {for} in the same passage binds as locals', () => {
+    expect(undeclaredNames([
+      ':: Loop',
+      '{for @i, @item of $list}{$item} $i{/for}',
+      ':: Other',
+      '{$item}',
+    ].join('\n'))).toEqual(['item']);
+  });
+
+  it('does not report transients or jQuery-style $ calls', () => {
+    expect(undeclaredNames(':: Start\n{set %t = 1} <script>$("#a"); $.noop();</script>')).toEqual([]);
+  });
+
+  it('checks every passage Spindle sees, including StoryInit and StoryInterface', () => {
+    expect(undeclaredNames([
+      ':: StoryVariables',
+      '$x = 1',
+      ':: StoryTransients',
+      '%t = 0',
+      ':: StoryData',
+      '{"ifid": "$notAVar"}',
+      ':: StoryTitle',
+      'Costs $titleText',
+      ':: Code [script]',
+      'window.$helper = 1;',
+      ':: Styles [stylesheet]',
+      '.a::after { content: "$css"; }',
+      ':: StoryInit',
+      '{set $init = 1}',
+      ':: StoryInterface',
+      '<div>{$hud}</div>{passage}',
+      ':: Widgets [widget]',
+      '{widget "w"}{$inWidget}{/widget}',
+    ].join('\n'))).toEqual(['init', 'hud', 'inWidget']);
+  });
+
+  it('does not report transients in plain string text', () => {
+    const tracker = scan(':: Start\n{print "50 %off and %missing"}');
+    expect(tracker.getUndeclaredTransient(uri)).toEqual([]);
   });
 });
