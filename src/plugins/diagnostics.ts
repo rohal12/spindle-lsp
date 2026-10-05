@@ -1006,5 +1006,10 @@ export const diagnosticsPlugin: SpindlePlugin = {
       }
     });
     ctx.workspace.on('documentChanged', publishFor);
+    // A document that left the store won't be republished — clear its
+    // diagnostics so the editor drops stale problems.
+    ctx.workspace.on('documentClosed', (uri: string) => {
+      ctx.connection.sendDiagnostics({ uri, diagnostics: [] });
+    });
   },
 };

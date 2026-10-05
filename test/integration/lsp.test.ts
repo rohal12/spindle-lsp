@@ -915,4 +915,72 @@ describe('Integration: LSP server over stdio', () => {
       expect(codesOf(p.diagnostics)).not.toContain('SP100');
     }
   });
+
+  // -----------------------------------------------------------------------
+  // #31: clear diagnostics when a document leaves the store
+  // -----------------------------------------------------------------------
+
+  it('clears diagnostics when a closed untitled document leaves the store (#31)', async () => {
+    const dir = makeTempWorkspace({ 'story.twee': ':: Start\nHello.\n' });
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(uriFor(dir, 'story.twee'), () => true);
+
+    const uri = 'untitled:Untitled-1';
+    await didOpen(session, uri, ':: Scratch\n{newmacro}\n');
+    const mark = session.publishes.length;
+    await session.waitForDiagnostics(uri, hasCode('SP100'));
+
+    await didClose(session, uri);
+    await session.waitForDiagnostics(uri, diags => diags.length === 0, mark);
+    await sleep(400);
+    expect(session.latest(uri)).toEqual([]);
+  });
+
+  it('clears diagnostics for a file deleted on disk (#31)', async () => {
+    const dir = makeTempWorkspace({
+      'start.twee': ':: Start\nHello.\n',
+      'broken.twee': ':: Broken\n{newmacro}\n',
+    });
+    const uri = uriFor(dir, 'broken.twee');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(uri, hasCode('SP100'));
+
+    const mark = session.publishes.length;
+    unlinkSync(join(dir, 'broken.twee'));
+    await watchedFileChanged(session, uri, 3);
+    await session.waitForDiagnostics(uri, diags => diags.length === 0, mark);
+    await sleep(400);
+    expect(session.latest(uri)).toEqual([]);
+  });
+
+  it('clears diagnostics when an open file deleted on disk is closed (#14, #31)', async () => {
+    const dir = makeTempWorkspace({ 'story.twee': ':: Start\n{newmacro}\n' });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(uri, hasCode('SP100'));
+
+    await didOpen(session, uri, ':: Start\n{newmacro}\n');
+    unlinkSync(join(dir, 'story.twee'));
+    await watchedFileChanged(session, uri, 3);
+    // Still open in the editor: diagnostics remain
+    expect(await documentSymbolNames(session, uri)).toEqual(['Start']);
+
+    const mark = session.publishes.length;
+    await didClose(session, uri);
+    await session.waitForDiagnostics(uri, diags => diags.length === 0, mark);
+    expect(await documentSymbolNames(session, uri)).toEqual([]);
+  });
+
+  it('keeps diagnostics for an on-disk document that merely closes in the editor (#31)', async () => {
+    const story = ':: Start\n{newmacro}\n';
+    const dir = makeTempWorkspace({ 'story.twee': story });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(uri, hasCode('SP100'));
+
+    await didOpen(session, uri, story);
+    await didClose(session, uri);
+    await sleep(400);
+    expect(codesOf(session.latest(uri)!)).toContain('SP100');
+  });
 });
