@@ -799,3 +799,194 @@ describe('SP303: unused widget', () => {
     expect(codes).toContain('SP302');
   });
 });
+
+describe('SP200/SP203/SP206 in StoryInit, string interpolations and receivers (#62)', () => {
+  const story = [
+    ':: StoryVariables',
+    '$x = 1',
+    '$list = []',
+    ':: StoryTransients',
+    '%t = 0',
+    ':: StoryInit',
+    '{set $missingInit = 2} {set %initT = 1}',
+    ':: Start',
+    '{print `${$missingTemplate}`} {print `${%tplT}`}',
+    '{textbox "$missingReceiver"}',
+    '{print $missingCode}',
+    'It costs $missingProse today.',
+    '{print "costs $missingLiteral"} {print `${$list.nope}`}',
+  ].join('\n');
+
+  function diagnostics() {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: story });
+    return computeDiagnostics('file:///test.tw', workspace);
+  }
+
+  it('reports every undeclared $variable Spindle rejects at startup', () => {
+    const sp200 = diagnostics().filter(d => d.code === 'SP200');
+    expect(sp200.map(d => d.message)).toEqual([
+      "Variable '$missingInit' is not declared in StoryVariables",
+      "Variable '$missingTemplate' is not declared in StoryVariables",
+      "Variable '$missingReceiver' is not declared in StoryVariables",
+      "Variable '$missingCode' is not declared in StoryVariables",
+      "Variable '$missingProse' is not declared in StoryVariables",
+      "Variable '$missingLiteral' is not declared in StoryVariables",
+    ]);
+    expect(sp200.every(d => d.severity === 'error')).toBe(true);
+  });
+
+  it('reports undeclared transients in StoryInit and template interpolations', () => {
+    const sp203 = diagnostics().filter(d => d.code === 'SP203');
+    expect(sp203.map(d => d.message)).toEqual([
+      "Transient variable '%initT' is not declared in StoryTransients",
+      "Transient variable '%tplT' is not declared in StoryTransients",
+    ]);
+  });
+
+  it('reports array member access inside a template interpolation', () => {
+    const sp206 = diagnostics().filter(d => d.code === 'SP206');
+    expect(sp206).toHaveLength(1);
+    expect(sp206[0].message).toContain("'$list.nope'");
+  });
+});
+
+describe('CSS-prefixed variable displays (#58)', () => {
+  const uri = 'file:///test.tw';
+
+  function diagnose(body: string) {
+    const text = `:: StoryVariables\n$player = {}\n\n:: Start\n${body}\n`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    return computeDiagnostics(uri, workspace);
+  }
+
+  it('does not report {.hero-name $player.name} as an unrecognized macro', () => {
+    expect(diagnose('{.hero-name $player.name}')).toEqual([]);
+  });
+
+  it.each([
+    ['{#id $player}'],
+    ['{.a.b#c _temp}'],
+    ['{.cls @local}'],
+    ['{.my-if $player}'],
+    ['{.cls-link $player}'],
+  ])('reports no macro diagnostics for %s', (body) => {
+    expect(diagnose(body).filter(d => String(d.code).startsWith('SP1'))).toEqual([]);
+  });
+
+  it('reports SP200 for an undeclared variable in a prefixed display, like {$var}', () => {
+    const plain = diagnose('{$undeclared}').filter(d => d.code === 'SP200');
+    const prefixed = diagnose('{.hero-name $undeclared}').filter(d => d.code === 'SP200');
+    expect(plain).toHaveLength(1);
+    expect(prefixed).toHaveLength(1);
+    expect(prefixed[0].message).toBe(plain[0].message);
+    expect(prefixed[0].range).toEqual({
+      start: { line: 4, character: 12 },
+      end: { line: 4, character: 23 },
+    });
+  });
+});
+
+describe('SP201: field access on a primitive StoryVariables default', () => {
+  const uri = 'file:///test.tw';
+
+  function diagnose(body: string, vars = '$name = "Bob"\n$list = []\n$p = { hp: 1 }') {
+    const text = `:: StoryVariables\n${vars}\n\n:: Start\n${body}\n`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    return computeDiagnostics(uri, workspace);
+  }
+
+  it('reports the field Spindle rejects at startup as an error (issue example)', () => {
+    const sp201 = diagnose('{print $name.length}').filter(d => d.code === 'SP201');
+    expect(sp201).toHaveLength(1);
+    expect(sp201[0].severity).toBe('error');
+    expect(sp201[0].message).toBe(
+      'Cannot access field "length" on $name (type: string). ' +
+        'Spindle checks field access against the StoryVariables defaults and will not start the story.',
+    );
+    expect(sp201[0].range).toEqual({
+      start: { line: 6, character: 13 },
+      end: { line: 6, character: 19 },
+    });
+  });
+
+  it('reports nested fields with the path Spindle names', () => {
+    const sp201 = diagnose('{$p.hp.max}').filter(d => d.code === 'SP201');
+    expect(sp201.map(d => d.message)).toEqual([
+      expect.stringMatching(/^Cannot access field "max" on \$p\.hp \(type: number\)\./),
+    ]);
+  });
+
+  it('reports nothing for valid paths, undeclared roots or untyped defaults', () => {
+    const diags = diagnose('{$p.hp} {$p.extra.x} {$list.length} {$ghost.length} {$calc.x}', '$p = { hp: 1 }\n$list = []\n$calc = 2 * 3');
+    expect(diags.filter(d => d.code === 'SP201')).toEqual([]);
+    expect(diags.filter(d => d.code === 'SP200').map(d => d.message)).toEqual([
+      "Variable '$ghost' is not declared in StoryVariables",
+    ]);
+  });
+
+  it('never reports SP201 and SP206 for the same reference', () => {
+    const diags = diagnose('{$list.nope} {$name.nope}');
+    expect(diags.filter(d => d.code === 'SP206').map(d => d.message)).toEqual([
+      expect.stringContaining("'$list.nope'"),
+    ]);
+    expect(diags.filter(d => d.code === 'SP201').map(d => d.message)).toEqual([
+      expect.stringContaining('on $name (type: string)'),
+    ]);
+  });
+
+  it('reports nothing without a StoryVariables passage', () => {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: ':: Start\n{$name.length}\n' });
+    expect(computeDiagnostics(uri, workspace).filter(d => d.code === 'SP201')).toEqual([]);
+  });
+});
+
+describe('computeDiagnostics for other story formats', () => {
+  // A SugarCube passage: <</if>> reads as a stray closing tag (SP102) and
+  // $gold as an undeclared variable in Spindle.
+  const sugarcube = ':: Start\n<<if $gold > 5>>Rich<</if>>\n{nope}\n[[Missing]]\n';
+  const storyData = (format: string) =>
+    `:: StoryData\n{\n\t"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",\n\t"format": "${format}"\n}\n`;
+
+  it('reports nothing when StoryData names another format', () => {
+    const workspace = createWorkspaceFrom(
+      { name: 'StoryData.twee', content: storyData('SugarCube') },
+      { name: 'Start.twee', content: sugarcube },
+    );
+    expect(computeDiagnostics('file:///Start.twee', workspace)).toEqual([]);
+    expect(computeDiagnostics('file:///StoryData.twee', workspace)).toEqual([]);
+    expect(computeDiagnostics('file:///Start.twee', workspace, { maxLineLength: 5 })).toEqual([]);
+  });
+
+  it('reports as before when StoryData names Spindle, in any casing', () => {
+    for (const format of ['spindle', 'Spindle', ' SPINDLE ']) {
+      const workspace = createWorkspaceFrom(
+        { name: 'StoryData.twee', content: storyData(format) },
+        { name: 'Start.twee', content: sugarcube },
+      );
+      const codes = computeDiagnostics('file:///Start.twee', workspace).map(d => d.code);
+      expect(codes).toContain('SP100');
+      expect(codes).toContain('SP300');
+    }
+  });
+
+  it('reports as before when StoryData is missing, has no format or is not JSON', () => {
+    for (const data of ['', ':: StoryData\n{"ifid": "X"}\n', ':: StoryData\n{"format": "SugarCube",}\n']) {
+      const workspace = createWorkspaceFrom(
+        { name: 'StoryData.twee', content: data },
+        { name: 'Start.twee', content: sugarcube },
+      );
+      expect(computeDiagnostics('file:///Start.twee', workspace).map(d => d.code)).toContain('SP100');
+    }
+  });
+
+  it('follows edits to StoryData', () => {
+    const workspace = createWorkspaceFrom(
+      { name: 'StoryData.twee', content: storyData('SugarCube') },
+      { name: 'Start.twee', content: sugarcube },
+    );
+    workspace.documents.update('file:///StoryData.twee', storyData('spindle'));
+    expect(computeDiagnostics('file:///Start.twee', workspace).map(d => d.code)).toContain('SP100');
+    workspace.documents.update('file:///StoryData.twee', storyData('Harlowe'));
+    expect(computeDiagnostics('file:///Start.twee', workspace)).toEqual([]);
+  });
+});

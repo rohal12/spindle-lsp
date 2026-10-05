@@ -64,12 +64,31 @@ export interface Diagnostic {
  */
 export type VariableValueType = 'array' | 'object' | 'string' | 'number' | 'boolean';
 
+/**
+ * The schema Spindle's inferSchema() (story-variables.ts) gives a
+ * StoryVariables default: its type and, for an object, the schema of each
+ * own field. Spindle checks every `$a.b.c` path in the story against it when
+ * the story starts.
+ */
+export interface ValueSchema {
+  type: VariableValueType;
+  /**
+   * An object's own fields: each maps to its schema, or to null when its
+   * value is not a literal whose type is known without evaluating it.
+   * Absent when the object's fields are unknown (a spread, a computed key,
+   * an accessor or a method decides them).
+   */
+  fields?: Map<string, ValueSchema | null>;
+}
+
 export interface DeclaredVariable {
   name: string;
   sigil: '$' | '_' | '@' | '%';
   fields?: string[];
   /** Type of the default value, set only when the default is a single literal. */
   type?: VariableValueType;
+  /** Schema Spindle infers from a StoryVariables default, set only when the default is a literal. */
+  schema?: ValueSchema;
   declarationUri?: string;
   declarationRange?: Range;
 }

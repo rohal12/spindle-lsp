@@ -580,6 +580,36 @@ Content.
     expect(sp300.length).toBeGreaterThan(0);
     expect(sp300[0].message).toContain('Target');
   });
+
+  // -----------------------------------------------------------------------
+  // 11. CSS-prefixed variable displays are variables, not macros (#58)
+  // -----------------------------------------------------------------------
+
+  it('treats {.hero-name $player.name} as a variable display across plugins', () => {
+    const story = `:: StoryVariables
+$player = {}
+
+:: Start
+{.hero-name $player.name} {#id $missing}
+`;
+    workspace = buildWorkspace({ 'story.tw': story });
+
+    const diags = computeDiagnostics('file:///story.tw', workspace);
+    expect(diags.map(d => [d.code, d.message])).toEqual([
+      ['SP200', expect.stringContaining('$missing')],
+    ]);
+
+    const refs = findReferences('file:///story.tw', { line: 4, character: 14 }, workspace, false);
+    expect(refs.map(r => r.range.start)).toEqual([{ line: 4, character: 12 }]);
+
+    const edits = computeRename('file:///story.tw', { line: 4, character: 14 }, 'hero', workspace)
+      .get('file:///story.tw') ?? [];
+    // The edits replace the name after the sigil, in StoryVariables and the display
+    expect(edits.map(e => e.range.start)).toEqual([
+      { line: 1, character: 1 },
+      { line: 4, character: 13 },
+    ]);
+  });
 });
 
 // =========================================================================
@@ -629,6 +659,11 @@ interface PublishedDiagnostics {
 interface LspSession {
   conn: MessageConnection;
   publishes: PublishedDiagnostics[];
+  /**
+   * Everything the server logged so far (vscode-languageserver forwards
+   * console output to the client as window/logMessage).
+   */
+  log(): string;
   /** Resolve with the first publish for `uri` (at or after index `from`) matching `predicate`. */
   waitForDiagnostics(
     uri: string,
@@ -691,6 +726,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function startLsp(
   rootDir: string,
   initializationOptions: Record<string, unknown> = {},
+  capabilities: Record<string, unknown> = {},
 ): Promise<LspSession> {
   const proc = spawn(process.execPath, [serverBundle, '--stdio'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -703,6 +739,10 @@ async function startLsp(
 
   const publishes: PublishedDiagnostics[] = [];
   const waiters: Array<() => void> = [];
+  let log = '';
+  conn.onNotification('window/logMessage', (params: { message: string }) => {
+    log += params.message + '\n';
+  });
   conn.onNotification('textDocument/publishDiagnostics', (params: PublishedDiagnostics) => {
     publishes.push(params);
     for (const w of waiters.slice()) w();
@@ -714,7 +754,7 @@ async function startLsp(
   await conn.sendRequest('initialize', {
     processId: process.pid,
     rootUri: pathToFileURL(rootDir).toString(),
-    capabilities: {},
+    capabilities,
     initializationOptions,
   });
   await conn.sendNotification('initialized', {});
@@ -722,6 +762,7 @@ async function startLsp(
   const session: LspSession = {
     conn,
     publishes,
+    log: () => log,
     latest(uri) {
       for (let i = publishes.length - 1; i >= 0; i--) {
         if (publishes[i].uri === uri) return publishes[i].diagnostics;
@@ -936,6 +977,33 @@ describe('Integration: LSP server over stdio', () => {
     expect(session.latest(uri)).toEqual([]);
   });
 
+  it('publishes SP200 for undeclared variables in StoryInit, interpolations and receivers (#62)', async () => {
+    const dir = makeTempWorkspace({
+      'story.twee': [
+        ':: StoryVariables',
+        '$x = 1',
+        ':: StoryInit',
+        '{set $missingInit = 2}',
+        ':: Start',
+        '{print `${$missingTemplate}`}',
+        '{textbox "$missingReceiver"}',
+        '{print $missingCode}',
+        'It costs $missingProse today.',
+        '',
+      ].join('\n'),
+    });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    const diags = await session.waitForDiagnostics(uri, hasCode('SP200'));
+    expect(diags.filter(d => d.code === 'SP200').map(d => d.message)).toEqual([
+      "Variable '$missingInit' is not declared in StoryVariables",
+      "Variable '$missingTemplate' is not declared in StoryVariables",
+      "Variable '$missingReceiver' is not declared in StoryVariables",
+      "Variable '$missingCode' is not declared in StoryVariables",
+      "Variable '$missingProse' is not declared in StoryVariables",
+    ]);
+  });
+
   it('clears diagnostics for a file deleted on disk (#31)', async () => {
     const dir = makeTempWorkspace({
       'start.twee': ':: Start\nHello.\n',
@@ -1111,6 +1179,42 @@ describe('Integration: LSP server over stdio', () => {
     expect(after.filter(d => d.code === 'SP100').map(d => d.message)).toEqual(expected);
   });
 
+  // -----------------------------------------------------------------------
+  // #60: format requests indent block widget bodies like other containers
+  // -----------------------------------------------------------------------
+
+  it('indents block widget bodies in formatting and range formatting requests (#60)', async () => {
+    const story = ':: Widgets [widget]\n{widget "box"}\n{@children}\n{/widget}\n'
+      + '{widget "greet"}\nHi\n{/widget}\n\n'
+      + ':: Start\n{box}\nHello\n{/box}\n{greet}\nAfter\n{if true}\nYes\n{/if}\n';
+    const dir = makeTempWorkspace({ 'story.twee': story });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    await didOpen(session, uri, story);
+    await session.waitForDiagnostics(uri, () => true);
+
+    // {box} renders {@children}, so it is a container; {greet} is inline.
+    const expected = ':: Widgets [widget]\n{widget "box"}\n  {@children}\n{/widget}\n'
+      + '{widget "greet"}\n  Hi\n{/widget}\n\n'
+      + ':: Start\n{box}\n  Hello\n{/box}\n{greet}\nAfter\n{if true}\n  Yes\n{/if}\n';
+    const options = { tabSize: 2, insertSpaces: true };
+
+    const edits = await session.conn.sendRequest('textDocument/formatting', {
+      textDocument: { uri },
+      options,
+    }) as Array<{ newText: string }>;
+    expect(edits).toHaveLength(1);
+    expect(edits[0].newText).toBe(expected);
+
+    const rangeEdits = await session.conn.sendRequest('textDocument/rangeFormatting', {
+      textDocument: { uri },
+      range: { start: { line: 8, character: 0 }, end: { line: 11, character: 0 } },
+      options,
+    }) as Array<{ newText: string }>;
+    expect(rangeEdits).toHaveLength(1);
+    expect(rangeEdits[0].newText).toBe(expected);
+  });
+
   it('reloads macros from a legacy t3lt.twee-config.yaml change (#29)', async () => {
     const story = ':: Start\n{legacymacro}\n';
     const dir = makeTempWorkspace({
@@ -1130,5 +1234,82 @@ describe('Integration: LSP server over stdio', () => {
     await watchedFileChanged(session, configUri, 2);
     await session.waitForDiagnostics(uri, lacksCode('SP100'), mark);
     expect(session.publishes.some(p => p.uri === configUri)).toBe(false);
+  });
+  // -----------------------------------------------------------------------
+  // Projects in other story formats (SugarCube, Harlowe, ...)
+  // -----------------------------------------------------------------------
+
+  it('disables every feature while StoryData names another story format, live', async () => {
+    const storyData = (format: string) =>
+      `:: StoryData\n{\n\t"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",\n\t"format": "${format}"\n}\n`;
+    // SugarCube markup: <</if>> reads as a stray closing tag in Spindle
+    const start = ':: Start\n<<if $gold > 5>>Rich<</if>>\n{nope}\n[[Missing]]\n';
+    const dir = makeTempWorkspace({
+      'StoryData.twee': storyData('SugarCube'),
+      'Start.twee': start,
+      'Other.twee': ':: Other\n{nope}\n',
+    });
+    const dataUri = uriFor(dir, 'StoryData.twee');
+    const startUri = uriFor(dir, 'Start.twee');
+    const otherUri = uriFor(dir, 'Other.twee');
+    const refreshes: string[] = [];
+    const session = await startLsp(dir, {}, {
+      workspace: { semanticTokens: { refreshSupport: true }, inlayHint: { refreshSupport: true } },
+    });
+    session.conn.onRequest('workspace/semanticTokens/refresh', () => { refreshes.push('semanticTokens'); return null; });
+    session.conn.onRequest('workspace/inlayHint/refresh', () => { refreshes.push('inlayHint'); return null; });
+
+    await didOpen(session, startUri, start);
+    await session.waitForDiagnostics(otherUri, () => true);
+    await sleep(400);
+    for (const p of session.publishes) expect(p.diagnostics, p.uri).toEqual([]);
+    expect(session.log()).toContain(
+      '[spindle-lsp] story format "SugarCube" is not Spindle; language features disabled',
+    );
+
+    const position = { line: 2, character: 2 };
+    const textDocument = { uri: startUri };
+    const range = { start: { line: 0, character: 0 }, end: { line: 3, character: 0 } };
+    const requests: Array<[string, Record<string, unknown>]> = [
+      ['textDocument/hover', { textDocument, position }],
+      ['textDocument/semanticTokens/full', { textDocument }],
+      ['textDocument/completion', { textDocument, position }],
+      ['textDocument/definition', { textDocument, position: { line: 3, character: 4 } }],
+      ['textDocument/documentSymbol', { textDocument }],
+      ['textDocument/foldingRange', { textDocument }],
+      ['textDocument/documentLink', { textDocument }],
+      ['textDocument/codeLens', { textDocument }],
+      ['textDocument/inlayHint', { textDocument, range }],
+      ['textDocument/codeAction', { textDocument, range, context: { diagnostics: [] } }],
+      ['textDocument/formatting', { textDocument, options: { tabSize: 2, insertSpaces: true } }],
+      ['textDocument/prepareRename', { textDocument, position: { line: 0, character: 4 } }],
+      ['workspace/symbol', { query: '' }],
+    ];
+    for (const [method, params] of requests) {
+      expect(await session.conn.sendRequest(method, params), method).toBeNull();
+    }
+
+    // Fixing the format in StoryData enables everything and republishes
+    // the diagnostics of every document, not just StoryData's
+    await didOpen(session, dataUri, storyData('SugarCube'));
+    // The client was asked to refresh once when the scan found SugarCube
+    expect(refreshes).toEqual(['semanticTokens', 'inlayHint']);
+    let mark = session.publishes.length;
+    await didChangeFull(session, dataUri, 2, storyData('spindle'));
+    await session.waitForDiagnostics(startUri, hasCode('SP100'), mark);
+    await session.waitForDiagnostics(otherUri, hasCode('SP100'), mark);
+    expect(await session.conn.sendRequest('textDocument/semanticTokens/full', { textDocument }))
+      .toEqual({ data: expect.any(Array) });
+    expect(await documentSymbolNames(session, startUri)).toEqual(['Start']);
+    expect(session.log()).toContain('[spindle-lsp] story format is Spindle; language features enabled');
+    expect(refreshes).toEqual(['semanticTokens', 'inlayHint', 'semanticTokens', 'inlayHint']);
+
+    // ... and back
+    mark = session.publishes.length;
+    await didChangeFull(session, dataUri, 3, storyData('Harlowe'));
+    await session.waitForDiagnostics(otherUri, diags => diags.length === 0, mark);
+    await session.waitForDiagnostics(startUri, diags => diags.length === 0, mark);
+    expect(await session.conn.sendRequest('textDocument/hover', { textDocument, position })).toBeNull();
+    expect(session.log().match(/is not Spindle; language features disabled/g)).toHaveLength(2);
   });
 });

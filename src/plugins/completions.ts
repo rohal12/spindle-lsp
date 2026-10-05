@@ -41,13 +41,13 @@ export function getCompletions(
   }
 
   // --- Context: dot-path field `%var.` ---
-  const transientDotPathMatch = /%([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)?$/.exec(lineText);
+  const transientDotPathMatch = /%([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(lineText);
   if (transientDotPathMatch) {
     return getTransientDotPathCompletions(transientDotPathMatch[1], workspace);
   }
 
   // --- Context: dot-path field `$var.` ---
-  const dotPathMatch = /\$([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)?$/.exec(lineText);
+  const dotPathMatch = /\$([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(lineText);
   if (dotPathMatch) {
     return getDotPathCompletions(dotPathMatch[1], workspace);
   }

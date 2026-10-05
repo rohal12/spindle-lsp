@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -130,6 +130,38 @@ describe('CLI check command', () => {
       const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', file]));
       expect(exitCode).toBe(0);
       expect(JSON.parse(output).files).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports undeclared variables in StoryInit, interpolations, receivers and strings (#62)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-undeclared-'));
+    try {
+      const file = join(dir, 'story.twee');
+      writeFileSync(file, [
+        ':: StoryVariables',
+        '$x = 1',
+        ':: StoryInit',
+        '{set $missingInit = 2}',
+        ':: Start',
+        '{print `${$missingTemplate}`}',
+        '{textbox "$missingReceiver"}',
+        '{print $missingCode}',
+        'It costs $missingProse today.',
+        '{print "costs $missingLiteral"}',
+        '',
+      ].join('\n'));
+      const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', file]));
+      expect(exitCode).toBe(1);
+      const diags: Array<{ code: string; message: string }> = JSON.parse(output).files[0].diagnostics;
+      const names = diags
+        .filter(d => d.code === 'SP200')
+        .map(d => /'\$(\w+)'/.exec(d.message)?.[1]);
+      expect(names).toEqual([
+        'missingInit', 'missingTemplate', 'missingReceiver',
+        'missingCode', 'missingProse', 'missingLiteral',
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -330,4 +362,91 @@ describe('CLI check --config', () => {
       expect(exitCode).toBe(2);
       expect(errors).toContain('custom.json');
     }));
+});
+
+describe('CLI check on a story in another format', () => {
+  // A SugarCube story: <</if>> reads as a stray closing tag (SP102) in Spindle
+  const storyData = (format: string) =>
+    `:: StoryData\n{\n\t"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",\n\t"format": "${format}"\n}\n`;
+  const act = ':: Start\n<<if $gold > 5>>Rich<</if>>\n{nope}\n[[Missing]]\n';
+  let dir: string;
+  const originalCwd = process.cwd();
+
+  function project(format: string): void {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'spindle-cli-format-')));
+    const files: Record<string, string> = {
+      'package.json': '{}\n',
+      'src/story/StoryData.twee': storyData(format),
+      'src/story/Act1.twee': act,
+    };
+    for (const [name, content] of Object.entries(files)) {
+      mkdirSync(join(dir, name, '..'), { recursive: true });
+      writeFileSync(join(dir, name), content);
+    }
+  }
+
+  async function check(args: string[], cwd = dir) {
+    process.chdir(cwd);
+    try {
+      return await captureOutput(() => runCheck(args));
+    } finally {
+      process.chdir(originalCwd);
+    }
+  }
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reports nothing, says why and exits 0 (pretty)', async () => {
+    project('SugarCube');
+    const { exitCode, output, errors } = await check([]);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('No problems found');
+    expect(errors).toBe('Skipped: story format is SugarCube, not Spindle');
+  });
+
+  it('prints valid empty JSON and SARIF', async () => {
+    project('SugarCube');
+    const json = await check(['--format', 'json']);
+    expect(json.exitCode).toBe(0);
+    expect(JSON.parse(json.output)).toEqual({ files: [] });
+    expect(json.errors).toContain('Skipped: story format is SugarCube');
+
+    const sarif = await check(['--format', 'sarif']);
+    expect(sarif.exitCode).toBe(0);
+    const parsed = JSON.parse(sarif.output);
+    expect(parsed.version).toBe('2.1.0');
+    expect(parsed.runs[0].results).toEqual([]);
+  });
+
+  it('finds the StoryData of the project when checking a single passage file', async () => {
+    project('Harlowe');
+    const { exitCode, output, errors } = await check(
+      ['--format', 'json', 'Act1.twee'],
+      join(dir, 'src/story'),
+    );
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(output)).toEqual({ files: [] });
+    expect(errors).toContain('Skipped: story format is Harlowe, not Spindle');
+  });
+
+  it('checks a Spindle story as before', async () => {
+    project(' Spindle ');
+    const { exitCode, output, errors } = await check(['--format', 'json']);
+    expect(exitCode).toBe(1);
+    const codes = JSON.parse(output).files.flatMap(
+      (f: { diagnostics: Array<{ code: string }> }) => f.diagnostics.map(d => d.code),
+    );
+    expect(codes).toContain('SP102');
+    expect(codes).toContain('SP100');
+    expect(errors).toBe('');
+  });
+
+  it('checks a story whose StoryData does not parse as before', async () => {
+    project('SugarCube"');
+    const { exitCode, errors } = await check(['--format', 'json']);
+    expect(exitCode).toBe(1);
+    expect(errors).toBe('');
+  });
 });

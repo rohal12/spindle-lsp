@@ -50,8 +50,17 @@ export function isExcludedMacroSource(path: string, root?: string): boolean {
  * skipping those matched by {@link isExcludedMacroSource}.
  */
 export function findMacroSourceFiles(root: string): Promise<string[]> {
+  return findProjectFiles(root, MACRO_SOURCE_GLOB);
+}
+
+/**
+ * Find the files matching `pattern` under `root` (absolute paths), skipping
+ * hidden entries, dependencies and build output like
+ * {@link findMacroSourceFiles}.
+ */
+export function findProjectFiles(root: string, pattern: string): Promise<string[]> {
   const excluded = (p: Path): boolean => isExcludedMacroSource(p.fullpath(), root);
-  return glob(MACRO_SOURCE_GLOB, {
+  return glob(pattern, {
     cwd: root,
     absolute: true,
     nodir: true,

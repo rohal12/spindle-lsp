@@ -10,6 +10,10 @@ describe('diagnostic codes', () => {
     expect(getSeverity(DiagnosticCode.MalformedContainer)).toBe('error');
   });
 
+  it('SP102 is error severity, like the render failure it predicts', () => {
+    expect(getSeverity(DiagnosticCode.MalformedElement)).toBe('error');
+  });
+
   it('SP400 is hint severity', () => {
     expect(getSeverity(DiagnosticCode.DeadEndPassage)).toBe('hint');
   });
@@ -22,6 +26,15 @@ describe('diagnostic codes', () => {
     expect(getSeverity(DiagnosticCode.TemporaryAssignedInLoop)).toBe('warning');
     expect(getSeverity(DiagnosticCode.ArrayMemberAccess)).toBe('warning');
     expect(getSeverity(DiagnosticCode.IncludeWidgetPassage)).toBe('warning');
+  });
+
+  it('SP201 is error severity, like the startup failure it predicts', () => {
+    expect(getSeverity(DiagnosticCode.PrimitiveFieldAccess)).toBe('error');
+  });
+
+  it('SP207 is error severity: Spindle will not start the story', () => {
+    expect(DiagnosticCode.InvalidDeclaration).toBe('SP207');
+    expect(getSeverity(DiagnosticCode.InvalidDeclaration)).toBe('error');
   });
 
   it('SP303 is hint severity', () => {

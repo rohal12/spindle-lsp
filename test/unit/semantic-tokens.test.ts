@@ -56,6 +56,18 @@ describe('computeSemanticTokensAbsolute', () => {
     expect(nsTokens.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('covers escaped brackets and braces in the passage name token', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: A\\[B\ntext\n\n:: C\\{D\\} [tag] {"x": 1}\ntext',
+    });
+    const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
+    const nameTokens = tokens
+      .filter(t => t.tokenType === typeIdx('namespace') && (t.tokenModifiers & modBit('declaration')) !== 0)
+      .map(t => [t.line, t.startChar, t.length]);
+    expect(nameTokens).toEqual([[0, 3, 4], [3, 3, 6]]);
+  });
+
   it('emits tokens for sugar keywords', () => {
     const ws = createWorkspace({
       name: 'test.tw',
@@ -141,5 +153,36 @@ describe('computeSemanticTokens', () => {
     expect(Array.isArray(data)).toBe(true);
     expect(data.length % 5).toBe(0);
     expect(data.length).toBeGreaterThan(0);
+  });
+});
+
+describe('CSS-prefixed variable displays (#58)', () => {
+  function tokensOn(body: string) {
+    const ws = createWorkspace({ name: 'test.tw', content: `:: Start\n${body}` });
+    return computeSemanticTokensAbsolute('file:///test.tw', ws).filter(t => t.line === 1);
+  }
+
+  it.each([
+    ['{.hero-name $player.name}', 12, '$player.name', 'global'],
+    ['{#id $var}', 5, '$var', 'global'],
+    ['{.a.b#c _temp}', 8, '_temp', 'local'],
+    ['{.cls @local}', 6, '@local', 'readonly'],
+  ])('tokenizes %s like a plain variable display', (body, startChar, name, modifier) => {
+    expect(tokensOn(body)).toEqual([
+      {
+        line: 1,
+        startChar,
+        length: name.length,
+        tokenType: typeIdx('variable'),
+        tokenModifiers: modBit(modifier),
+      },
+    ]);
+  });
+
+  it('marks the macro name after the selectors of a prefixed macro', () => {
+    const fn = tokensOn('{.cls#id link "Go" "Next"}').filter(t => t.tokenType === typeIdx('function'));
+    expect(fn).toEqual([
+      { line: 1, startChar: 9, length: 4, tokenType: typeIdx('function'), tokenModifiers: modBit('defaultLibrary') },
+    ]);
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeCodeActions } from '../../src/plugins/code-actions.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -54,6 +55,20 @@ describe('computeCodeActions', () => {
     expect(action.diagnosticCodes).toContain('SP200');
     expect(action.edits.length).toBe(1);
     expect(action.edits[0].newText).toContain('$unknown = 0');
+  });
+
+  it('declares a $ followed by digits, which Spindle reads as a variable (#62)', () => {
+    const content = ':: StoryVariables\n$health = 100\n\n:: Start\nIt costs $5.';
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const sp200 = computeDiagnostics('file:///test.tw', ws).filter(d => d.code === 'SP200');
+    expect(sp200.map(d => d.message)).toEqual(["Variable '$5' is not declared in StoryVariables"]);
+
+    const actions = computeCodeActions('file:///test.tw', sp200, ws);
+    expect(actions.map(a => a.title)).toEqual(["Declare '$5' in StoryVariables"]);
+
+    const doc = TextDocument.create('file:///test.tw', 'twee', 0, content);
+    ws.documents.update('file:///test.tw', TextDocument.applyEdits(doc, actions[0].edits));
+    expect(computeDiagnostics('file:///test.tw', ws).filter(d => d.code === 'SP200')).toEqual([]);
   });
 
   it('produces quick fix for SP202 (no StoryVariables)', () => {

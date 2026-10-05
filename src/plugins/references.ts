@@ -3,6 +3,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { findPassageRefAt, parseLinks, parseMacroPassageRefs } from '../core/parsing/link-parser.js';
 import { parseMacros } from '../core/parsing/macro-parser.js';
+import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
@@ -36,22 +37,17 @@ export function findReferences(
   const line = lines[position.line];
 
   // --- Passage header ---
-  const passageHeaderRegex = /^::\s*(\S.*?)(?:\s*\[|\s*\{|\s*$)/;
-  if (line.trimStart().startsWith('::')) {
-    const headerMatch = passageHeaderRegex.exec(line);
-    if (headerMatch) {
-      const passageName = headerMatch[1].trim();
-      const nameStart = line.indexOf(passageName);
-      const nameEnd = nameStart + passageName.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        return findPassageReferences(passageName, workspace, includeDeclaration);
-      }
+  const header = parsePassageHeader(line, position.line);
+  if (header) {
+    const { start, end } = header.nameRange;
+    if (position.character >= start.character && position.character <= end.character) {
+      return findPassageReferences(header.name, workspace, includeDeclaration);
     }
   }
 
   // --- $variable ---
   {
-    const varRegex = /\$([A-Za-z_$][\w$]*)/g;
+    const varRegex = /\$([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = varRegex.exec(line)) !== null) {
       const start = match.index;
@@ -65,13 +61,14 @@ export function findReferences(
 
   // --- %transient ---
   {
-    const transRegex = /(?<!\w)%([A-Za-z_$][\w$]*)/g;
+    const transRegex = /(?<!\w)%([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = transRegex.exec(line)) !== null) {
       const start = match.index;
       const end = start + match[0].length;
       if (position.character >= start && position.character <= end) {
         const varName = match[1];
+        if (!isTransientAt(varName, uri, position.line, start, workspace)) break;
         return findTransientReferences(varName, workspace, includeDeclaration);
       }
     }
@@ -193,6 +190,27 @@ export function findVariableReferences(
   }
 
   return locations;
+}
+
+/**
+ * Whether the `%name` at line/character is a transient reference. A name
+ * starting with a digit is one only where the variable tracker records it
+ * (in code, where Spindle evaluates it) or at its declaration: `%20` in
+ * prose or an HTML attribute is URL encoding.
+ */
+export function isTransientAt(
+  name: string,
+  uri: string,
+  line: number,
+  character: number,
+  workspace: WorkspaceModel,
+): boolean {
+  if (!/^\d/.test(name)) return true;
+  const at = (u: { uri?: string; range?: Range }) =>
+    u.uri === uri && u.range?.start.line === line && u.range.start.character === character;
+  const decl = workspace.variables.getDeclaredTransient().get(name);
+  if (decl && at({ uri: decl.declarationUri, range: decl.declarationRange })) return true;
+  return workspace.variables.getTransientUsages(name).some(at);
 }
 
 /**

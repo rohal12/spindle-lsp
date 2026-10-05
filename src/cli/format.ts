@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { glob } from 'glob';
 
 import { formatDocument } from '../plugins/format.js';
+import { commonDirectory } from '../core/workspace/macro-sources.js';
+import { findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
 import type { FormatOptions as FormatDocOptions } from '../plugins/format.js';
 
 // ---------------------------------------------------------------------------
@@ -77,6 +79,22 @@ export async function runFormat(args: string[]): Promise<number> {
     return 0;
   }
 
+  // Leave a story in another format alone: Spindle's formatting rules
+  // could corrupt it. Its StoryData is among the files or in their project.
+  const texts = new Map<string, string>();
+  for (const filePath of uniqueFiles) {
+    try {
+      texts.set(filePath, readFileSync(filePath, 'utf-8'));
+    } catch {
+      // Skip unreadable files
+    }
+  }
+  const storyFormat = await findStoryFormat(texts.values(), commonDirectory(uniqueFiles));
+  if (!storyFormat.isSpindle) {
+    console.error(skippedFormatNote(storyFormat));
+    return 0;
+  }
+
   const formatOpts: FormatDocOptions = {};
   if (options.maxLineLength !== null) {
     formatOpts.maxLineLength = options.maxLineLength;
@@ -84,9 +102,8 @@ export async function runFormat(args: string[]): Promise<number> {
 
   const unformatted: string[] = [];
 
-  for (const filePath of uniqueFiles) {
+  for (const [filePath, text] of texts) {
     try {
-      const text = readFileSync(filePath, 'utf-8');
       const formatted = await formatDocument(text, formatOpts);
 
       if (formatted !== text) {
@@ -100,7 +117,7 @@ export async function runFormat(args: string[]): Promise<number> {
         }
       }
     } catch {
-      // Skip unreadable/unwritable files
+      // Skip unwritable files
     }
   }
 

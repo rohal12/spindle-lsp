@@ -204,4 +204,17 @@ describe('findReferences (top-level)', () => {
     const refs = findReferences('file:///test.tw', { line: 3, character: 4 }, ws, true);
     expect(refs.length).toBeGreaterThan(0);
   });
+
+  it('finds references from a header whose name has escaped brackets', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: A\\[B [tag]\ntext\n\n:: Start\n{goto "A[B"}',
+    });
+    // Cursor on the "B" after the escaped bracket
+    const refs = findReferences('file:///test.tw', { line: 0, character: 6 }, ws, true);
+    expect(refs.map(r => r.range)).toEqual([
+      { start: { line: 0, character: 3 }, end: { line: 0, character: 7 } },
+      { start: { line: 4, character: 7 }, end: { line: 4, character: 10 } },
+    ]);
+  });
 });

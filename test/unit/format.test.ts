@@ -84,6 +84,13 @@ describe('formatDocument', () => {
     expect(parsed?.meta).toEqual({ position: '100,200' });
   });
 
+  it('formats a passage named with an escaped [script] as story markup', async () => {
+    const input = ':: A\\[script\\]\n{if true}\nsome prose\n{/if}\n';
+    expect(await formatDocument(input)).toBe(':: A\\[script\\]\n{if true}\n  some prose\n{/if}\n');
+    const unclosed = ':: A\\[script]\n{if true}\nsome prose\n{/if}\n';
+    expect(await formatDocument(unclosed)).toBe(':: A\\[script]\n{if true}\n  some prose\n{/if}\n');
+  });
+
   it('returns already-formatted document unchanged', async () => {
     const input = ':: Start\n{if $x}\n  {set $y = 1}\n{/if}\n';
     const result = await formatDocument(input);
@@ -259,6 +266,19 @@ describe('formatDocument', () => {
     const input = ':: Start\n{.red#alert if $danger}\nWarning!\n{/if}\n';
     const result = await formatDocument(input);
     expect(result.split('\n')[2]).toBe('  Warning!');
+  });
+
+  it('does not indent after a prefixed variable display whose class ends in a macro name (#58)', async () => {
+    const input = ':: Start\n{.my-if $danger}\nWarning!\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('Warning!');
+  });
+
+  it('does not indent after selectors Spindle reads as text (#58)', async () => {
+    // Spindle allows no whitespace between selectors: this is not an {if}
+    const input = ':: Start\n{.red .bold if $danger}\nWarning!\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('Warning!');
   });
 
   // -- Script passage formatting ------------------------------------------

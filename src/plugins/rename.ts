@@ -2,11 +2,13 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { findPassageRefAt } from '../core/parsing/link-parser.js';
+import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageReferences,
   findVariableReferences,
   findTransientReferences,
   findWidgetReferences,
+  isTransientAt,
 } from './references.js';
 
 // ---------------------------------------------------------------------------
@@ -59,8 +61,13 @@ export function computeRename(
 
   switch (symbol.kind) {
     case 'passage': {
-      const refs = findPassageReferences(symbol.name, workspace, true);
-      for (const ref of refs) {
+      // The header spells the name with Twee escapes (`A\[B`); links and
+      // macro arguments use the plain name.
+      const declaration = workspace.passages.getPassage(symbol.name);
+      if (declaration) {
+        addEdit(declaration.uri, declaration.nameRange, escapePassageName(newName));
+      }
+      for (const ref of findPassageReferences(symbol.name, workspace, false)) {
         addEdit(ref.uri, ref.range, newName);
       }
       break;
@@ -103,6 +110,11 @@ export function computeRename(
   return edits;
 }
 
+/** Escape the Twee header metacharacters (`[ ] { } \`) in a passage name. */
+function escapePassageName(name: string): string {
+  return name.replace(/[[\]{}\\]/g, '\\$&');
+}
+
 // ---------------------------------------------------------------------------
 // Symbol resolution
 // ---------------------------------------------------------------------------
@@ -128,29 +140,17 @@ function resolveSymbolAtCursor(
   const line = lines[position.line];
 
   // --- Passage header ---
-  const passageHeaderRegex = /^::\s*(\S.*?)(?:\s*\[|\s*\{|\s*$)/;
-  if (line.trimStart().startsWith('::')) {
-    const headerMatch = passageHeaderRegex.exec(line);
-    if (headerMatch) {
-      const passageName = headerMatch[1].trim();
-      const nameStart = line.indexOf(passageName);
-      const nameEnd = nameStart + passageName.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        return {
-          kind: 'passage',
-          name: passageName,
-          range: {
-            start: { line: position.line, character: nameStart },
-            end: { line: position.line, character: nameEnd },
-          },
-        };
-      }
+  const header = parsePassageHeader(line, position.line);
+  if (header) {
+    const { start, end } = header.nameRange;
+    if (position.character >= start.character && position.character <= end.character) {
+      return { kind: 'passage', name: header.name, range: header.nameRange };
     }
   }
 
   // --- $variable ---
   {
-    const varRegex = /\$([A-Za-z_$][\w$]*)/g;
+    const varRegex = /\$([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = varRegex.exec(line)) !== null) {
       const start = match.index;
@@ -171,12 +171,13 @@ function resolveSymbolAtCursor(
 
   // --- %transient ---
   {
-    const transRegex = /(?<!\w)%([A-Za-z_$][\w$]*)/g;
+    const transRegex = /(?<!\w)%([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = transRegex.exec(line)) !== null) {
       const start = match.index;
       const end = start + match[0].length;
       if (position.character >= start && position.character <= end) {
+        if (!isTransientAt(match[1], uri, position.line, start, workspace)) break;
         return {
           kind: 'variable',
           name: match[1],

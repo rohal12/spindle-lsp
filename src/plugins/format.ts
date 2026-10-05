@@ -1,6 +1,7 @@
 import type { Range } from '../core/types.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import supplements from '../macro-supplements.json' with { type: 'json' };
+import { SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
 import { splitPassages, classifyPassage, segmentRegions } from './format/segment.js';
 import { formatJS, formatCSS, formatHTML as formatHTMLPrettier } from './format/prettier-bridge.js';
 import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks } from './format/placeholders.js';
@@ -25,7 +26,7 @@ export interface FormatOptions {
 const PASSAGE_HEADER_REGEX = /^(::)\s+/;
 
 /** Matches an opening macro tag, capturing optional CSS prefix and macro name. */
-const MACRO_OPEN_REGEX = /^\{(?:[#.][a-zA-Z][\w-]*\s*)*([A-Za-z][\w-]*)\b/;
+const MACRO_OPEN_REGEX = new RegExp(String.raw`^\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\b`);
 
 /** Matches a closing macro tag, capturing the macro name. */
 const MACRO_CLOSE_REGEX = /^\{\/([A-Za-z][\w-]*)\b/;
@@ -484,7 +485,8 @@ export const formatPlugin: SpindlePlugin = {
   },
   initialize(ctx: PluginContext) {
     const formatOpts: FormatOptions = {
-      isBlock: (name) => ctx.workspace.macros.isBlock(name),
+      // Block widgets (whose body renders {@children}) are containers too
+      isBlock: (name) => ctx.workspace.isContainer(name),
       isDedentingSubMacro: (name) => DEFAULT_DEDENTING.has(name.toLowerCase()),
     };
 
