@@ -5,6 +5,9 @@ known gaps listed the `@rohal12/spindle` peer range (`>=0.34.0`) as unverified.
 Branch `fix/gap-i-peer`, Node 22.18.0. Control: 0.45.1 reproduces the baseline
 (63 files / 1,402 tests, typecheck clean).
 
+> Superseded by the [Result](#result--2026-10-06-branch-fixclose-o-version)
+> section at the end: every open item below was closed there.
+
 ## Method
 
 `scripts/peer-matrix.sh <version> [scratch]` copies `src/`, `test/` and the
@@ -116,3 +119,100 @@ tests pin. Left as proposals below.
 - `package.json` `devDependencies` stays `^0.45.1`; CI only exercises that
   version. Running `scripts/peer-matrix.sh` over the boundary versions (0.43.0,
   0.50.0, latest) before a release would keep this evidence current.
+
+## Result — 2026-10-06 (branch `fix/close-o-version`)
+
+Closes every item the sections above left open. Node 22.18.0. Method as above
+(`scripts/peer-matrix.sh <version>`, run instructions in
+[process.md](process.md)); this time every published release from 0.43.0 on was
+run, not a sample.
+
+### What changed
+
+1. **The LSP knows the target Spindle.** `src/core/workspace/spindle-capabilities.ts`
+   defines `SpindleCapabilities { version, source, supported, executableRefsOnly,
+   primitiveMembers }`. `WorkspaceModel.capabilities` resolves, in order: the
+   `@rohal12/spindle` installed under the workspace root (or an ancestor's
+   `node_modules`, the lookup the builtin macro registry already uses; re-read on
+   `refresh()`), then the `format-version` of a Spindle StoryData passage (live,
+   on every cascade), then `DEFAULT_CAPABILITIES`: version unknown, the behavior
+   the 0.45.1 tests pin (raw-text validation, no primitive members, supported).
+   The LSP's own copy of Spindle is deliberately not consulted: it is a
+   development or peer install and says nothing about the story's runtime.
+2. **SP201 (and SP200) are version-gated.**
+   - `executableRefsOnly` (>= 0.50.1): `src/core/parsing/executable-refs.ts` ports
+     that release's markup tokenizer and `collectPassageRefs` with source offsets,
+     so only executable references are validated (`{$v}`, expressions, macro
+     arguments, `{do}` bodies, input-macro variable names, attribute
+     interpolations); prose, plain strings and comments are not. SP200 uses the
+     same reference list, so it follows the same rule (it had the same
+     over-reporting; the runtime changed `validatePassages` for both).
+     Below 0.50.1 the raw-text scan is kept unchanged.
+   - `primitiveMembers` (>= 0.51.1): `findPrimitiveFieldAccess` walks a
+     primitive's wrapper members as the runtime does (`part in Object(value)`,
+     member `typeof` decides: number/string/boolean continue, anything else
+     stops), so `$n.toFixed`, `$s.length` pass and `$s.length.x` is reported.
+3. **SP001** (`UnsupportedSpindleVersion`, warning): when the detected version is
+   below 0.43.0, the first story document carries a project-level warning
+   (once, like SP202) and a StoryTransients passage gets an error (the old
+   runtime rejects it). The server logs the detected target at startup and, below
+   the floor, also logs a warning and sends `window/showMessage`. An undetectable
+   version raises nothing.
+4. **Peer range narrowed to `>=0.43.0`** in `package.json` and
+   `package-lock.json`. Ledger decision: releases below 0.43.0 are demonstrably
+   unsupported (no `%`/StoryTransients; before 0.38 also no attribute
+   expressions, so SP103's model does not hold), as established above, and the
+   LSP now says so (SP001) instead of silently accepting `%` syntax. The
+   devDependency stays `^0.45.1`.
+5. **Stale SP103 test fixed.** `needs {E ?? ''} for a dotted path` now expects
+   `''` before 0.51.1 and `3` from it (`INSTALLED_CAPABILITIES.primitiveMembers`),
+   and asserts that the `?? ''` form renders `3` on every version, which is what
+   the quick fix relies on. The earlier note that the fix "yields the same text"
+   was wrong for <0.51.1: it renders `3` instead of `''`, which is the intent.
+6. **Whole-story SP201 test** no longer pins `toHaveLength(8)`: the expected
+   runtime error count is 8 (<0.50.1), 4 (0.50.1-0.51.0), 3 (>=0.51.1), and the
+   LSP-vs-runtime `toEqual` is asserted against whichever runtime is installed.
+
+### Differential evidence
+
+- `test/unit/executable-refs.test.ts`: `collectExecutableRefs` against a vendored
+  copy of the 0.51.3 runtime (`test/fixtures/spindle-0.51.3`, Unlicense; its
+  tokenizer and `collectPassageRefs` are byte-identical in 0.50.1-0.51.3), over
+  75 hand-written fragments and 4,000 seeded random compositions (prose,
+  strings, comments, `{do}`, selectors, HTML attributes incl. repeated names,
+  input macros, links, escapes, unbalanced braces, non-ASCII), plus offset checks
+  (`content.slice(offset)` is the `$ref`), plus SP201 under 0.51.3 capabilities
+  against the vendored `validatePassages` over 9 defaults x 32 paths (including
+  `constructor`, `__proto__`, `length.length`).
+- The same file compares SP200 (undeclared names, with `{for}` locals) against
+  the installed runtime on 1,500 random passages in whichever mode that version
+  uses, so the 0.45.1 raw-text behavior is verified as well as the new one.
+- `test/unit/spindle-capabilities.test.ts`: version thresholds, detection order,
+  workspace-level behavior with fake installs (SP200/SP201 below/at 0.50.1 and
+  0.51.1, ranges point at the source), SP001.
+- The first fuzz run surfaced one oracle error, not an LSP one: the runtime
+  skips `{for @a, @b of}` locals, which the comparison now mirrors.
+
+### Matrix after the change
+
+Every test file, `tsc --noEmit` clean on all rows. 65 files / 1,446 tests; no
+skips. Passed/total:
+
+| Spindle | passed | typecheck |
+| --- | --- | --- |
+| 0.43.0, 0.43.1, 0.43.2, 0.43.3, 0.43.4, 0.43.5, 0.43.6, 0.43.7 | 1446/1446 | clean |
+| 0.44.0, 0.45.0, 0.45.1, 0.46.0, 0.47.0, 0.48.0, 0.49.0, 0.49.1, 0.50.0 | 1446/1446 | clean |
+| 0.50.1, 0.51.0 | 1446/1446 | clean |
+| 0.51.1, 0.51.2, 0.51.3 (latest) | 1446/1446 | clean |
+
+All 22 published releases from 0.43.0 to 0.51.3 are covered; nothing in the
+supported range is unrun. Below the floor, 0.42.0 run for the record: 1427/1446,
+the 19 failures all being `%`/StoryTransients cases whose runtime oracle
+throws (convergence-edits 6, declaration-runtime 2, diagnostics-contracts 8,
+attribute-blocks-runtime 2, literal-contracts 1), the intentional version
+difference that SP001 now reports. Releases 0.34.0-0.42.0 other than that one
+were measured in the first run and are unsupported by decision (4 above).
+
+Superseded earlier conclusions: "Not fixed in src/", "Conclusions and proposal
+(not applied)" and the `<0.50.1` range alternative; the proposed follow-ups (a)
+and (b) are implemented above rather than filed.

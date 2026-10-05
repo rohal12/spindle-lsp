@@ -18,6 +18,7 @@ import { allPlugins } from '../plugins/index.js';
 import type { SpindleConfig, SpindlePlugin } from '../core/plugin/plugin-api.js';
 import type { StoryFormat } from '../core/workspace/story-format.js';
 import { loadConfigFromDisk } from '../core/workspace/config-loader.js';
+import { unsupportedVersionMessage } from '../core/workspace/spindle-capabilities.js';
 import {
   MACRO_SOURCE_GLOB,
   findMacroSourceFiles,
@@ -69,6 +70,7 @@ export function startServer(args: string[]): void {
   let workspace: WorkspaceModel;
   let activePlugins: SpindlePlugin[] = [];
   let workspaceRoot: string | undefined;
+  let startupWarning: string | undefined;
 
   connection.onInitialize((params) => {
     console.error('[spindle-lsp] onInitialize called');
@@ -98,6 +100,14 @@ export function startServer(args: string[]): void {
     console.error('[spindle-lsp] workspaceRoot:', workspaceRoot ?? 'undefined');
     console.error('[spindle-lsp] builtin macros:', workspace.macros.builtinsPath ?? 'not found');
     for (const warning of workspace.macros.warnings) console.error('[spindle-lsp]', warning);
+    const target = workspace.capabilities;
+    console.error('[spindle-lsp] target Spindle:', target.version ? `${target.version} (${target.source})` : 'not detected');
+    if (!target.supported) {
+      const message = unsupportedVersionMessage(target);
+      console.error('[spindle-lsp] WARNING:', message);
+      // Shown once the client is connected; diagnostics (SP001) repeat it per project
+      startupWarning = `spindle-lsp: ${message}`;
+    }
 
     // Load and filter plugins
     activePlugins = loadPlugins(allPlugins, config);
@@ -148,6 +158,7 @@ export function startServer(args: string[]): void {
   });
 
   connection.onInitialized(() => {
+    if (startupWarning) void connection.window.showWarningMessage(startupWarning);
     // Register for file watching (fire-and-forget — don't block the connection)
     connection.client.register(DidChangeWatchedFilesNotification.type, {
       watchers: [

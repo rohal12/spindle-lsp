@@ -55,9 +55,35 @@ small fixture, parse its declaration, or inspect the exact runtime call path.
 Record normalization done by the compiler, such as CRLF to LF. Upstream main is
 additional evidence, not a replacement for the installed dependency. A syntax
 case accepted by another runtime version is not automatically a defect here.
-The current audit covers Spindle 0.45.1. Peer-range results (green on
-0.43.0-0.50.0; see [2026-10-06-peer-range.md](2026-10-06-peer-range.md)) are
-produced by `scripts/peer-matrix.sh <version>`.
+The current audit covers Spindle 0.45.1 (the devDependency, and the behavior
+used when no version can be detected). The supported range is `>=0.43.0`; the
+suite is green on every release from 0.43.0 to 0.51.3
+([2026-10-06-peer-range.md](2026-10-06-peer-range.md)).
+
+### Running the suite against another Spindle
+
+```
+scripts/peer-matrix.sh <spindle-version> [scratch-dir]
+# e.g. for v in 0.43.0 0.50.0 0.50.1 0.51.1 0.51.3; do scripts/peer-matrix.sh $v; done
+```
+
+The script packs that release, copies `src/`, `test/` and the configs to
+`<scratch>/run/<version>` (default `$TMPDIR/spindle-peer`), links the repo's
+`node_modules` except `@rohal12/spindle`, runs vitest and `tsc --noEmit`
+there and prints `<version> <passed>/<total> tsc=<exit>`; `out.json`,
+`out.log` and `tsc.log` stay in the run directory. The repo's `node_modules`
+is never modified. Tests find the runtime by relative
+`node_modules/@rohal12/spindle/src/...` imports and learn its version from
+`test/helpers/spindle-version.ts`, so version-dependent expectations follow
+the installed release. Run the boundary releases (0.43.0, 0.50.0, 0.50.1,
+0.51.0, 0.51.1) and the latest before changing version-gated behavior or the
+peer range; a skipped test counts as not run, so the suite has none.
+
+Version-dependent behavior lives in
+`src/core/workspace/spindle-capabilities.ts` (`SpindleCapabilities`): the
+target version is the one installed under the workspace root, else StoryData's
+`format-version`, else the Spindle 0.45.1 behavior. Add a flag there, with the
+release that introduced the behavior, rather than testing versions inline.
 
 Different runtime consumers have different contracts:
 

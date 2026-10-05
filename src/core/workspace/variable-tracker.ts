@@ -3,6 +3,8 @@ import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/pass
 import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
 import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
 import { checkDeclaration, declaredName } from './declaration-check.js';
+import { collectExecutableRefs } from '../parsing/executable-refs.js';
+import { DEFAULT_CAPABILITIES, type SpindleCapabilities } from './spindle-capabilities.js';
 
 /**
  * Regex to match $variable references including dot notation. A name may
@@ -359,13 +361,17 @@ function declarationLocation(
 
 /**
  * The `$name` references Spindle checks against StoryVariables when the
- * story starts. Like validatePassages, this matches the raw text of every
- * passage it sees (string text, comments and prose included) and skips the
- * names that a `{for @local of …}` in the same passage binds.
+ * story starts, and skipping the names that a `{for @local of …}` in the
+ * same passage binds. Before Spindle 0.50.1, like validatePassages, this
+ * matches the raw text of every passage (string text, comments and prose
+ * included). From 0.50.1 (`executableOnly`), only the references the passage
+ * executes count (see executable-refs.ts).
  */
 function validatedReferences(
   lines: string[],
   passages: Array<{ name: string; tags: string[]; startLine: number }>,
+  executableOnly: boolean,
+  storeVarMacros: ReadonlySet<string>,
 ): ValidatedReference[] {
   const refs: ValidatedReference[] = [];
   for (let pi = 0; pi < passages.length; pi++) {
@@ -375,27 +381,42 @@ function validatedReferences(
     const contentStartLine = passage.startLine + 1;
     const contentEndLine = pi + 1 < passages.length ? passages[pi + 1].startLine : lines.length;
     const contentLines = lines.slice(contentStartLine, contentEndLine);
+    const content = contentLines.join('\n');
 
     const forLocals = new Set<string>();
-    for (const m of contentLines.join('\n').matchAll(VALIDATED_FOR_LOCAL_RE)) {
+    for (const m of content.matchAll(VALIDATED_FOR_LOCAL_RE)) {
       forLocals.add(m[1]);
       if (m[2]) forLocals.add(m[2]);
     }
 
-    // A reference never spans lines: \w excludes line terminators.
-    for (let i = 0; i < contentLines.length; i++) {
-      for (const m of contentLines[i].matchAll(VALIDATED_REF_RE)) {
-        const baseName = m[1].split('.')[0];
-        if (forLocals.has(baseName)) continue;
-        const line = contentStartLine + i;
-        refs.push({
-          baseName,
-          path: m[1],
-          range: {
-            start: { line, character: m.index },
-            end: { line, character: m.index + m[0].length },
-          },
-        });
+    const add = (path: string, i: number, character: number): void => {
+      const baseName = path.split('.')[0];
+      if (forLocals.has(baseName)) return;
+      const line = contentStartLine + i;
+      refs.push({
+        baseName,
+        path,
+        range: {
+          start: { line, character },
+          end: { line, character: character + 1 + path.length },
+        },
+      });
+    };
+
+    if (executableOnly) {
+      const lineStarts: number[] = [0];
+      for (let i = 0; i < contentLines.length; i++) {
+        lineStarts.push(lineStarts[i] + contentLines[i].length + 1);
+      }
+      for (const { ref, offset } of collectExecutableRefs(content, storeVarMacros)) {
+        let i = lineStarts.length - 2;
+        while (lineStarts[i] > offset) i--;
+        add(ref, i, offset - lineStarts[i]);
+      }
+    } else {
+      // A reference never spans lines: \w excludes line terminators.
+      for (let i = 0; i < contentLines.length; i++) {
+        for (const m of contentLines[i].matchAll(VALIDATED_REF_RE)) add(m[1], i, m.index);
       }
     }
   }
@@ -421,6 +442,17 @@ export class VariableTracker {
 
   /** Per-URI list of transient variable usages. */
   private transientUsagesByUri = new Map<string, VariableUsage[]>();
+
+  /** The Spindle this project targets; decides which references are validated. */
+  private capabilities: SpindleCapabilities = DEFAULT_CAPABILITIES;
+
+  /**
+   * Set the target Spindle's capabilities. Takes effect at the next
+   * scanDocument(): callers rescan after changing them.
+   */
+  setCapabilities(capabilities: SpindleCapabilities): void {
+    this.capabilities = capabilities;
+  }
 
   /** Per-URI list of the `$` references Spindle validates at startup. */
   private validatedRefsByUri = new Map<string, ValidatedReference[]>();
@@ -679,7 +711,12 @@ export class VariableTracker {
       this.transientUsagesByUri.set(uri, transientUsages);
     }
 
-    const validated = validatedReferences(lines, passageBoundaries);
+    const validated = validatedReferences(
+      lines,
+      passageBoundaries,
+      this.capabilities.executableRefsOnly,
+      storeVarMacros,
+    );
     if (validated.length > 0) {
       this.validatedRefsByUri.set(uri, validated);
     }
@@ -733,7 +770,9 @@ export class VariableTracker {
   /**
    * Get the `$var.a.b` paths in a document that Spindle rejects at startup
    * because they access a field of a number, string or boolean, judged by
-   * the StoryVariables defaults as Spindle's validateRef() does. Every
+   * the StoryVariables defaults as Spindle's validateRef() does (from
+   * Spindle 0.51.1, members of the primitive's wrapper such as
+   * `$s.length` are allowed). Every
    * occurrence is reported; defaults that are not literals are not checked.
    */
   getPrimitiveFieldAccesses(uri: string): PrimitiveFieldAccess[] {
@@ -742,7 +781,7 @@ export class VariableTracker {
       const schema = this.declared.get(ref.baseName)?.schema;
       if (!schema) continue;
       const parts = ref.path.split('.');
-      const found = findPrimitiveFieldAccess(schema, parts.slice(1));
+      const found = findPrimitiveFieldAccess(schema, parts.slice(1), this.capabilities.primitiveMembers);
       if (!found) continue;
 
       const owner = parts.slice(0, found.index + 1).join('.');
