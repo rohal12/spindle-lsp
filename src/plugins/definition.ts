@@ -33,7 +33,7 @@ export function getDefinition(
   const line = lines[position.line];
 
   // --- Passage ref in [[link]] or macro args (goto, include, link) ---
-  const passageResult = getPassageRefDefinition(text, position, workspace);
+  const passageResult = getPassageRefDefinition(uri, text, position, workspace);
   if (passageResult) return passageResult;
 
   // --- Widget name -> definition ---
@@ -48,11 +48,12 @@ export function getDefinition(
 // ---------------------------------------------------------------------------
 
 function getPassageRefDefinition(
+  uri: string,
   text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  const ref = findPassageRefAt(text, position);
+  const ref = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri));
   if (!ref) return null;
   const passage = workspace.passages.getPassage(ref.name);
   if (!passage) return null;

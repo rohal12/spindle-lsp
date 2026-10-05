@@ -1,11 +1,68 @@
 import type { Range } from '../types.js';
 import { buildLineStarts, offsetToPosition, parseMacros } from './macro-parser.js';
 import { ArgType, lexArguments } from './argument-lexer.js';
+import { attributeValueSpans } from './html-scanner.js';
+import { isScriptOrStylesheetPassage } from './passage-parser.js';
+import { decodeStringLiteralBody, type JsQuote } from './js-string-literal.js';
+
+/**
+ * How a reference spells its target; rename re-encodes a new name per form.
+ *  - `bracket`: the target of a `[[link]]`
+ *  - `js-string`: a quoted `{goto}` / `{include}` target (a JavaScript string literal)
+ *  - `bare`: an unquoted `{goto}` / `{include}` target (text fallback)
+ *  - `link-string`: the quoted passage of `{link "label" "Passage"}`, which
+ *    Spindle's MacroLink reads with a quote regex and does not unescape
+ */
+export type PassageRefForm = 'bracket' | 'js-string' | 'bare' | 'link-string';
 
 export interface PassageRef {
   name: string;
+  /** Source range of the target's spelling (inside any quotes). */
   range: Range;
   source: 'link' | 'macro';
+  form: PassageRefForm;
+  /** Delimiter of a quoted target. */
+  quote?: JsQuote;
+}
+
+/** The passage minimum needed to mask code passages. */
+type MaskablePassage = { tags?: string[]; range: Range };
+
+/**
+ * Replace the body of every script/stylesheet passage with spaces, keeping
+ * line breaks so offsets and positions are unchanged. Those bodies hold
+ * JS/CSS, not story markup, so they contain no links or macro targets.
+ */
+export function maskScriptAndStylesheetPassages(text: string, passages: MaskablePassage[]): string {
+  const excluded = passages.filter(isScriptOrStylesheetPassage);
+  if (excluded.length === 0) return text;
+
+  const lines = text.split('\n');
+  for (const passage of excluded) {
+    const last = Math.min(passage.range.end.line, lines.length - 1);
+    for (let i = passage.range.start.line + 1; i <= last; i++) {
+      lines[i] = lines[i].replace(/[^\r]/g, ' ');
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Offset spans where `[[` is literal text rather than a link: macro tags
+ * (whose arguments Spindle's tokenizer consumes whole) and HTML attribute
+ * values.
+ */
+function literalSpans(text: string, lineStarts: number[]): Array<[number, number]> {
+  const spans: Array<[number, number]> = attributeValueSpans(text);
+  if (text.includes('{')) {
+    for (const macro of parseMacros(text)) {
+      spans.push([
+        lineStarts[macro.range.start.line] + macro.range.start.character,
+        lineStarts[macro.range.end.line] + macro.range.end.character,
+      ]);
+    }
+  }
+  return spans.sort((a, b) => a[0] - b[0]);
 }
 
 /**
@@ -72,9 +129,15 @@ function locateTarget(inner: string): { start: number; end: number } {
 export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
   const lineStarts = buildLineStarts(text);
   const refs: PassageRef[] = [];
+  const literals = text.includes('[[') ? literalSpans(text, lineStarts) : [];
+  const inLiteral = (offset: number) => literals.some(([a, b]) => a <= offset && offset < b);
 
   let i = text.indexOf('[[');
   while (i !== -1) {
+    if (inLiteral(i)) {
+      i = text.indexOf('[[', i + 1);
+      continue;
+    }
     const linkStart = i;
     i += 2;
     if (text[i] === '.' || text[i] === '#') {
@@ -117,6 +180,7 @@ export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
           end: { line: endPos.line + lineOffset, character: endPos.character },
         },
         source: 'link',
+        form: 'bracket',
       });
     }
 
@@ -133,11 +197,23 @@ export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
 export function findPassageRefAt(
   text: string,
   position: { line: number; character: number },
+  passages: MaskablePassage[] = [],
 ): PassageRef | undefined {
   const { line, character } = position;
-  return [...parseLinks(text), ...parseMacroPassageRefs(text)].find(({ range: { start, end } }) =>
+  return parseDocumentPassageRefs(text, passages).find(({ range: { start, end } }) =>
     (line > start.line || (line === start.line && character >= start.character)) &&
     (line < end.line || (line === end.line && character <= end.character)));
+}
+
+/**
+ * All executable passage references of a document: `[[links]]` and literal
+ * macro targets, excluding script/stylesheet bodies, macro-argument strings
+ * and HTML attribute values. This is the one extraction every navigation,
+ * rename, link and diagnostic consumer shares.
+ */
+export function parseDocumentPassageRefs(text: string, passages: MaskablePassage[]): PassageRef[] {
+  const markup = maskScriptAndStylesheetPassages(text, passages);
+  return [...parseLinks(markup), ...parseMacroPassageRefs(markup)];
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +225,8 @@ interface ArgTarget {
   name: string;
   start: number;
   end: number;
+  form: PassageRefForm;
+  quote?: JsQuote;
 }
 
 /** Names Spindle's expression preamble binds; a bare one is not a passage name. */
@@ -169,7 +247,7 @@ const temporaryRefRegex = /(?<![.\w$@%])_[A-Za-z_$][\w$]*(?![\w$])/;
  * or SyntaxError) names itself. Anything reading state or calling code is
  * dynamic and yields null.
  */
-function resolveExpressionTarget(args: string): ArgTarget | null {
+export function resolveExpressionTarget(args: string): ArgTarget | null {
   const lead = args.length - args.trimStart().length;
   const expr = args.trim();
   if (expr === '') return null;
@@ -177,14 +255,18 @@ function resolveExpressionTarget(args: string): ArgTarget | null {
   const lexed = lexArguments(expr);
   if (lexed.length === 1 && lexed[0].start === 0 && lexed[0].end === expr.length &&
     (lexed[0].type === ArgType.String || lexed[0].type === ArgType.Expression)) {
+    const quote = expr[0];
+    if ((quote !== '"' && quote !== "'" && quote !== '`') || expr.length < 2 || expr.at(-1) !== quote) return null;
     const raw = expr.slice(1, -1);
-    if (interpolationRegex.test(raw) || raw.includes('${')) return null;
-    return { name: raw.replace(/\\(.)/g, '$1'), start: lead + 1, end: lead + expr.length - 1 };
+    if (interpolationRegex.test(raw) || (quote === '`' && raw.includes('${'))) return null;
+    const name = decodeStringLiteralBody(raw, quote);
+    if (name === null) return null;
+    return { name, start: lead + 1, end: lead + expr.length - 1, form: 'js-string', quote };
   }
 
   if (/[$@%"'`(]/.test(expr) || temporaryRefRegex.test(expr)) return null;
   if (EXPRESSION_BUILTINS.has(expr)) return null;
-  return { name: expr, start: lead, end: lead + expr.length };
+  return { name: expr, start: lead, end: lead + expr.length, form: 'bare' };
 }
 
 /**
@@ -200,23 +282,30 @@ function resolveIncludeTarget(args: string): ArgTarget | null {
   const target = resolveExpressionTarget(args.slice(0, cut) + args.slice(cut + width));
   if (!target || (target.start < cut && cut < target.end)) return null;
   return {
-    name: target.name,
+    ...target,
     start: target.start < cut ? target.start : target.start + width,
     end: target.end <= cut ? target.end : target.end + width,
   };
 }
 
 /**
- * `{link "label" "Passage"}` navigates to its second quoted string
- * (Spindle's MacroLink collects the quoted strings in order).
+ * `{link "label" "Passage"}` navigates to its second quoted string. Spindle's
+ * MacroLink collects them with `/(["'])(.*?)\1/g` over the raw arguments:
+ * no escape is decoded, so a backslash is part of the name and a name cannot
+ * contain its own delimiter or a line break.
  */
-function resolveLinkMacroTarget(args: string): ArgTarget | null {
-  const strings = lexArguments(args).filter(a => a.type === ArgType.String);
-  if (strings.length < 2) return null;
-  const target = strings[1];
-  const name = target.text.slice(1, -1);
-  if (name.includes('\\') || interpolationRegex.test(name)) return null;
-  return { name, start: target.start + 1, end: target.end - 1 };
+export function resolveLinkMacroTarget(args: string): ArgTarget | null {
+  const re = /(["'])(.*?)\1/g;
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = re.exec(args)) !== null) {
+    if (++index < 2) continue;
+    const name = match[2];
+    if (interpolationRegex.test(name)) return null;
+    const start = match.index + 1;
+    return { name, start, end: start + name.length, form: 'link-string', quote: match[1] as JsQuote };
+  }
+  return null;
 }
 
 const macroTargetResolvers: Record<string, (args: string) => ArgTarget | null> = {
@@ -261,6 +350,8 @@ export function parseMacroPassageRefs(text: string, lineOffset: number = 0): Pas
         end: { line: endPos.line + lineOffset, character: endPos.character },
       },
       source: 'macro',
+      form: target.form,
+      quote: target.quote,
     });
   }
 

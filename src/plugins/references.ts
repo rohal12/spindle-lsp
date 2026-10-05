@@ -1,7 +1,7 @@
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { findPassageRefAt, parseLinks, parseMacroPassageRefs } from '../core/parsing/link-parser.js';
+import { findPassageRefAt, parseDocumentPassageRefs, type PassageRef } from '../core/parsing/link-parser.js';
 import { parseMacros } from '../core/parsing/macro-parser.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
@@ -93,7 +93,7 @@ export function findReferences(
   }
 
   // --- Passage reference in [[link]] or macro arguments ---
-  const passageRef = findPassageRefAt(text, position);
+  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri));
   if (passageRef) {
     return findPassageReferences(passageRef.name, workspace, includeDeclaration);
   }
@@ -145,21 +145,35 @@ export function findPassageReferences(
     }
   }
 
-  // Scan all documents for [[links]] and macro references
-  // ({goto}, {include}, {link "label" "passage"})
+  for (const { uri, ref } of findPassageRefs(passageName, workspace)) {
+    locations.push({ uri, range: ref.range });
+  }
+
+  return locations;
+}
+
+/**
+ * The executable references (`[[links]]` and literal macro targets) to a
+ * passage, with the spelling of each target, so that an edit can re-encode a
+ * new name for it. Script/stylesheet bodies, macro-argument strings and HTML
+ * attribute values are not references.
+ */
+export function findPassageRefs(
+  passageName: string,
+  workspace: WorkspaceModel,
+): Array<{ uri: string; ref: PassageRef }> {
+  const found: Array<{ uri: string; ref: PassageRef }> = [];
   for (const docUri of workspace.documents.getUris()) {
     if (isMacroSource(docUri)) continue;
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
-    for (const ref of [...parseLinks(docText), ...parseMacroPassageRefs(docText)]) {
-      if (ref.name === passageName) {
-        locations.push({ uri: docUri, range: ref.range });
-      }
+    const passages = workspace.passages.getPassagesInDocument(docUri);
+    for (const ref of parseDocumentPassageRefs(docText, passages)) {
+      if (ref.name === passageName) found.push({ uri: docUri, ref });
     }
   }
-
-  return locations;
+  return found;
 }
 
 /**

@@ -9,7 +9,8 @@ import { scanHtmlTags, type HtmlScan, type HtmlTag } from '../core/parsing/html-
 import { findUnevaluatedBlocks } from '../core/parsing/attribute-blocks.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
-import { parseLinks } from '../core/parsing/link-parser.js';
+import { maskScriptAndStylesheetPassages, parseLinks } from '../core/parsing/link-parser.js';
+import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
@@ -154,24 +155,6 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // Catastrophic failure — return empty diagnostics rather than crashing
     return [];
   }
-}
-
-/**
- * Replace the body of every script/stylesheet passage with spaces, keeping
- * line breaks so that offsets and positions are unchanged.
- */
-function maskScriptAndStylesheetPassages(text: string, passages: Passage[]): string {
-  const excluded = passages.filter(isScriptOrStylesheetPassage);
-  if (excluded.length === 0) return text;
-
-  const lines = text.split('\n');
-  for (const passage of excluded) {
-    const last = Math.min(passage.range.end.line, lines.length - 1);
-    for (let i = passage.range.start.line + 1; i <= last; i++) {
-      lines[i] = lines[i].replace(/[^\r]/g, ' ');
-    }
-  }
-  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -1238,7 +1221,7 @@ export function resolveIncludeTarget(rawArgs: string): string | null {
   const literal = /^(["'`])((?:\\.|(?!\1)[^\\])*)\1$/s.exec(expr);
   if (literal) {
     if (literal[1] === '`' && literal[2].includes('${')) return null;
-    return literal[2].replace(/\\(.)/g, '$1');
+    return decodeStringLiteralBody(literal[2], literal[1] as '"' | "'" | '`');
   }
 
   // Anything that reads state or calls code is dynamic.

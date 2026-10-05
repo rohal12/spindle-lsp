@@ -1,10 +1,12 @@
+import { ErrorCodes, ResponseError } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { findPassageRefAt } from '../core/parsing/link-parser.js';
+import { findPassageRefAt, parseLinks, resolveExpressionTarget, resolveLinkMacroTarget, type PassageRef } from '../core/parsing/link-parser.js';
+import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
-  findPassageReferences,
+  findPassageRefs,
   findVariableReferences,
   findTransientReferences,
   findWidgetReferences,
@@ -67,8 +69,11 @@ export function computeRename(
       if (declaration) {
         addEdit(declaration.uri, declaration.nameRange, escapePassageName(newName));
       }
-      for (const ref of findPassageReferences(symbol.name, workspace, false)) {
-        addEdit(ref.uri, ref.range, newName);
+      // Each reference spells its target in its own context (bracket link,
+      // JavaScript string, MacroLink string); encode per reference and fail
+      // before returning any edit when a spelling cannot hold the name.
+      for (const { uri: refUri, ref } of findPassageRefs(symbol.name, workspace)) {
+        addEdit(refUri, ref.range, encodePassageRefName(ref, newName));
       }
       break;
     }
@@ -108,6 +113,45 @@ export function computeRename(
   }
 
   return edits;
+}
+
+/** A rename that cannot be applied without corrupting a reference. */
+export class RenameError extends Error {}
+
+/**
+ * Spell `newName` for the reference's context so that Spindle reads the
+ * same name back. Throws RenameError when the context cannot represent it.
+ */
+export function encodePassageRefName(ref: PassageRef, newName: string): string {
+  const unrepresentable = (where: string): RenameError =>
+    new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it cannot be written inside ${where}.`);
+
+  switch (ref.form) {
+    case 'js-string':
+      return encodeStringLiteralBody(newName, ref.quote ?? '"');
+    case 'bare': {
+      // An unquoted target is a text fallback; quote the name when the bare
+      // spelling would no longer read back as the same name.
+      const probe = resolveExpressionTarget(newName);
+      if (probe && probe.form === 'bare' && probe.name === newName && probe.start === 0) return newName;
+      return `"${encodeStringLiteralBody(newName, '"')}"`;
+    }
+    case 'link-string': {
+      const quote = ref.quote ?? '"';
+      const probe = resolveLinkMacroTarget(`"label" ${quote}${newName}${quote}`);
+      if (!probe || probe.name !== newName) {
+        throw unrepresentable(`a {link} ${quote}-quoted argument (it cannot contain the quote, a line break or interpolation)`);
+      }
+      return newName;
+    }
+    case 'bracket': {
+      const probe = parseLinks(`[[${newName}]]`);
+      if (probe.length !== 1 || probe[0].name !== newName) {
+        throw unrepresentable('a [[link]] (it cannot contain |, ->, <-, [[, ]], or leading/trailing whitespace)');
+      }
+      return newName;
+    }
+  }
 }
 
 /** Escape the Twee header metacharacters (`[ ] { } \`) in a passage name. */
@@ -230,7 +274,7 @@ function resolveSymbolAtCursor(
   }
 
   // --- Passage reference in [[link]] or macro arguments (goto, include, link) ---
-  const passageRef = findPassageRefAt(text, position);
+  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri));
   if (passageRef && workspace.passages.getPassage(passageRef.name)) {
     return { kind: 'passage', name: passageRef.name, range: passageRef.range };
   }
@@ -271,12 +315,20 @@ export const renamePlugin: SpindlePlugin = {
     });
 
     ctx.connection.onRenameRequest((params) => {
-      const editsMap = computeRename(
-        params.textDocument.uri,
-        { line: params.position.line, character: params.position.character },
-        params.newName,
-        ctx.workspace,
-      );
+      let editsMap: Map<string, RenameEdit[]>;
+      try {
+        editsMap = computeRename(
+          params.textDocument.uri,
+          { line: params.position.line, character: params.position.character },
+          params.newName,
+          ctx.workspace,
+        );
+      } catch (error) {
+        if (error instanceof RenameError) {
+          return new ResponseError(ErrorCodes.InvalidParams, error.message);
+        }
+        throw error;
+      }
 
       const changes: Record<string, import('vscode-languageserver').TextEdit[]> = {};
       for (const [editUri, edits] of editsMap) {

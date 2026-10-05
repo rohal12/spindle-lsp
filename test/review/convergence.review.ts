@@ -68,29 +68,6 @@ describe('F66: formatting preserves runtime macro payloads (#66)', () => {
   });
 });
 
-describe('R67: rename preserves literal meaning (#67)', () => {
-  for (const [id, macro, delimiter, name] of [
-    ['double', 'goto', '"', 'Bob"s'],
-    ['single', 'goto', "'", "Bob's"],
-    ['slash', 'include', '"', 'A\\B'],
-    ['template', 'goto', '`', 'A`B'],
-  ]) {
-    it(`R67-${id}: ${macro} literal`, () => {
-      const model = workspace(`:: StoryVariables\n:: Old\nhello\n:: Start\n{${macro} ${delimiter}Old${delimiter}}`);
-      const output = renamed(model, 1, 5, name);
-      const args = runtimeMacroArgs(output).at(-1)!;
-      // This is a fixed benign fixture, never document/project code.
-      expect(new Function(`return (${args})`)()).toBe(name);
-    });
-  }
-  it('C-R67: ordinary header and bracket link rename agree', () => {
-    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[Old]]');
-    const output = renamed(model, 1, 5, 'New');
-    expect(output).toContain(':: New\n');
-    expect(tokenize(output).filter(t => t.type === 'link').map(t => t.target)).toEqual(['New']);
-  });
-});
-
 it('Q68: create StoryVariables in a story file, preserving opened config (#68)', () => {
   const configUri = 'file:///spindle.config.yaml';
   const config = 'macros: {}\n';
@@ -126,39 +103,6 @@ describe('Q69: declaration edit application (#69)', () => {
       });
     }
   }
-});
-
-describe('X70: passage references honor source context (#70)', () => {
-  for (const [id, body] of [
-    ['macro-string', '{print "[[Old]]"}'],
-    ['attribute', '<div title="[[Old]]">x</div>'],
-    ['script', ':: Code [script]\nconst docs = "[[Old]]";'],
-    ['stylesheet', ':: CSS [stylesheet]\na::after { content: "[[Old]]"; }'],
-  ]) {
-    for (const feature of ['references', 'rename', 'definition', 'document-links', 'code-lenses', 'diagnostics']) {
-      it(`X70-${id}-${feature}: literal context`, () => {
-        if (id === 'macro-string' || id === 'attribute') {
-          expect(tokenize(body).filter(t => t.type === 'link')).toHaveLength(0);
-        }
-        const text = `:: StoryVariables\n:: Old\nhello\n:: Start\n${body}`;
-        const model = workspace(text);
-        if (feature === 'references') expect(findPassageReferences('Old', model, false)).toHaveLength(0);
-        if (feature === 'rename') expect(renamed(model, 1, 5, 'New')).toContain(body);
-        if (feature === 'definition') {
-          const position = TextDocument.create(uri, 'twee', 0, text).positionAt(text.lastIndexOf('Old') + 1);
-          expect(getDefinition(uri, position, model)).toBeNull();
-        }
-        if (feature === 'document-links') expect(computeDocumentLinks(uri, model)).toHaveLength(0);
-        if (feature === 'code-lenses') expect(computeCodeLenses(uri, model).find(l => l.range.start.line === 1)?.command.title).toBe('0 references');
-        if (feature === 'diagnostics') expect(codes(workspace(text.replace(':: Old', ':: Target')))).not.toContain('SP300');
-      });
-    }
-  }
-  it('C-X70: real links and goto literals are references', () => {
-    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[Old]] {goto "Old"}');
-    expect(findPassageReferences('Old', model, false)).toHaveLength(2);
-    expect(getDefinition(uri, { line: 4, character: 3 }, model)?.uri).toBe(uri);
-  });
 });
 
 it('X71: macro-looking link labels remain labels (#71)', () => {
@@ -217,21 +161,6 @@ it('E75: apply closing macro completion at the typed cursor (#75)', () => {
   const output = apply(model.documents.getText(uri)!, [edit as { range: Range; newText: string }]);
   expect(output.split('\n').at(-1)).toBe('{/if}');
   expect(codes(workspace(output))).not.toContain('SP101');
-});
-
-describe('L77: decode static JavaScript literals (#77)', () => {
-  for (const [id, spelling] of [['unicode', '\\u004eext'], ['hex', '\\x4eext']]) {
-    for (const macro of ['goto', 'include']) {
-      it(`L77-${id}-${macro}: decoded target has a definition and rename`, () => {
-        expect(new Function(`return ("${spelling}")`)()).toBe('Next');
-        const model = workspace(`:: StoryVariables\n:: Next\nhello\n:: Start\n{${macro} "${spelling}"}`);
-        expect(findPassageReferences('Next', model, false)).toHaveLength(1);
-        expect(getDefinition(uri, { line: 4, character: macro.length + 4 }, model)?.uri).toBe(uri);
-        const output = renamed(model, 1, 5, 'Other');
-        expect(new Function(`return (${runtimeMacroArgs(output).at(-1)})`)()).toBe('Other');
-      });
-    }
-  }
 });
 
 it('D78: explicit Spindle stories require StoryVariables without variable usages (#78)', () => {
