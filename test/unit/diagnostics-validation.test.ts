@@ -110,6 +110,30 @@ describe('{include} arguments', () => {
   });
 });
 
+describe('{goto} arguments', () => {
+  const chapter = '\n:: Chapter 1\nHello';
+  const argDiags = (text: string) => diagnose(text).filter(d => ['SP108', 'SP109', 'SP111'].includes(d.code));
+
+  it('accepts a literal target', () => {
+    expect(argDiags(`:: Start\n{goto "Chapter 1"}${chapter}`)).toEqual([]);
+    expect(argDiags(`:: Start\n{goto 'Chapter 1'}${chapter}`)).toEqual([]);
+  });
+
+  it('accepts a dynamic expression target containing whitespace', () => {
+    const text = `:: StoryVariables\n$n = 1\n\n:: Start\n{goto "Chapter " + $n}\n{.cls goto "Chapter " + $n}${chapter}`;
+    expect(argDiags(text)).toEqual([]);
+  });
+
+  it('accepts a bare multiword target, which Spindle reads as raw text', () => {
+    expect(argDiags(`:: Start\n{goto Chapter 1}${chapter}`)).toEqual([]);
+  });
+
+  it('still reports a missing target', () => {
+    const sp109 = codes(':: Start\n{goto}\n{goto   }', 'SP109');
+    expect(sp109.map(d => d.range.start.line)).toEqual([1, 2]);
+  });
+});
+
 describe('script and stylesheet passages', () => {
   it('does not report macro-looking text inside a script passage', () => {
     const diags = diagnose(':: Script [script]\nconst s = "{nosuch}";\nconst t = "{/if}";');

@@ -329,9 +329,12 @@ function validateArguments(
     if (!info.parameters) continue;
 
     const rawArgs = macro.rawArgs ?? '';
-    const args = macro.name.toLowerCase() === 'include'
-      ? includeArguments(rawArgs)
-      : lexArguments(rawArgs);
+    const name = macro.name.toLowerCase();
+    const args = name === 'include'
+      ? targetArguments(includeExpression(rawArgs))
+      : name === 'goto'
+        ? targetArguments(rawArgs.trim())
+        : lexArguments(rawArgs);
 
     // A malformed parameter schema (e.g. from a project config) only
     // disables argument checks for its own macro.
@@ -392,12 +395,13 @@ function validateArguments(
 }
 
 /**
- * The arguments of `{include}` as Spindle reads them: an `inline` keyword is
- * removed and the rest is evaluated as a single expression, so a target such
- * as `"Chapter " + $n` counts as one argument, not several lexer tokens.
+ * The arguments of `{goto}` / `{include}` as Spindle reads them: the target
+ * (for `{include}`, minus an `inline` keyword) is evaluated as a single
+ * expression, falling back to the raw text when evaluation throws. A target
+ * such as `"Chapter " + $n` or a bare `Chapter 1` therefore counts as one
+ * argument, not several lexer tokens.
  */
-function includeArguments(rawArgs: string): Arg[] {
-  const expr = includeExpression(rawArgs);
+function targetArguments(expr: string): Arg[] {
   if (expr === '') return [];
   const args = lexArguments(expr);
   if (args.length === 1) return args;
