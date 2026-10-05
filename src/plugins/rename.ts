@@ -72,8 +72,14 @@ export function computeRename(
       const refs = isTransient
         ? findTransientReferences(symbol.name, workspace, true)
         : findVariableReferences(symbol.name, workspace, true);
+      // Reference ranges start with the sigil and may continue with a
+      // property path (`$player.health`): replace only the base identifier.
       for (const ref of refs) {
-        addEdit(ref.uri, ref.range, bareName);
+        const start = ref.range.start.character + 1;
+        addEdit(ref.uri, {
+          start: { line: ref.range.start.line, character: start },
+          end: { line: ref.range.start.line, character: start + symbol.name.length },
+        }, bareName);
       }
       break;
     }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { prepareRename, computeRename } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
@@ -10,6 +11,21 @@ function createWorkspace(...files: Array<{ name: string; content: string }>): Wo
   }
   ws.initialize(contents);
   return ws;
+}
+
+/** Apply a rename and return the resulting text of every edited document. */
+function applyRename(
+  ws: WorkspaceModel,
+  uri: string,
+  position: { line: number; character: number },
+  newName: string,
+): Map<string, string> {
+  const results = new Map<string, string>();
+  for (const [editUri, edits] of computeRename(uri, position, newName, ws)) {
+    const doc = TextDocument.create(editUri, 'twee', 0, ws.documents.getText(editUri)!);
+    results.set(editUri, TextDocument.applyEdits(doc, edits));
+  }
+  return results;
 }
 
 describe('prepareRename', () => {
@@ -132,5 +148,48 @@ describe('computeRename', () => {
     // Should rename invocation in test.tw + definition in widgets.tw
     expect(allEdits.length).toBeGreaterThanOrEqual(2);
     expect(allEdits.every(e => e.newText === 'hello')).toBe(true);
+  });
+
+  it('keeps the $ sigil and property path of story variables', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$player = {health: 10}\n:: Start\n{$player.health}',
+    });
+    const result = applyRename(ws, 'file:///test.tw', { line: 3, character: 3 }, 'hero');
+    expect(result.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$hero = {health: 10}\n:: Start\n{$hero.health}',
+    );
+  });
+
+  it('accepts a new name that includes the sigil', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$x = 0\n:: Start\n{set $x = $x + 1} {$x.toFixed}',
+    });
+    const result = applyRename(ws, 'file:///test.tw', { line: 3, character: 6 }, '$y');
+    expect(result.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$y = 0\n:: Start\n{set $y = $y + 1} {$y.toFixed}',
+    );
+  });
+
+  it('keeps the % sigil and property path of transient variables', () => {
+    const ws = createWorkspace(
+      { name: 'transients.tw', content: ':: StoryTransients\n%npc = {name: "Bo"}' },
+      { name: 'start.tw', content: ':: Start\n{%npc.name} {set %npc = {}}' },
+    );
+    const result = applyRename(ws, 'file:///start.tw', { line: 1, character: 2 }, 'guide');
+    expect(result.get('file:///transients.tw')).toBe(':: StoryTransients\n%guide = {name: "Bo"}');
+    expect(result.get('file:///start.tw')).toBe(':: Start\n{%guide.name} {set %guide = {}}');
+  });
+
+  it('renames the right text after a multi-line comment', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$x = 0\n:: Start\n<!-- comment\nmore -->\n{$x}',
+    });
+    const result = applyRename(ws, 'file:///test.tw', { line: 5, character: 2 }, 'y');
+    expect(result.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$y = 0\n:: Start\n<!-- comment\nmore -->\n{$y}',
+    );
   });
 });
