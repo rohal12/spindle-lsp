@@ -1,5 +1,5 @@
 import type { CompletionItem } from 'vscode-languageserver';
-import type { Position } from '../core/types.js';
+import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parseMacros, pairMacros, buildLineStarts } from '../core/parsing/macro-parser.js';
@@ -45,8 +45,18 @@ export function getCompletions(
     inAttributeValue(text, (buildLineStarts(text)[position.line] ?? 0) + position.character - 1);
 
   // --- Context: closing macro `{/` ---
-  if (/\{\/[A-Za-z\w-]*$/.test(lineText)) {
-    return inAttribute() ? [] : getClosingMacroCompletions(uri, text, position, workspace);
+  const closing = /\{\/[A-Za-z\w-]*$/.exec(lineText);
+  if (closing) {
+    if (inAttribute()) return [];
+    // The edit replaces the typed `{/name` prefix (and an already-present
+    // `name}` tail) so accepting never duplicates braces or slashes.
+    const rest = lines[position.line].substring(position.character);
+    const tail = /^[\w-]*\}?/.exec(rest)![0].length;
+    const range = {
+      start: { line: position.line, character: closing.index },
+      end: { line: position.line, character: position.character + tail },
+    };
+    return getClosingMacroCompletions(uri, text, position, workspace, range);
   }
 
   // --- Context: dot-path field `%var.` ---
@@ -103,6 +113,7 @@ function getClosingMacroCompletions(
   text: string,
   position: Position,
   workspace: WorkspaceModel,
+  range: Range,
 ): CompletionItem[] {
   const passages = workspace.passages.getPassagesInDocument(uri);
   const macros = parseMacros(text);
@@ -153,7 +164,9 @@ function getClosingMacroCompletions(
     kind: 14, // CompletionItemKind.Keyword
     detail: `Close {${name}}`,
     sortText: String(idx).padStart(3, '0'),
+    filterText: `{/${name}}`,
     insertText: `{/${name}}`,
+    textEdit: { range, newText: `{/${name}}` },
   }));
 }
 
