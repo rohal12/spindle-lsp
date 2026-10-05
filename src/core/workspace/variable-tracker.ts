@@ -1,5 +1,5 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
-import { parsePassageHeader } from '../parsing/passage-parser.js';
+import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
 
 /** Regex to match $variable references including dot notation. */
 const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
@@ -11,9 +11,6 @@ const transientRefRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
 const EXCLUDED_PASSAGES = new Set([
   'StoryVariables', 'StoryTransients', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface',
 ]);
-
-/** Passage tags whose content is compiled as JS/CSS rather than story markup. */
-const EXCLUDED_TAGS = new Set(['script', 'stylesheet']);
 
 /** Patterns that should be stripped before scanning for variable references. */
 const CLEAN_PATTERNS = [
@@ -313,7 +310,7 @@ export class VariableTracker {
     for (let pi = 0; pi < passageBoundaries.length; pi++) {
       const passage = passageBoundaries[pi];
       if (EXCLUDED_PASSAGES.has(passage.name)) continue;
-      if (passage.tags.some(tag => EXCLUDED_TAGS.has(tag))) continue;
+      if (isScriptOrStylesheetPassage(passage)) continue;
 
       const contentStartLine = passage.startLine + 1;
       const contentEndLine = pi + 1 < passageBoundaries.length
