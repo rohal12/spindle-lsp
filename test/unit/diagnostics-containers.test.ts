@@ -70,3 +70,34 @@ describe('{next} branches of {timed}', () => {
     expect(diags[0].message).toContain('{timed}');
   });
 });
+
+describe('container child constraints ignore capitalization', () => {
+  it('counts an upper-case {CASE} towards {switch}\'s minimum', () => {
+    expect(diagnose(':: Start\n{switch 1}\n{CASE 1}\none\n{/switch}\n')).toEqual([]);
+  });
+
+  it('accepts mixed-case parents and children', () => {
+    expect(diagnose(':: Start\n{SWITCH 1}\n{Case 1}\none\n{Default}\nother\n{/Switch}\n')).toEqual([]);
+  });
+
+  it('counts mixed-case children towards maximums', () => {
+    const ifDiags = diagnose(':: Start\n{if true}\na\n{ELSE}\nb\n{else}\nc\n{/if}\n');
+    expect(codes(ifDiags)).toEqual(['SP114']);
+    expect(ifDiags[0].message).toContain('found 2');
+
+    const switchDiags = diagnose(':: Start\n{switch 1}\n{case 1}\na\n{Default}\nb\n{DEFAULT}\nc\n{/switch}\n');
+    expect(codes(switchDiags)).toEqual(['SP114']);
+    expect(switchDiags[0].message).toContain('found 2');
+  });
+
+  it('matches constraints whose configured name is not lower-case', () => {
+    const workspace = new WorkspaceModel();
+    workspace.macros.loadConfig({ switch: { children: [{ name: 'Case', min: 2 }] } });
+    workspace.initialize(new Map([['file:///test.tw', ':: Start\n{switch 1}\n{case 1}\na\n{CASE 2}\nb\n{/switch}\n']]));
+    expect(computeDiagnostics('file:///test.tw', workspace)).toEqual([]);
+  });
+
+  it('still flags a mixed-case child outside its parent', () => {
+    expect(codes(diagnose(':: Start\n{CASE 1}\n'))).toEqual(['SP107']);
+  });
+});

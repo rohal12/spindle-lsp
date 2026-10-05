@@ -279,17 +279,17 @@ function validateChildren(
       continue;
     }
 
-    // Count direct children that match constraints
-    for (const constraint of childConstraints) {
-      if (constraint.name === child.name) {
-        children[child.name] = (children[child.name] ?? 0) + 1;
-      }
+    // Count direct children that match constraints. Like macro lookup,
+    // matching ignores capitalization: Spindle lower-cases macro names.
+    const childKey = child.name.toLowerCase();
+    if (childConstraints.some(c => c.name.toLowerCase() === childKey)) {
+      children[childKey] = (children[childKey] ?? 0) + 1;
     }
   }
 
   // Check constraints
   for (const constraint of childConstraints) {
-    const count = children[constraint.name] ?? 0;
+    const count = children[constraint.name.toLowerCase()] ?? 0;
 
     if (constraint.max !== undefined && count > constraint.max) {
       diagnostics.push(makeDiag(
