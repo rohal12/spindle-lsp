@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { MacroInfo, ChildConstraint } from '../types.js';
+import type { MacroInfo, ChildConstraint, ParameterDoc } from '../types.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 
 /**
@@ -12,6 +12,7 @@ interface SupplementEntry {
   name?: string;
   description?: string;
   parameters?: string[];
+  parameterDocs?: ParameterDoc[];
   container?: boolean;
   children?: ChildConstraint[];
   parents?: string[];
@@ -215,6 +216,7 @@ export class MacroRegistry {
       merged: info.merged ?? existing?.merged,
       description: info.description ?? existing?.description,
       parameters: info.parameters ?? existing?.parameters,
+      parameterDocs: info.parameterDocs ?? existing?.parameterDocs,
       children: info.children ?? existing?.children,
       parents: info.parents ?? existing?.parents,
       skipArgs: info.skipArgs ?? existing?.skipArgs,
@@ -273,6 +275,7 @@ export class MacroRegistry {
     if (config) {
       if (config.description !== undefined) info.description = config.description;
       if (config.parameters !== undefined) info.parameters = config.parameters;
+      if (config.parameterDocs !== undefined) info.parameterDocs = config.parameterDocs;
       if (config.children !== undefined) info.children = config.children;
       if (config.parents !== undefined) info.parents = config.parents;
       if (config.skipArgs !== undefined) info.skipArgs = config.skipArgs;
@@ -292,6 +295,7 @@ export class MacroRegistry {
         // Overlay fields — supplement fields win when present
         if (entry.description !== undefined) existing.description = entry.description;
         if (entry.parameters !== undefined) existing.parameters = entry.parameters;
+        if (entry.parameterDocs !== undefined) existing.parameterDocs = entry.parameterDocs;
         if (entry.children !== undefined) existing.children = entry.children;
         if (entry.parents !== undefined) existing.parents = entry.parents;
         if (entry.skipArgs !== undefined) existing.skipArgs = entry.skipArgs;
@@ -305,6 +309,7 @@ export class MacroRegistry {
           source: 'user',
           description: entry.description,
           parameters: entry.parameters,
+          parameterDocs: entry.parameterDocs,
           children: entry.children,
           parents: entry.parents,
           skipArgs: entry.skipArgs,

@@ -7,13 +7,19 @@
     ],
     "container": true,
     "description": "Conditionally displays its contents based on the given expression.\n\nUsage:\n\n```\n{if condition}\n  ...\n{elseif condition}\n  ...\n{else}\n  ...\n{/if}\n```",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "condition", "documentation": "Expression; the contents show when it is truthy."}
+    ]
   },
   "elseif": {
     "name": "elseif",
     "parents": ["if"],
     "description": "Used within `{if}` to provide an additional conditional branch.\n\nUsage: `{elseif condition}`",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "condition", "documentation": "Expression; the branch shows when it is truthy and no earlier branch matched."}
+    ]
   },
   "else": {
     "name": "else",
@@ -31,7 +37,10 @@
     "name": "next",
     "parents": ["timed"],
     "description": "Starts the next section of a `{timed}` block, shown after the given delay (immediately when omitted).\n\nUsage: `{next delay}` or `{next}`",
-    "parameters": ["text", ""]
+    "parameters": ["text", ""],
+    "parameterDocs": [
+      {"name": "delay", "documentation": "Delay before the next section shows; omit for immediately."}
+    ]
   },
   "stop": {
     "name": "stop",
@@ -47,13 +56,19 @@
     ],
     "container": true,
     "description": "Evaluates an expression and executes the matching `{case}` branch.\n\nUsage:\n\n```\n{switch expression}\n  {case value1}\n    ...\n  {case value2}\n    ...\n  {default}\n    ...\n{/switch}\n```",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "value", "documentation": "Expression compared with each `{case}`."}
+    ]
   },
   "case": {
     "name": "case",
     "parents": ["switch"],
     "description": "Defines a branch within a `{switch}` macro.\n\nUsage: `{case value}`",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "value", "documentation": "Value (or values) this branch matches."}
+    ]
   },
   "default": {
     "name": "default",
@@ -64,22 +79,34 @@
   "set": {
     "name": "set",
     "description": "Sets variables based on the given expression.\n\nUsage: `{set $var to value}`\n\nSupports `$var` (story), `_var` (temporary), `@var` (local), and `%var` (transient) variables.",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "assignment", "documentation": "Assignment such as `$var to value`; further comma-separated assignments may follow."}
+    ]
   },
   "unset": {
     "name": "unset",
     "description": "Unsets one or more variables.\n\nUsage: `{unset $var}`\n\nSupports `$var` (story), `_var` (temporary), `@var` (local), and `%var` (transient) variables.",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Variable to remove (`$var`, `_var`, `@var` or `%var`)."}
+    ]
   },
   "computed": {
     "name": "computed",
     "description": "Evaluates an expression and outputs the result.\n\nUsage: `{computed expression}`",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "expression", "documentation": "Expression whose result is output."}
+    ]
   },
   "print": {
     "name": "print",
     "description": "Outputs the result of the given expression.\n\nUsage: `{print expression}`",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "expression", "documentation": "Expression whose result is output."}
+    ]
   },
   "do": {
     "name": "do",
@@ -91,13 +118,21 @@
     "name": "link",
     "container": true,
     "description": "Creates a link that executes its contents when clicked.\n\nUsage:\n\n```\n{link \"text\" \"passage\"}\n  ...\n{/link}\n```",
-    "parameters": ["text |+ text", ""]
+    "parameters": ["text |+ text", ""],
+    "parameterDocs": [
+      {"name": "label", "documentation": "Text of the link."},
+      {"name": "passage", "documentation": "Passage to go to when clicked; omit to run the contents."}
+    ]
   },
   "button": {
     "name": "button",
     "container": true,
     "description": "Creates a button that executes its contents when clicked.\n\nUsage:\n\n```\n{button \"text\" \"passage\"}\n  ...\n{/button}\n```",
-    "parameters": ["text |+ text", ""]
+    "parameters": ["text |+ text", ""],
+    "parameterDocs": [
+      {"name": "label", "documentation": "Text of the button."},
+      {"name": "passage", "documentation": "Passage to go to when clicked; omit to run the contents."}
+    ]
   },
   "timed": {
     "name": "timed",
@@ -106,7 +141,10 @@
     ],
     "container": true,
     "description": "Displays its contents after a specified delay (immediately when omitted).\n\nUsage:\n\n```\n{timed delay}\n  ...\n  {next delay}\n  ...\n{/timed}\n```",
-    "parameters": ["text", ""]
+    "parameters": ["text", ""],
+    "parameterDocs": [
+      {"name": "delay", "documentation": "Delay before the contents show; omit for immediately."}
+    ]
   },
   "repeat": {
     "name": "repeat",
@@ -115,13 +153,19 @@
     ],
     "container": true,
     "description": "Repeatedly displays its contents at the specified interval.\n\nUsage:\n\n```\n{repeat delay}\n  ...\n{/repeat}\n```",
-    "parameters": ["text"]
+    "parameters": ["text"],
+    "parameterDocs": [
+      {"name": "interval", "documentation": "Delay between repeats."}
+    ]
   },
   "type": {
     "name": "type",
     "container": true,
     "description": "Outputs its contents one character at a time, mimicking a typewriter effect.\n\nUsage:\n\n```\n{type speed}\n  ...\n{/type}\n```",
-    "parameters": ["text"]
+    "parameters": ["text"],
+    "parameterDocs": [
+      {"name": "speed", "documentation": "Typing speed."}
+    ]
   },
   "listbox": {
     "name": "listbox",
@@ -130,7 +174,10 @@
     ],
     "container": true,
     "description": "Creates a dropdown listbox.\n\nUsage:\n\n```\n{listbox \"$receiver\"}\n  {option \"label1\"}\n  {option \"label2\"}\n{/listbox}\n```",
-    "parameters": ["receiver"]
+    "parameters": ["receiver"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Story variable (`$name` or `\"$name\"`) that receives the chosen option."}
+    ]
   },
   "cycle": {
     "name": "cycle",
@@ -139,29 +186,45 @@
     ],
     "container": true,
     "description": "Creates a cycling link.\n\nUsage:\n\n```\n{cycle \"$receiver\"}\n  {option \"label1\"}\n  {option \"label2\"}\n{/cycle}\n```",
-    "parameters": ["receiver"]
+    "parameters": ["receiver"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Story variable (`$name` or `\"$name\"`) that receives the current option."}
+    ]
   },
   "option": {
     "name": "option",
     "parents": ["listbox", "cycle"],
     "description": "Defines an option within a `{listbox}` or `{cycle}` macro.\n\nUsage: `{option label}`",
-    "parameters": ["|+ text &+ text", "text"]
+    "parameters": ["|+ text &+ text", "text"],
+    "parameterDocs": [
+      {"name": "label", "documentation": "Text and value of the option."},
+      {"name": "more", "documentation": "Further words of an unquoted label."}
+    ]
   },
   "widget": {
     "name": "widget",
     "container": true,
     "description": "Defines a custom widget (macro).\n\nUsage:\n\n```\n{widget \"name\"}\n  ...\n{/widget}\n```",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "name", "documentation": "Widget name, followed by its `@param` names."}
+    ]
   },
   "meter": {
     "name": "meter",
     "description": "Displays a progress meter.\n\nUsage: `{meter $var min max}`",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "current", "documentation": "Current value expression; a maximum expression and an optional label mode (`\"%\"`, `\"none\"` or a unit) follow."}
+    ]
   },
   "goto": {
     "name": "goto",
     "description": "Navigates to the specified passage.\n\nUsage: `{goto \"passage\"}`",
-    "parameters": ["text"]
+    "parameters": ["text"],
+    "parameterDocs": [
+      {"name": "passage", "documentation": "Passage to navigate to."}
+    ]
   },
   "back": {
     "name": "back",
@@ -181,7 +244,10 @@
   "include": {
     "name": "include",
     "description": "Outputs the contents of the specified passage. The argument is a passage name or an expression that evaluates to one; add `inline` to render the passage as inline content without markdown processing.\n\nUsage: `{include \"passage\"}`, `{include $passageName}` or `{include \"passage\" inline}`",
-    "parameters": ["text"]
+    "parameters": ["text"],
+    "parameterDocs": [
+      {"name": "passage", "documentation": "Passage name or an expression that evaluates to one; `inline` may follow."}
+    ]
   },
   "passage": {
     "name": "passage",
@@ -191,27 +257,48 @@
   "textbox": {
     "name": "textbox",
     "description": "Creates a text input box bound to a story variable.\n\nUsage: `{textbox $receiver}` or `{textbox $receiver \"placeholder\"}`",
-    "parameters": ["receiver |+ text"]
+    "parameters": ["receiver |+ text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Story variable (`$name` or `\"$name\"`) the box is bound to."},
+      {"name": "placeholder", "documentation": "Placeholder text."}
+    ]
   },
   "numberbox": {
     "name": "numberbox",
     "description": "Creates a number input box bound to a story variable.\n\nUsage: `{numberbox $receiver}` or `{numberbox $receiver \"placeholder\"}`",
-    "parameters": ["receiver |+ text"]
+    "parameters": ["receiver |+ text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Story variable (`$name` or `\"$name\"`) the box is bound to."},
+      {"name": "placeholder", "documentation": "Placeholder text."}
+    ]
   },
   "textarea": {
     "name": "textarea",
     "description": "Creates a multi-line text input area bound to a story variable.\n\nUsage: `{textarea $receiver}` or `{textarea $receiver \"placeholder\"}`",
-    "parameters": ["receiver |+ text"]
+    "parameters": ["receiver |+ text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Story variable (`$name` or `\"$name\"`) the area is bound to."},
+      {"name": "placeholder", "documentation": "Placeholder text."}
+    ]
   },
   "checkbox": {
     "name": "checkbox",
     "description": "Creates a checkbox that toggles a boolean story variable.\n\nUsage: `{checkbox $receiver \"label\"}`",
-    "parameters": ["receiver |+ text"]
+    "parameters": ["receiver |+ text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Boolean story variable (`$name` or `\"$name\"`) the checkbox toggles."},
+      {"name": "label", "documentation": "Label shown next to the checkbox."}
+    ]
   },
   "radiobutton": {
     "name": "radiobutton",
     "description": "Creates a radio button that sets a story variable to its value. Use the same variable for every option in a group.\n\nUsage: `{radiobutton $receiver \"value\" \"label\"}`",
-    "parameters": ["receiver &+ text |+ text"]
+    "parameters": ["receiver &+ text |+ text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Story variable (`$name` or `\"$name\"`) shared by the radio group."},
+      {"name": "value", "documentation": "Value stored when this radio button is chosen."},
+      {"name": "label", "documentation": "Label shown next to the radio button; defaults to the value."}
+    ]
   },
   "quicksave": {
     "name": "quicksave",
@@ -242,7 +329,11 @@
     "name": "dialog",
     "container": true,
     "description": "Creates a button that opens the passage named in its body in a dialog. Add `noclose` to hide the dialog's close button.\n\nUsage:\n\n```\n{dialog \"label\"}Passage Name{/dialog}\n{dialog \"label\" noclose}Passage Name{/dialog}\n```",
-    "parameters": ["text |+ 'noclose'"]
+    "parameters": ["text |+ 'noclose'"],
+    "parameterDocs": [
+      {"name": "label", "documentation": "Text of the button that opens the dialog."},
+      {"name": "noclose", "documentation": "Literal `noclose` hides the dialog close button."}
+    ]
   },
   "nobr": {
     "name": "nobr",
@@ -269,17 +360,26 @@
   "watch": {
     "name": "watch",
     "description": "Watches a variable for changes and triggers a re-render.\n\nUsage: `{watch $var}`",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Variable to watch for changes."}
+    ]
   },
   "unwatch": {
     "name": "unwatch",
     "description": "Stops watching a variable.\n\nUsage: `{unwatch $var}`",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "variable", "documentation": "Variable to stop watching."}
+    ]
   },
   "unless": {
     "name": "unless",
     "container": true,
     "description": "Conditionally displays its contents when the expression is falsy. The inverse of `{if}`.\n\nUsage:\n\n```\n{unless condition}\n  ...\n{/unless}\n```",
-    "parameters": ["...text"]
+    "parameters": ["...text"],
+    "parameterDocs": [
+      {"name": "condition", "documentation": "Expression; the contents show when it is falsy."}
+    ]
   }
 }
