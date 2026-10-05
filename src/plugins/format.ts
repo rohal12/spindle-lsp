@@ -450,8 +450,11 @@ function normalizePassageHeader(line: string): string {
   if (!headerMatch) return line;
 
   const rest = headerMatch[1];
-  const bracketIdx = rest.indexOf('[');
-  const braceIdx = rest.indexOf('{');
+  // Neutralize backslash escapes (keeping offsets) the way the passage parser
+  // does, so an escaped `\[` or `\{` in the name does not start tags/metadata.
+  const unescaped = rest.replace(/\\./g, 'ec');
+  const bracketIdx = unescaped.indexOf('[');
+  const braceIdx = unescaped.indexOf('{');
 
   let name: string;
   let suffix = '';

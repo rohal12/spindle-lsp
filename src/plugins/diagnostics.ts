@@ -5,9 +5,11 @@ import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
 import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
+import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
 import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
+import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
 // Core diagnostic function (no LSP dependency)
@@ -50,7 +52,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     const macros = parseMacros(markupText);
     pairMacros(
       macros,
-      (name) => workspace.macros.isBlock(name),
+      (name) => workspace.isContainer(name),
       passages.map(p => p.range.start.line),
     );
 
@@ -161,59 +163,56 @@ function validateMacros(
     const macro = macros[curIndex];
     const info = workspace.macros.getMacro(macro.name);
 
-    if (info) {
-      // Known macro
-      if (info.block) {
-        // SP101: unmatched container
-        if (macro.open && macro.pair === -1) {
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.MalformedContainer,
-            `Malformed container: no matching {/${macro.name}}`,
-          ));
-        } else if (!macro.open && macro.pair === -1) {
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.MalformedContainer,
-            `Malformed container: no matching {${macro.name}}`,
-          ));
-        }
-
-        // SP114/SP115: children constraints
-        if (info.children && info.children.length > 0 && macro.open && macro.pair !== -1) {
-          validateChildren(macros, curIndex, macro, info.children, workspace, diagnostics);
-        }
-      } else {
-        // SP104: closing tag on non-container
-        if (!macro.open) {
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.IllegalClosingTag,
-            `Illegal closing tag: {${macro.name}} is not a container`,
-          ));
-        }
-      }
-
-      // SP107: parents constraint
-      if (info.parents && info.parents.length > 0 && macro.open) {
-        if (!isInsideParent(macros, curIndex, info.parents, workspace)) {
-          const parentList = info.parents.join(', ');
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.InvalidChildren,
-            `Invalid: {${macro.name}} can only be inside {${parentList}}`,
-          ));
-        }
-      }
-    } else {
-      // Check if it's a user-defined widget before flagging SP100
-      const widget = workspace.widgets.getWidget(macro.name);
-      if (!widget && macro.open) {
+    // Neither a macro nor a user-defined widget
+    if (!info && !workspace.widgets.getWidget(macro.name)) {
+      if (macro.open) {
         // SP100: unrecognized macro
         diagnostics.push(makeDiag(
           macro.range,
           DiagnosticCode.UndefinedMacro,
           `Unrecognized macro: {${macro.name}}`,
+        ));
+      }
+      continue;
+    }
+
+    if (workspace.isContainer(macro.name)) {
+      // SP101: unmatched container
+      if (macro.open && macro.pair === -1) {
+        diagnostics.push(makeDiag(
+          macro.range,
+          DiagnosticCode.MalformedContainer,
+          `Malformed container: no matching {/${macro.name}}`,
+        ));
+      } else if (!macro.open && macro.pair === -1) {
+        diagnostics.push(makeDiag(
+          macro.range,
+          DiagnosticCode.MalformedContainer,
+          `Malformed container: no matching {${macro.name}}`,
+        ));
+      }
+
+      // SP114/SP115: children constraints
+      if (info?.children && info.children.length > 0 && macro.open && macro.pair !== -1) {
+        validateChildren(macros, curIndex, macro, info.children, workspace, diagnostics);
+      }
+    } else if (!macro.open) {
+      // SP104: closing tag on non-container
+      diagnostics.push(makeDiag(
+        macro.range,
+        DiagnosticCode.IllegalClosingTag,
+        `Illegal closing tag: {${macro.name}} is not a container`,
+      ));
+    }
+
+    // SP107: parents constraint
+    if (info?.parents && info.parents.length > 0 && macro.open) {
+      if (!isInsideParent(macros, curIndex, info.parents, workspace)) {
+        const parentList = info.parents.join(', ');
+        diagnostics.push(makeDiag(
+          macro.range,
+          DiagnosticCode.InvalidChildren,
+          `Invalid: {${macro.name}} can only be inside {${parentList}}`,
         ));
       }
     }
@@ -279,17 +278,17 @@ function validateChildren(
       continue;
     }
 
-    // Count direct children that match constraints
-    for (const constraint of childConstraints) {
-      if (constraint.name === child.name) {
-        children[child.name] = (children[child.name] ?? 0) + 1;
-      }
+    // Count direct children that match constraints. Like macro lookup,
+    // matching ignores capitalization: Spindle lower-cases macro names.
+    const childKey = child.name.toLowerCase();
+    if (childConstraints.some(c => c.name.toLowerCase() === childKey)) {
+      children[childKey] = (children[childKey] ?? 0) + 1;
     }
   }
 
   // Check constraints
   for (const constraint of childConstraints) {
-    const count = children[constraint.name] ?? 0;
+    const count = children[constraint.name.toLowerCase()] ?? 0;
 
     if (constraint.max !== undefined && count > constraint.max) {
       diagnostics.push(makeDiag(
@@ -328,9 +327,12 @@ function validateArguments(
     if (!info.parameters) continue;
 
     const rawArgs = macro.rawArgs ?? '';
-    const args = macro.name.toLowerCase() === 'include'
-      ? includeArguments(rawArgs)
-      : lexArguments(rawArgs);
+    const name = macro.name.toLowerCase();
+    const args = name === 'include'
+      ? targetArguments(includeExpression(rawArgs))
+      : name === 'goto'
+        ? targetArguments(rawArgs.trim())
+        : lexArguments(rawArgs);
 
     // A malformed parameter schema (e.g. from a project config) only
     // disables argument checks for its own macro.
@@ -391,12 +393,13 @@ function validateArguments(
 }
 
 /**
- * The arguments of `{include}` as Spindle reads them: an `inline` keyword is
- * removed and the rest is evaluated as a single expression, so a target such
- * as `"Chapter " + $n` counts as one argument, not several lexer tokens.
+ * The arguments of `{goto}` / `{include}` as Spindle reads them: the target
+ * (for `{include}`, minus an `inline` keyword) is evaluated as a single
+ * expression, falling back to the raw text when evaluation throws. A target
+ * such as `"Chapter " + $n` or a bare `Chapter 1` therefore counts as one
+ * argument, not several lexer tokens.
  */
-function includeArguments(rawArgs: string): Arg[] {
-  const expr = includeExpression(rawArgs);
+function targetArguments(expr: string): Arg[] {
   if (expr === '') return [];
   const args = lexArguments(expr);
   if (args.length === 1) return args;
@@ -530,9 +533,8 @@ function validateWidgetInvocations(
     const widget = workspace.widgets.getWidget(macro.name);
     if (!widget) continue;
 
-    // Count arguments provided
-    const rawArgs = macro.rawArgs ?? '';
-    const argCount = rawArgs.trim() === '' ? 0 : lexArguments(rawArgs).length;
+    // Count arguments the way Spindle's WidgetInvocation splits them
+    const argCount = splitWidgetArguments(macro.rawArgs ?? '').length;
     const expectedCount = widget.params.length;
 
     if (argCount !== expectedCount) {
@@ -1059,6 +1061,7 @@ export const diagnosticsPlugin: SpindlePlugin = {
 
     ctx.workspace.on('modelReady', () => {
       for (const uri of ctx.workspace.documents.getUris()) {
+        if (isMacroSource(uri)) continue;
         publishFor(uri);
       }
     });

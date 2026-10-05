@@ -1,5 +1,6 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
 import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
+import { createCodeScanner, type CodeScanner } from '../parsing/macro-parser.js';
 
 /** Regex to match $variable references including dot notation. */
 const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
@@ -9,18 +10,119 @@ const transientRefRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
 
 /** Passages excluded from variable scanning. */
 const EXCLUDED_PASSAGES = new Set([
-  'StoryVariables', 'StoryTransients', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface',
+  'StoryVariables', 'StoryTransients', 'StoryData', 'StoryScript', 'StoryInterface',
 ]);
 
-/** Patterns that should be stripped before scanning for variable references. */
-const CLEAN_PATTERNS = [
+/**
+ * Passages whose references are real (references, rename) but which
+ * diagnostics do not check.
+ */
+const UNCHECKED_PASSAGES = new Set(['StoryInit']);
+
+/** Patterns that never contain variable references. */
+const COMMENT_PATTERNS = [
   /<!--[\s\S]*?-->/g,                           // HTML comments
   /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/gi,  // script tags
   /<style>[\s\S]*?<\/style>/gi,                  // style tags
-  /`(?:\\.|[^`\\])*`/g,                          // backtick strings
-  /"(?:\\.|[^"\\])*"/g,                          // double-quoted strings
-  /'(?:\\.|[^'\\])*'/g,                          // single-quoted strings
 ];
+
+/**
+ * Replace the string and template literals in the code of a passage: its
+ * macros and `{…}` expressions, delimited the way Spindle's tokenizer does.
+ * Literals are literal text, apart from the interpolations Spindle evaluates.
+ *
+ * Quotes in prose are just text to Spindle (dialogue, apostrophes) and never
+ * hide the macros between them, so prose is left alone. Inside code, a
+ * quote right after a word character or backslash is not a string, and
+ * '…' / "…" strings end at the line end, as in the macro parser.
+ */
+function replaceCodeLiterals(text: string, replace: (literal: string) => string): string {
+  const scanner = createCodeScanner(text);
+  let result = '';
+  let copied = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\' && (text[i + 1] === '{' || text[i + 1] === '}')) {
+      i++;
+      continue;
+    }
+    if (text[i] !== '{') continue;
+    const close = scanner.closeBrace(i + 1);
+    if (close === -1) continue;
+    result += text.slice(copied, i + 1) + replaceLiterals(text, scanner, i + 1, close, replace);
+    copied = close;
+    i = close;
+  }
+  return result + text.slice(copied);
+}
+
+/** text.slice(from, to) of code, with each literal in it replaced. */
+function replaceLiterals(
+  text: string,
+  scanner: CodeScanner,
+  from: number,
+  to: number,
+  replace: (literal: string) => string,
+): string {
+  let result = '';
+  let copied = from;
+  for (let j = from; j < to; j++) {
+    const end = scanner.literalEnd(j);
+    if (end === -1) continue;
+    let literal = replace(text.slice(j, end));
+    // Interpolations kept by the replacement are code: replace their literals too.
+    if (literal.trim() !== '') {
+      literal = replaceLiterals(literal, createCodeScanner(literal), 0, literal.length, replace);
+    }
+    result += text.slice(copied, j) + literal;
+    copied = end;
+    j = end - 1;
+  }
+  return result + text.slice(copied, to);
+}
+
+/**
+ * Built-in input macros whose first argument names the bound story variable,
+ * quoted or not (e.g. `{textbox "$name"}`).
+ */
+export const BUILTIN_STORE_VAR_MACROS: ReadonlySet<string> = new Set([
+  'checkbox', 'cycle', 'listbox', 'numberbox', 'radiobutton', 'textarea', 'textbox',
+]);
+
+/**
+ * A macro whose first argument is a quoted `$variable`: group 1 runs up to
+ * the opening quote, group 2 is the macro name, group 4 the variable path.
+ */
+const QUOTED_RECEIVER_RE =
+  /(?<!\\)(\{(?:[#.][a-zA-Z][\w-]*\s*)*([A-Za-z][\w-]*)\s+(["']))\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])/g;
+
+/** Replace every character except line terminators with a space. */
+function blank(text: string): string {
+  return text.replace(/[^\r\n]/g, ' ');
+}
+
+/**
+ * Blank a string literal except the code Spindle evaluates inside it:
+ * `${…}` template interpolations and `{$…}` / `{%…}` interpolation blocks.
+ */
+function blankLiteralText(literal: string): string {
+  const keep = new Array<boolean>(literal.length).fill(false);
+  for (let i = 1; i < literal.length - 1; i++) {
+    if (literal[i] !== '{') continue;
+    const templateCode = literal[0] === '`' && literal[i - 1] === '$' && literal[i - 2] !== '\\';
+    if (!templateCode && !/^[$%][A-Za-z_$]/.test(literal.slice(i + 1, i + 3))) continue;
+
+    let depth = 0;
+    for (let j = i; j < literal.length - 1; j++) {
+      if (literal[j] === '{') depth++;
+      else if (literal[j] === '}' && --depth === 0) {
+        keep.fill(true, i + 1, j);
+        i = j;
+        break;
+      }
+    }
+  }
+  return literal.replace(/[^\r\n]/g, (ch, i: number) => (keep[i] ? ch : ' '));
+}
 
 interface NullDeclaration {
   name: string;
@@ -33,6 +135,11 @@ interface VariableUsage {
   baseName: string;
   fullName: string;
   range: Range;
+  /**
+   * Whether diagnostics check this usage. References in StoryInit and inside
+   * string literals are only used for references and rename.
+   */
+  checked: boolean;
 }
 
 /** A `$var.member` / `%var.member` access on a variable declared as an array. */
@@ -287,8 +394,15 @@ export class VariableTracker {
   /**
    * Scan a document for variable usages.
    * Identifies passages in the document and scans non-special ones.
+   * `storeVarMacros` (lowercase names) are the input macros whose quoted
+   * first argument names a bound story variable.
    */
-  scanDocument(uri: string, text: string, _macros: MacroNode[]): void {
+  scanDocument(
+    uri: string,
+    text: string,
+    _macros: MacroNode[],
+    storeVarMacros: ReadonlySet<string> = BUILTIN_STORE_VAR_MACROS,
+  ): void {
     // Clear previous usages for this URI
     this.usagesByUri.delete(uri);
     this.transientUsagesByUri.delete(uri);
@@ -322,9 +436,19 @@ export class VariableTracker {
 
       // Clean the content to avoid scanning inside strings/comments.
       // Line terminators are kept so offsets still map to the right lines.
-      let cleaned = content;
-      for (const pattern of CLEAN_PATTERNS) {
-        cleaned = cleaned.replace(pattern, (m) => m.replace(/[^\r\n]/g, ' '));
+      let uncommented = content;
+      for (const pattern of COMMENT_PATTERNS) {
+        uncommented = uncommented.replace(pattern, blank);
+      }
+      const cleaned = replaceCodeLiterals(uncommented, blank);
+      let referenced = replaceCodeLiterals(uncommented, blankLiteralText);
+
+      // Quoted input macro receivers (`{textbox "$name"}`) bind a variable too
+      for (const m of uncommented.matchAll(QUOTED_RECEIVER_RE)) {
+        if (cleaned[m.index] !== '{' || !storeVarMacros.has(m[2].toLowerCase())) continue;
+        const start = m.index + m[1].length;
+        const end = start + 1 + m[4].length;
+        referenced = referenced.slice(0, start) + content.slice(start, end) + referenced.slice(end);
       }
 
       // Build line offsets for this content block
@@ -333,54 +457,43 @@ export class VariableTracker {
         if (cleaned[i] === '\n') lineOffsets.push(i + 1);
       }
 
-      // Find variable references
-      const re = new RegExp(varRefRegex.source, 'g');
-      let match;
-      while ((match = re.exec(cleaned)) !== null) {
-        const fullName = match[1];
-        const baseName = fullName.split('.')[0];
-        const charOffset = match.index;
+      // References in code are checked by diagnostics (outside StoryInit);
+      // references kept only in `referenced` serve references and rename.
+      const checkedPassage = !UNCHECKED_PASSAGES.has(passage.name);
+      const scans: Array<[RegExp, VariableUsage[]]> = [
+        [varRefRegex, usages],
+        [transientRefRegex, transientUsages],
+      ];
+      for (const [regex, out] of scans) {
+        const seen = new Set<number>();
+        for (const [source, checked] of [[cleaned, checkedPassage], [referenced, false]] as const) {
+          const re = new RegExp(regex.source, 'g');
+          let match;
+          while ((match = re.exec(source)) !== null) {
+            const charOffset = match.index;
+            if (seen.has(charOffset)) continue;
+            seen.add(charOffset);
 
-        // Convert offset to line/character within content block
-        let localLine = 0;
-        for (let i = 0; i < lineOffsets.length; i++) {
-          if (lineOffsets[i] > charOffset) break;
-          localLine = i;
+            const fullName = match[1];
+            const baseName = fullName.split('.')[0];
+
+            // Convert offset to line/character within content block
+            let localLine = 0;
+            for (let i = 0; i < lineOffsets.length; i++) {
+              if (lineOffsets[i] > charOffset) break;
+              localLine = i;
+            }
+            const character = charOffset - lineOffsets[localLine];
+            const absoluteLine = contentStartLine + localLine;
+
+            const range: Range = {
+              start: { line: absoluteLine, character },
+              end: { line: absoluteLine, character: character + match[0].length },
+            };
+
+            out.push({ uri, baseName, fullName, range, checked });
+          }
         }
-        const character = charOffset - lineOffsets[localLine];
-        const absoluteLine = contentStartLine + localLine;
-
-        const range: Range = {
-          start: { line: absoluteLine, character },
-          end: { line: absoluteLine, character: character + match[0].length },
-        };
-
-        usages.push({ uri, baseName, fullName, range });
-      }
-
-      // Find transient variable references
-      const tre = new RegExp(transientRefRegex.source, 'g');
-      let tmatch;
-      while ((tmatch = tre.exec(cleaned)) !== null) {
-        const fullName = tmatch[1];
-        const baseName = fullName.split('.')[0];
-        const charOffset = tmatch.index;
-
-        // Convert offset to line/character within content block
-        let localLine = 0;
-        for (let i = 0; i < lineOffsets.length; i++) {
-          if (lineOffsets[i] > charOffset) break;
-          localLine = i;
-        }
-        const character = charOffset - lineOffsets[localLine];
-        const absoluteLine = contentStartLine + localLine;
-
-        const range: Range = {
-          start: { line: absoluteLine, character },
-          end: { line: absoluteLine, character: character + tmatch[0].length },
-        };
-
-        transientUsages.push({ uri, baseName, fullName, range });
       }
     }
 
@@ -390,6 +503,12 @@ export class VariableTracker {
     if (transientUsages.length > 0) {
       this.transientUsagesByUri.set(uri, transientUsages);
     }
+  }
+
+  /** Forget the usages recorded for a document, e.g. after it was deleted. */
+  removeDocument(uri: string): void {
+    this.usagesByUri.delete(uri);
+    this.transientUsagesByUri.delete(uri);
   }
 
   /** Get all declared variables. */
@@ -419,7 +538,7 @@ export class VariableTracker {
     const seen = new Set<string>();
 
     for (const u of usages) {
-      if (!this.declared.has(u.baseName) && !seen.has(u.baseName)) {
+      if (u.checked && !this.declared.has(u.baseName) && !seen.has(u.baseName)) {
         seen.add(u.baseName);
         results.push({ name: u.baseName, range: u.range });
       }
@@ -459,7 +578,7 @@ export class VariableTracker {
     const seen = new Set<string>();
 
     for (const u of usages) {
-      if (!this.declaredTransient.has(u.baseName) && !seen.has(u.baseName)) {
+      if (u.checked && !this.declaredTransient.has(u.baseName) && !seen.has(u.baseName)) {
         seen.add(u.baseName);
         results.push({ name: u.baseName, range: u.range });
       }
@@ -487,6 +606,7 @@ export class VariableTracker {
     for (const [sigil, usages, declared] of sources) {
       if (!usages) continue;
       for (const u of usages) {
+        if (!u.checked) continue;
         const member = u.fullName.split('.')[1];
         if (member === undefined) continue;
         if (declared.get(u.baseName)?.type !== 'array') continue;

@@ -41,6 +41,17 @@ describe('computeFoldingRanges', () => {
     expect(ifRange!.endLine).toBe(3);
   });
 
+  it('folds a multiline block widget invocation, but not inline widgets', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: Widgets [widget]\n{widget "box"}\n{@children}\n{/widget}\n{widget "greet"}\nHi\n{/widget}\n\n'
+        + ':: Start\n{box}\nHello\n{/box}\n{greet}\nText\n{/greet}\n',
+    });
+    const ranges = computeFoldingRanges('file:///test.tw', ws);
+    const macroRanges = ranges.filter(r => r.kind === undefined).map(r => [r.startLine, r.endLine]);
+    expect(macroRanges).toEqual([[1, 3], [4, 6], [9, 11]]);
+  });
+
   it('does not fold a container pair that spans two passages', () => {
     const ws = createWorkspace({
       name: 'test.tw',

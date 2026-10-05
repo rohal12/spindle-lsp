@@ -279,6 +279,192 @@ describe('computeRename', () => {
   });
 });
 
+describe('computeRename: executable references in StoryInit and strings (#44)', () => {
+  it('renames StoryInit assignments, quoted receivers and interpolations', () => {
+    const content = [
+      ':: StoryVariables',
+      '$x = 1',
+      ':: StoryInit',
+      '{set $x = 2}',
+      ':: Start',
+      '{textbox "$x"}',
+      '{print `${$x}`}',
+      '{link "{$x}"}go{/link}',
+    ].join('\n');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'y');
+    expect(result.get('file:///test.tw')).toBe([
+      ':: StoryVariables',
+      '$y = 1',
+      ':: StoryInit',
+      '{set $y = 2}',
+      ':: Start',
+      '{textbox "$y"}',
+      '{print `${$y}`}',
+      '{link "{$y}"}go{/link}',
+    ].join('\n'));
+  });
+
+  it('renames transients in StoryInit and string interpolations', () => {
+    const content = [
+      ':: StoryTransients',
+      '%t = 1',
+      ':: StoryInit',
+      '{set %t = 2}',
+      ':: Start',
+      '{print `n: ${%t}`} {link "{%t}"}go{/link}',
+    ].join('\n');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'u');
+    expect(result.get('file:///test.tw')).toBe([
+      ':: StoryTransients',
+      '%u = 1',
+      ':: StoryInit',
+      '{set %u = 2}',
+      ':: Start',
+      '{print `n: ${%u}`} {link "{%u}"}go{/link}',
+    ].join('\n'));
+  });
+
+  it('renames quoted receivers of custom storeVar macros', () => {
+    const files = {
+      'macros.tw': ':: Macros [script]\nStory.defineMacro({name: "Picker", storeVar: true, render: () => null});',
+      'test.tw': ':: StoryVariables\n$x = 1\n:: Start\n{picker "$x"} {other "$x"}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+    expect(applyRenameToFiles(files, computeRename('file:///test.tw', { line: 1, character: 1 }, 'y', ws)))
+      .toEqual({ ...files, 'test.tw': ':: StoryVariables\n$y = 1\n:: Start\n{picker "$y"} {other "$x"}' });
+  });
+
+  it('leaves literal string text alone', () => {
+    const content = [
+      ':: StoryVariables',
+      '$x = 1',
+      ':: Start',
+      '{print "costs $x"} {print \'$x\'} {print `$x and ${"$x"}`}',
+      '{set $x = 2} {link "Pay $x"}go{/link} {print "{x}"}',
+      '{print "$x" + $x}',
+    ].join('\n');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'y');
+    expect(result.get('file:///test.tw')).toBe([
+      ':: StoryVariables',
+      '$y = 1',
+      ':: Start',
+      '{print "costs $x"} {print \'$x\'} {print `$x and ${"$x"}`}',
+      '{set $y = 2} {link "Pay $x"}go{/link} {print "{x}"}',
+      '{print "$x" + $y}',
+    ].join('\n'));
+  });
+
+  it('renames references between apostrophes and quotes in prose', () => {
+    const content = [
+      ':: StoryVariables',
+      '$x = 1',
+      ':: Start',
+      "Don't do it.",
+      '{set $x = 2}',
+      "It's fine {$x}",
+      '"I {if $x > 1}hate{else}like{/if} you," she said.',
+    ].join('\n');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'y');
+    expect(result.get('file:///test.tw')).toBe([
+      ':: StoryVariables',
+      '$y = 1',
+      ':: Start',
+      "Don't do it.",
+      '{set $y = 2}',
+      "It's fine {$y}",
+      '"I {if $y > 1}hate{else}like{/if} you," she said.',
+    ].join('\n'));
+  });
+});
+
+describe('rename from a passage reference', () => {
+  const content = [
+    ':: Start',
+    '[[Next]] [[Go on|Next]] [[Go on->Next]] [[Next<-Go on]]',
+    `{goto "Next"} {include 'Next'} {link "Go on" "Next"} {goto Next}`,
+    '',
+    ':: Next',
+    'Hello',
+  ].join('\n');
+  const renamed = [
+    ':: Start',
+    '[[After]] [[Go on|After]] [[Go on->After]] [[After<-Go on]]',
+    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto After}`,
+    '',
+    ':: After',
+    'Hello',
+  ].join('\n');
+  const lines = content.split('\n');
+
+  // Every occurrence of `Next` on the reference lines is a link or macro target
+  const refPositions: Array<{ line: number; character: number }> = [];
+  for (const line of [1, 2]) {
+    let i = -1;
+    while ((i = lines[line].indexOf('Next', i + 1)) !== -1) {
+      refPositions.push({ line, character: i });
+    }
+  }
+
+  it('covers every link and macro form', () => {
+    expect(refPositions).toHaveLength(8);
+  });
+
+  it('prepareRename returns the target range only, not the link label', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    for (const pos of refPositions) {
+      for (const character of [pos.character, pos.character + 2, pos.character + 4]) {
+        const result = prepareRename('file:///test.tw', { line: pos.line, character }, ws);
+        expect(result, `line ${pos.line} char ${character}`).toEqual({
+          placeholder: 'Next',
+          range: {
+            start: { line: pos.line, character: pos.character },
+            end: { line: pos.line, character: pos.character + 4 },
+          },
+        });
+      }
+    }
+  });
+
+  it('prepareRename returns null on a link label', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const label = lines[1].indexOf('Go on');
+    expect(prepareRename('file:///test.tw', { line: 1, character: label + 1 }, ws)).toBeNull();
+  });
+
+  it('renames the declaration and all references from any reference', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    for (const pos of refPositions) {
+      const result = applyRename(ws, 'file:///test.tw', pos, 'After');
+      expect(result.get('file:///test.tw'), `line ${pos.line} char ${pos.character}`).toBe(renamed);
+    }
+  });
+
+  it('renames across documents from a reference', () => {
+    const files = {
+      'start.tw': ':: Start\n[[Next]]',
+      'next.tw': ':: Next\nHello {goto "Start"}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+    expect(applyRenameToFiles(files, computeRename('file:///start.tw', { line: 1, character: 3 }, 'After', ws)))
+      .toEqual({ 'start.tw': ':: Start\n[[After]]', 'next.tw': ':: After\nHello {goto "Start"}' });
+  });
+
+  it('does not rename a reference to an unknown passage', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n[[Missing]] {goto "Missing"}' });
+    expect(prepareRename('file:///test.tw', { line: 1, character: 3 }, ws)).toBeNull();
+    expect(prepareRename('file:///test.tw', { line: 1, character: 19 }, ws)).toBeNull();
+    expect(computeRename('file:///test.tw', { line: 1, character: 3 }, 'Found', ws).size).toBe(0);
+  });
+});
+
 function applyRenameToFiles(
   files: Record<string, string>,
   edits: Map<string, RenameEdit[]>,

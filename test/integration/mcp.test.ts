@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { readFileSync as readFixture } from 'node:fs';
@@ -8,6 +8,7 @@ import { readFileSync as readFixture } from 'node:fs';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { formatDocument } from '../../src/plugins/format.js';
+import { checkFiles } from '../../src/mcp/server.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
 
@@ -231,5 +232,43 @@ describe('MCP spindle_format', () => {
     const result = await formatDocument(text);
 
     expect(result).toBe(text);
+  });
+});
+
+describe('MCP spindle_check custom macro sources (#47)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'spindle-mcp-macros-')));
+    const files: Record<string, string> = {
+      'package.json': '{}\n',
+      'scripts/macros.js': 'Story.defineMacro({ name: "hello", render() { return null; } });\n',
+      'node_modules/some-lib/index.js': 'Story.defineMacro({ name: "vendored", render() { return null; } });\n',
+      'story/a.tw': ':: Start\n{hello}\n{vendored}\n',
+    };
+    for (const [name, content] of Object.entries(files)) {
+      mkdirSync(join(tmpDir, name, '..'), { recursive: true });
+      writeFileSync(join(tmpDir, name), content);
+    }
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('discovers macros from the project\'s JS/TS files, like the CLI', async () => {
+    const results = await checkFiles('**/*.{tw,twee}', undefined, tmpDir);
+    // Macro sources are loaded for discovery, not reported on
+    expect(new Set(results.map(r => r.file))).toEqual(new Set(['story/a.tw']));
+    expect(results.filter(r => r.code === 'SP100').map(r => r.message)).toEqual([
+      'Unrecognized macro: {vendored}',
+    ]);
+  });
+
+  it('finds the project\'s macro sources from a subdirectory', async () => {
+    const results = await checkFiles('a.tw', undefined, join(tmpDir, 'story'));
+    expect(results.filter(r => r.code === 'SP100').map(r => r.message)).toEqual([
+      'Unrecognized macro: {vendored}',
+    ]);
   });
 });

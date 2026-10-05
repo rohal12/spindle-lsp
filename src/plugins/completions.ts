@@ -99,7 +99,7 @@ function getClosingMacroCompletions(
   const macros = parseMacros(text);
   pairMacros(
     macros,
-    (name) => workspace.macros.isBlock(name),
+    (name) => workspace.isContainer(name),
     passages.map(p => p.range.start.line),
   );
 
@@ -114,7 +114,7 @@ function getClosingMacroCompletions(
       break;
     }
     if (!macro.open) continue;
-    if (!workspace.macros.isBlock(macro.name)) continue;
+    if (!workspace.isContainer(macro.name)) continue;
 
     if (macro.pair === -1) {
       openStack.push(macro.name);

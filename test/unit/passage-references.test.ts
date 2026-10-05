@@ -163,6 +163,10 @@ describe('macro passage references', () => {
     expect(refs).toHaveLength(10);
   });
 
+  it('reads a bare multiword {goto} target as one passage name', () => {
+    expect(referencedTexts(':: Start\n{goto Chapter 1}\n:: Chapter 1\nText', 'Chapter 1')).toEqual(['Chapter 1']);
+  });
+
   it('skips dynamic targets and macros that do not navigate', () => {
     const dynamic = [
       ':: Start',

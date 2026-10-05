@@ -97,6 +97,18 @@ describe('computeSemanticTokensAbsolute', () => {
     );
     expect(transientTokens.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('does not emit macro tokens for identifiers inside object literal arguments', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: Start\n{set $x = {a: 1}, $y = {toString}}',
+    });
+    const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
+    const functionTokens = tokens.filter(t => t.tokenType === typeIdx('function'));
+    expect(functionTokens).toEqual([
+      expect.objectContaining({ line: 1, startChar: 1, length: 3 }),
+    ]);
+  });
 });
 
 describe('encodeTokens', () => {

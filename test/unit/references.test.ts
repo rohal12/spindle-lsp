@@ -7,6 +7,7 @@ import {
   findTransientReferences,
   findWidgetReferences,
 } from '../../src/plugins/references.js';
+import { computeRename } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -69,6 +70,40 @@ describe('findTransientReferences', () => {
     });
     const refs = findTransientReferences('npcList', ws, false);
     expect(refs.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('variable references after a document leaves the store (#45)', () => {
+  const main = ':: StoryVariables\n$x = 1\n:: StoryTransients\n%y = 1\n:: Start\nHello';
+
+  function uris(refs: Array<{ uri: string }>): string[] {
+    return [...new Set(refs.map(r => r.uri))].sort();
+  }
+
+  it('drops usages of a deleted document from references and rename', () => {
+    const ws = createWorkspace(
+      { name: 'main.tw', content: main },
+      { name: 'deleted.tw', content: ':: Deleted\n{$x} {%y}' },
+    );
+    expect(uris(findVariableReferences('x', ws, true))).toEqual(['file:///deleted.tw', 'file:///main.tw']);
+
+    ws.documents.close('file:///deleted.tw');
+
+    expect(uris(findVariableReferences('x', ws, true))).toEqual(['file:///main.tw']);
+    expect(uris(findTransientReferences('y', ws, true))).toEqual(['file:///main.tw']);
+    const edits = computeRename('file:///main.tw', { line: 1, character: 1 }, 'z', ws);
+    expect([...edits.keys()]).toEqual(['file:///main.tw']);
+  });
+
+  it('drops usages of a document whose text was emptied', () => {
+    const ws = createWorkspace(
+      { name: 'main.tw', content: main },
+      { name: 'other.tw', content: ':: Other\n{$x} {%y}' },
+    );
+    ws.documents.update('file:///other.tw', '');
+
+    expect(uris(findVariableReferences('x', ws, true))).toEqual(['file:///main.tw']);
+    expect(uris(findTransientReferences('y', ws, true))).toEqual(['file:///main.tw']);
   });
 });
 

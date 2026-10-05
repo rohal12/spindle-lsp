@@ -3,6 +3,8 @@ import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
+import { activeWidgetArgument } from '../core/parsing/widget-arguments.js';
+import { buildLineStarts, createCodeScanner } from '../core/parsing/macro-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core signature help function (no LSP dependency)
@@ -16,6 +18,25 @@ export interface SignatureHelpResult {
   }>;
   activeSignature: number;
   activeParameter: number;
+}
+
+/** A macro head followed by its arguments: `{name ` with an optional CSS prefix. */
+const macroHeadRegex = /(?<!\\)\{(?:[#.][a-zA-Z][\w-]*\s*)*([A-Za-z][\w-]*)\s+/g;
+
+/**
+ * Find the innermost macro whose arguments are still open at the end of
+ * `textBefore`: the last macro head whose balanced closing brace is not in
+ * the text. Braces inside the arguments (objects, strings) are skipped the
+ * way Spindle's tokenizer skips them.
+ */
+function findEnclosingMacro(textBefore: string): { macroName: string; argsBefore: string } | null {
+  const scanner = createCodeScanner(textBefore);
+  let enclosing: { macroName: string; argsBefore: string } | null = null;
+  for (const match of textBefore.matchAll(macroHeadRegex)) {
+    if (scanner.closeBrace(match.index + 1) !== -1) continue;
+    enclosing = { macroName: match[1], argsBefore: textBefore.slice(match.index + match[0].length) };
+  }
+  return enclosing;
 }
 
 /**
@@ -32,25 +53,24 @@ export function getSignatureHelp(
   const text = workspace.documents.getText(uri);
   if (text === undefined) return null;
 
-  const lines = text.split('\n');
-  if (position.line >= lines.length) return null;
-  const lineText = lines[position.line];
-  const textBefore = lineText.substring(0, position.character);
+  const lineStarts = buildLineStarts(text);
+  if (position.line >= lineStarts.length) return null;
+  // Only the cursor's passage can hold the macro being typed
+  const passageLine = workspace.passages.getPassageAt(uri, position.line)?.range.start.line ?? 0;
+  const lineEnd = position.line + 1 < lineStarts.length ? lineStarts[position.line + 1] - 1 : text.length;
+  const cursor = Math.min(lineStarts[position.line] + position.character, lineEnd);
+  const textBefore = text.slice(lineStarts[passageLine], cursor);
 
-  // Find the enclosing macro: {macroName args...
-  const macroMatch = textBefore.match(/\{(?:[#.][a-zA-Z][\w-]*\s*)*([A-Za-z][\w-]*)\s+([^}]*)$/);
-  if (!macroMatch) return null;
-
-  const macroName = macroMatch[1];
-  const argsBefore = macroMatch[2];
-
-  // Count arguments before cursor to determine active parameter
-  const activeParameter = argsBefore.trim() === '' ? 0 : lexArguments(argsBefore).length;
+  const enclosing = findEnclosingMacro(textBefore);
+  if (!enclosing) return null;
+  const { macroName, argsBefore } = enclosing;
 
   // Check builtin macros
   const macroInfo = workspace.macros.getMacro(macroName);
   if (macroInfo && macroInfo.parameters && macroInfo.parameters.length > 0) {
     const paramLabels = macroInfo.parameters;
+    // Count arguments before cursor to determine active parameter
+    const activeParameter = argsBefore.trim() === '' ? 0 : lexArguments(argsBefore).length;
     return {
       signatures: [{
         label: `{${macroName} ${paramLabels.join(' ')}}`,
@@ -73,7 +93,8 @@ export function getSignatureHelp(
         parameters: paramLabels.map(p => ({ label: p })),
       }],
       activeSignature: 0,
-      activeParameter,
+      // Widget arguments are split the way Spindle's WidgetInvocation does
+      activeParameter: activeWidgetArgument(argsBefore),
     };
   }
 

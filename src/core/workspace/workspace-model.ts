@@ -2,11 +2,12 @@ import { EventEmitter } from 'node:events';
 import { DocumentStore } from './document-store.js';
 import { PassageIndex } from './passage-index.js';
 import { MacroRegistry } from './macro-registry.js';
-import { VariableTracker } from './variable-tracker.js';
+import { VariableTracker, BUILTIN_STORE_VAR_MACROS } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
 import { parseMacros } from '../parsing/macro-parser.js';
 import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
+import { isMacroSource } from './macro-sources.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
 
 export interface WorkspaceModelConfig {
@@ -106,6 +107,15 @@ export class WorkspaceModel extends EventEmitter {
     this.scheduleModelReady();
   }
 
+  /**
+   * Whether `{name}` opens a container that needs a `{/name}` closing tag:
+   * a block macro, or a block widget (one whose body renders `{@children}`).
+   * Like Spindle's set of block macros, either source makes a name a block.
+   */
+  isContainer(name: string): boolean {
+    return this.macros.isBlock(name) || (this.widgets.getWidget(name)?.block ?? false);
+  }
+
   /** Clean up listeners and timers. */
   dispose(): void {
     this.documents.removeListener('documentChanged', this.onDocumentChanged);
@@ -123,7 +133,8 @@ export class WorkspaceModel extends EventEmitter {
   /** Handle a document change: rebuild passages for that document, then cascade. */
   private handleDocumentChange(uri: string): void {
     const text = this.documents.getText(uri);
-    if (text !== undefined) {
+    // JS/TS macro sources only feed macro discovery — they hold no passages
+    if (text !== undefined && !isMacroSource(uri)) {
       this.passages.rebuild(uri, text);
     }
     this.refreshDiscoveredMacros();
@@ -133,9 +144,10 @@ export class WorkspaceModel extends EventEmitter {
     this.scheduleModelReady();
   }
 
-  /** Handle a document close: remove its passages and cascade. */
+  /** Handle a document close: remove its passages and variable usages, then cascade. */
   private handleDocumentClose(uri: string): void {
     this.passages.remove(uri);
+    this.variables.removeDocument(uri);
     this.refreshDiscoveredMacros();
     this.cascade();
     this.emit('documentClosed', uri);
@@ -147,7 +159,7 @@ export class WorkspaceModel extends EventEmitter {
   private rebuildAll(): void {
     for (const uri of this.documents.getUris()) {
       const text = this.documents.getText(uri);
-      if (text !== undefined) {
+      if (text !== undefined && !isMacroSource(uri)) {
         this.passages.rebuild(uri, text);
       }
     }
@@ -171,7 +183,7 @@ export class WorkspaceModel extends EventEmitter {
       const text = this.documents.getText(uri);
       if (!text) continue;
 
-      if (/\.[cm]?[jt]s$/i.test(uri)) {
+      if (isMacroSource(uri)) {
         found.push(...discoverMacrosFromSource(text));
         continue;
       }
@@ -243,13 +255,18 @@ export class WorkspaceModel extends EventEmitter {
       this.variables.clearStoryTransients();
     }
 
-    // Rescan variable usages and macro invocations across all documents
+    // Rescan variable usages and macro invocations across all story documents
+    const storeVarMacros = new Set(BUILTIN_STORE_VAR_MACROS);
+    for (const m of this.macros.getAllMacros()) {
+      if (m.storeVar) storeVarMacros.add(m.name.toLowerCase());
+    }
     this.widgets.clearInvocations();
     for (const uri of this.documents.getUris()) {
       const text = this.documents.getText(uri);
-      if (text) {
+      // Empty documents are scanned too, dropping their previous usages
+      if (text !== undefined && !isMacroSource(uri)) {
         const macros = parseMacros(text);
-        this.variables.scanDocument(uri, text, macros);
+        this.variables.scanDocument(uri, text, macros, storeVarMacros);
         this.widgets.recordInvocations(uri, macros);
       }
     }

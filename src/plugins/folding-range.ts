@@ -45,7 +45,7 @@ export function computeFoldingRanges(uri: string, workspace: WorkspaceModel): Fo
   const macros = parseMacros(text);
   pairMacros(
     macros,
-    (name) => workspace.macros.isBlock(name),
+    (name) => workspace.isContainer(name),
     passages.map(p => p.range.start.line),
   );
 

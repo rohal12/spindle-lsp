@@ -250,3 +250,113 @@ describe('VariableTracker usage ranges after masked exclusions', () => {
     expect(tracker.getTransientUsages('t')[0].range.start).toEqual({ line: 4, character: 1 });
   });
 });
+
+describe('VariableTracker references outside diagnostics (#44)', () => {
+  const text = [
+    ':: StoryInit',
+    '{set $init = 1} {set %initT = 1}',
+    ':: Start',
+    '{textbox "$box"} {checkbox \'$check\' "Label"}',
+    '{print `${$tpl}`} {print `${%tplT}`}',
+    '{link "{$label}"}go{/link} {button "{%btnT}"}{/button}',
+    '{print "plain $literal"} {foo "$notInput"}',
+  ].join('\n');
+
+  function scanned(): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$declared = 0');
+    tracker.parseStoryTransients('%declaredT = 0');
+    tracker.scanDocument('file:///story.tw', text, []);
+    return tracker;
+  }
+
+  it('records executable references for references and rename', () => {
+    const tracker = scanned();
+    expect(tracker.getUsages('init')[0].range.start).toEqual({ line: 1, character: 5 });
+    expect(tracker.getUsages('box')[0].range).toEqual({
+      start: { line: 3, character: 10 },
+      end: { line: 3, character: 14 },
+    });
+    expect(tracker.getUsages('check')).toHaveLength(1);
+    expect(tracker.getUsages('tpl')[0].range.start).toEqual({ line: 4, character: 10 });
+    expect(tracker.getUsages('label')[0].range.start).toEqual({ line: 5, character: 8 });
+    expect(tracker.getTransientUsages('initT')).toHaveLength(1);
+    expect(tracker.getTransientUsages('tplT')).toHaveLength(1);
+    expect(tracker.getTransientUsages('btnT')).toHaveLength(1);
+  });
+
+  it('still ignores literal string text', () => {
+    const tracker = scanned();
+    expect(tracker.getUsages('literal')).toEqual([]);
+    expect(tracker.getUsages('notInput')).toEqual([]);
+  });
+
+  it('keeps these references out of undeclared-variable diagnostics', () => {
+    const tracker = scanned();
+    expect(tracker.getUndeclared('file:///story.tw')).toEqual([]);
+    expect(tracker.getUndeclaredTransient('file:///story.tw')).toEqual([]);
+  });
+
+  it('keeps these references out of array member diagnostics', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$list = []');
+    tracker.scanDocument(
+      'file:///story.tw',
+      ':: StoryInit\n{set $list.bogus = 1}\n:: Start\n{print `${$list.nope}`}',
+      [],
+    );
+    expect(tracker.getUsages('list')).toHaveLength(2);
+    expect(tracker.getArrayMemberAccesses('file:///story.tw')).toEqual([]);
+  });
+});
+
+describe('VariableTracker string literals in prose and code', () => {
+  function scan(text: string): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$declared = 0');
+    tracker.scanDocument('file:///story.tw', text, []);
+    return tracker;
+  }
+
+  function undeclaredNames(tracker: VariableTracker): string[] {
+    return tracker.getUndeclared('file:///story.tw').map(u => u.name);
+  }
+
+  it('does not treat apostrophes in prose as string delimiters', () => {
+    const tracker = scan(":: Start\nDon't do it.\n{set $x = 2}\nIt's fine {$x}");
+    expect(tracker.getUsages('x').map(u => u.range.start)).toEqual([
+      { line: 2, character: 5 },
+      { line: 3, character: 11 },
+    ]);
+    expect(undeclaredNames(tracker)).toEqual(['x']);
+  });
+
+  it('checks code inside quoted dialogue and HTML attributes', () => {
+    // Quotes in markup are text: Spindle runs the macros between them.
+    const tracker = scan([
+      ':: Start',
+      '"I {if $mood}hate{/if} you," she said.',
+      '"Take {$gold}," he said.',
+      '<div class="{$cls}">x</div>',
+    ].join('\n'));
+    expect(undeclaredNames(tracker)).toEqual(['mood', 'gold', 'cls']);
+  });
+
+  it('does not let a quote in code run past the end of its line', () => {
+    const tracker = scan(':: Start\n{print "unclosed}\n{set $y = 1}"}');
+    expect(tracker.getUsages('y').map(u => u.range.start)).toEqual([{ line: 2, character: 5 }]);
+  });
+
+  it('still ignores literal text in strings inside code', () => {
+    const tracker = scan([
+      ':: Start',
+      `{print "costs $a"} {print 'it\\'s $b'} {print "don't $c"}`,
+      "{print $declared + 'x'} {print name's $declared}",
+    ].join('\n'));
+    expect(tracker.getUsages('a')).toEqual([]);
+    expect(tracker.getUsages('b')).toEqual([]);
+    expect(tracker.getUsages('c')).toEqual([]);
+    expect(tracker.getUsages('declared')).toHaveLength(2);
+    expect(undeclaredNames(tracker)).toEqual([]);
+  });
+});

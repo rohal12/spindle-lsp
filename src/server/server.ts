@@ -16,6 +16,12 @@ import { buildCapabilities } from './capabilities.js';
 import { allPlugins } from '../plugins/index.js';
 import type { SpindleConfig, SpindlePlugin } from '../core/plugin/plugin-api.js';
 import { loadConfigFromDisk } from '../core/workspace/config-loader.js';
+import {
+  MACRO_SOURCE_GLOB,
+  findMacroSourceFiles,
+  isExcludedMacroSource,
+  isMacroSource,
+} from '../core/workspace/macro-sources.js';
 
 /**
  * Convert a file:// URI to a filesystem path.
@@ -112,8 +118,7 @@ export function startServer(_args: string[]): void {
       watchers: [
         { globPattern: '**/*.tw' },
         { globPattern: '**/*.twee' },
-        { globPattern: '**/*.js' },
-        { globPattern: '**/*.ts' },
+        { globPattern: MACRO_SOURCE_GLOB },
         { globPattern: '**/spindle.config.*' },
         { globPattern: '**/*twee-config.*' },
       ],
@@ -215,6 +220,13 @@ export function startServer(_args: string[]): void {
         continue;
       }
 
+      // Hidden, dependency and build-output JS is not a macro source
+      // (same predicate as the initial scan)
+      if (isMacroSource(change.uri)
+        && isExcludedMacroSource(uriToFsPath(change.uri), workspaceRoot)) {
+        continue;
+      }
+
       // The editor owns open documents: ignore disk changes/deletions until
       // didClose, which re-reads the file from disk (or removes it).
       if (documents.has(change.uri)) continue;
@@ -255,7 +267,8 @@ export function startServer(_args: string[]): void {
 }
 
 /**
- * Scan workspace for .tw and .twee files and return their contents.
+ * Scan workspace for .tw and .twee files, plus JS/TS macro sources, and
+ * return their contents.
  */
 async function scanWorkspaceFiles(
   root: string | undefined,
@@ -264,11 +277,14 @@ async function scanWorkspaceFiles(
   if (!root) return contents;
 
   try {
-    const files = await glob('**/*.{tw,twee}', {
-      cwd: root,
-      absolute: true,
-      nodir: true,
-    });
+    const files = [
+      ...await glob('**/*.{tw,twee}', {
+        cwd: root,
+        absolute: true,
+        nodir: true,
+      }),
+      ...await findMacroSourceFiles(root),
+    ];
     for (const filePath of files) {
       try {
         const text = readFileSync(filePath, 'utf-8');

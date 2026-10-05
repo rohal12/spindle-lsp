@@ -82,6 +82,30 @@ describe('computeInlayHints', () => {
     ]);
   });
 
+  it('places widget argument hints at Spindle expression boundaries', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "hello" @first @second}Hi{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{hello (1 + 2) [1, 2]}\n{hello $a + 1, "b c"}\n{hello [1, 2]}',
+      },
+    );
+    const fullRange = {
+      start: { line: 0, character: 0 },
+      end: { line: 10, character: 0 },
+    };
+    const hints = computeInlayHints('file:///test.tw', fullRange, ws)
+      .map(h => [h.position.line, h.position.character, h.label]);
+    expect(hints).toEqual([
+      [1, 7, '@first:'], [1, 15, '@second:'],
+      [2, 7, '@first:'], [2, 15, '@second:'],
+      [3, 7, '@first:'],
+    ]);
+  });
+
   it('provides type hints for StoryVariables', () => {
     const ws = createWorkspace({
       name: 'test.tw',
