@@ -1,7 +1,7 @@
 import type { Range, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseMacros } from '../core/parsing/macro-parser.js';
+import { parseMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,7 @@ function addWidgetParamHints(
   if (workspace.widgets.getAllWidgets().length === 0) return;
 
   const macros = parseMacros(text);
+  const lineStarts = buildLineStarts(text);
 
   for (const macro of macros) {
     if (!macro.open) continue;
@@ -64,26 +65,16 @@ function addWidgetParamHints(
 
     const args = lexArguments(macro.rawArgs);
 
-    // Find the position of each arg in the original text line
-    const lines = text.split('\n');
-    const macroLine = lines[macro.range.start.line];
-    if (!macroLine) continue;
-
-    const macroText = macroLine.substring(macro.range.start.character, macro.range.end.character);
-    const nameEnd = macroText.indexOf(macro.name) + macro.name.length;
-    const argsText = macroText.substring(nameEnd).replace(/^\s+/, '').replace(/\}$/, '');
-    if (!argsText) continue;
+    // The raw arguments end right before the macro's closing '}'
+    const macroEnd = lineStarts[macro.range.end.line] + macro.range.end.character;
+    const argsStart = macroEnd - 1 - macro.rawArgs.length;
 
     for (let i = 0; i < Math.min(args.length, widget.params.length); i++) {
-      const argText = args[i].text;
-      const idx = macroLine.indexOf(argText, macro.range.start.character + nameEnd);
-      if (idx >= 0) {
-        hints.push({
-          position: { line: macro.range.start.line, character: idx },
-          label: `${widget.params[i]}:`,
-          kind: 'parameter',
-        });
-      }
+      hints.push({
+        position: offsetToPosition(argsStart + args[i].start, lineStarts),
+        label: `${widget.params[i]}:`,
+        kind: 'parameter',
+      });
     }
   }
 }
