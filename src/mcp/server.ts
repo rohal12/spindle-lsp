@@ -69,7 +69,7 @@ function createWorkspace(files: string[]): WorkspaceModel {
   const configRoot = findConfigRoot(files);
   const projectConfig = loadConfigFromDisk(configRoot);
 
-  const workspace = new WorkspaceModel();
+  const workspace = new WorkspaceModel({ workspaceRoot: configRoot });
   const fileContents = new Map<string, string>();
 
   for (const filePath of files) {

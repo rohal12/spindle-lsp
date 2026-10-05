@@ -1,5 +1,50 @@
-import { describe, it, expect } from 'vitest';
-import { MacroRegistry } from '../../src/core/workspace/macro-registry.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { MacroRegistry, findRegistryPath } from '../../src/core/workspace/macro-registry.js';
+
+describe('MacroRegistry builtin resolution', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A project whose installed Spindle ships a registry with one macro. */
+  function projectWithSpindle(macro: string): string {
+    const root = mkdtempSync(join(tmpdir(), 'spindle-lsp-registry-'));
+    dirs.push(root);
+    const pkg = join(root, 'node_modules', '@rohal12', 'spindle', 'dist', 'pkg');
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(
+      join(pkg, 'macro-registry.json'),
+      JSON.stringify([{ name: macro, block: false, subMacros: [], source: 'builtin' }]),
+    );
+    mkdirSync(join(root, 'src', 'story'), { recursive: true });
+    return root;
+  }
+
+  it('reads the registry of the Spindle installed in the workspace', () => {
+    const root = projectWithSpindle('projectonly');
+    const registry = new MacroRegistry();
+    registry.loadBuiltins(join(root, 'src', 'story'));
+
+    expect(registry.builtinsPath).toBe(findRegistryPath(root));
+    expect(registry.getMacro('projectonly')?.source).toBe('builtin');
+    // The project's registry replaces, not extends, the fallback copy.
+    expect(registry.getMacro('if')).toBeUndefined();
+  });
+
+  it("falls back to the LSP's own copy when the workspace has none", () => {
+    const root = mkdtempSync(join(tmpdir(), 'spindle-lsp-registry-'));
+    dirs.push(root);
+    const registry = new MacroRegistry();
+    registry.loadBuiltins(root);
+
+    expect(registry.builtinsPath).not.toBeNull();
+    expect(registry.getMacro('if')?.block).toBe(true);
+  });
+});
 
 describe('MacroRegistry', () => {
   it('loads builtins from @rohal12/spindle/tooling', () => {

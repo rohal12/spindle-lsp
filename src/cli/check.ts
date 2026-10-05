@@ -159,16 +159,18 @@ export async function runCheck(args: string[]): Promise<number> {
   // Load project config — unless given explicitly, search from the common
   // ancestor of matched files, walking up to find the config file (covers
   // running from a different cwd)
+  // Common directory of all matched files: the project's builtin macros
+  // (its installed @rohal12/spindle) and its config are found from here
+  const commonDir = uniqueFiles.map(f => resolve(f, '..')).reduce((a, b) => {
+    while (!b.startsWith(a)) a = resolve(a, '..');
+    return a;
+  });
+
   let projectConfig: SpindleProjectConfig;
   if (explicitConfig) {
     projectConfig = explicitConfig;
   } else {
-    // Find the common directory of all matched files
-    const dirs = uniqueFiles.map(f => resolve(f, '..'));
-    let configRoot = dirs.reduce((a, b) => {
-      while (!b.startsWith(a)) a = resolve(a, '..');
-      return a;
-    });
+    let configRoot = commonDir;
     // Walk up from common dir to find config (max 10 levels)
     let search = configRoot;
     for (let i = 0; i < 10; i++) {
@@ -181,7 +183,7 @@ export async function runCheck(args: string[]): Promise<number> {
   }
 
   // Create workspace and load files
-  const workspace = new WorkspaceModel();
+  const workspace = new WorkspaceModel({ workspaceRoot: commonDir });
   const fileContents = new Map<string, string>();
   for (const filePath of uniqueFiles) {
     try {
