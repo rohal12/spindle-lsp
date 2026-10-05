@@ -34,6 +34,7 @@ export class PassageIndex {
           end: { line: i, character: lines[i].length }, // will be extended below
         },
         headerEnd: header.headerRange,
+        nameRange: header.nameRange,
         uri,
         tags: header.tags.length > 0 ? header.tags : undefined,
         meta: header.meta,

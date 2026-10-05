@@ -43,6 +43,8 @@ export interface Passage {
   name: string;
   range: Range;
   headerEnd: Range;
+  /** Range of the passage name within its header line. */
+  nameRange: Range;
   uri: string;
   tags?: string[];
   meta?: Record<string, unknown>;
