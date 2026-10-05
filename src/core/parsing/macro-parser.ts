@@ -244,3 +244,42 @@ export function pairMacros(
     }
   }
 }
+
+/** A macro head's name as written in source, with the span of just the name. */
+export interface MacroHeadName {
+  name: string;
+  closing: boolean;
+  range: Range;
+}
+
+/**
+ * The macro-head names of a document, delimited by the shared macro grammar
+ * (selector prefixes, hyphenated names, `{/name}` closers, attribute values
+ * and unclosed heads excluded). Widget navigation and rename use this so
+ * their notion of a call matches what Spindle's tokenizer executes.
+ */
+export function macroHeadNames(text: string): MacroHeadName[] {
+  return parseMacros(text).map((macro) => {
+    const skip = 1 + (macro.open ? (macro.cssPrefix ? macro.cssPrefix.length + 1 : 0) : 1);
+    const { start } = macro.range;
+    return {
+      name: macro.name,
+      closing: !macro.open,
+      range: {
+        start: { line: start.line, character: start.character + skip },
+        end: { line: start.line, character: start.character + skip + macro.name.length },
+      },
+    };
+  });
+}
+
+/** The macro-head name containing `position`, if any. */
+export function macroHeadNameAt(text: string, position: { line: number; character: number }): MacroHeadName | null {
+  for (const head of macroHeadNames(text)) {
+    const { start, end } = head.range;
+    if (start.line === position.line && position.character >= start.character && position.character <= end.character) {
+      return head;
+    }
+  }
+  return null;
+}

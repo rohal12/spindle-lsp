@@ -21,7 +21,7 @@ const DECLARATION_RE = { '$': /^\$(\w+)\s*=\s*(.*)$/, '%': /^%(\w+)\s*=\s*(.*)$/
 
 /** Passages excluded from variable scanning. */
 const EXCLUDED_PASSAGES = new Set([
-  'StoryVariables', 'StoryTransients', 'StoryData', 'StoryScript', 'StoryInterface',
+  'StoryVariables', 'StoryTransients', 'StoryData', 'StoryScript',
 ]);
 
 /**

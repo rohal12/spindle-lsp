@@ -4,6 +4,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { findPassageRefAt, parseLinks, resolveExpressionTarget, resolveLinkMacroTarget, type PassageRef } from '../core/parsing/link-parser.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
+import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageRefs,
@@ -250,25 +251,11 @@ function resolveSymbolAtCursor(
 
   // --- Widget invocation: {widgetName ...} or block widget closing tag {/widgetName} ---
   {
-    const re = /\{\/?([A-Za-z_$][\w$]*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(line)) !== null) {
-      const name = match[1];
-      const nameStart = match.index + match[0].length - name.length;
-      const nameEnd = nameStart + name.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        const widget = workspace.widgets.getWidget(name);
-        const isClosing = match[0][1] === '/';
-        if (!workspace.macros.getMacro(name) && widget && (!isClosing || widget.block)) {
-          return {
-            kind: 'widget',
-            name,
-            range: {
-              start: { line: position.line, character: nameStart },
-              end: { line: position.line, character: nameEnd },
-            },
-          };
-        }
+    const head = macroHeadNameAt(text, position);
+    if (head) {
+      const widget = workspace.widgets.getWidget(head.name);
+      if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
+        return { kind: 'widget', name: head.name, range: head.range };
       }
     }
   }

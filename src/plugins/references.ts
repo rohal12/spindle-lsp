@@ -2,7 +2,7 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { findPassageRefAt, parseDocumentPassageRefs, type PassageRef } from '../core/parsing/link-parser.js';
-import { parseMacros } from '../core/parsing/macro-parser.js';
+import { parseMacros, macroHeadNames, macroHeadNameAt } from '../core/parsing/macro-parser.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
@@ -76,18 +76,11 @@ export function findReferences(
 
   // --- Widget ---
   {
-    const widgetRegex = /\{\/?([A-Za-z_$][\w$]*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = widgetRegex.exec(line)) !== null) {
-      const name = match[1];
-      const nameStart = match.index + match[0].length - name.length;
-      const nameEnd = nameStart + name.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        const widget = workspace.widgets.getWidget(name);
-        const isClosing = match[0][1] === '/';
-        if (!workspace.macros.getMacro(name) && widget && (!isClosing || widget.block)) {
-          return findWidgetReferences(name, workspace, includeDeclaration);
-        }
+    const head = macroHeadNameAt(text, position);
+    if (head) {
+      const widget = workspace.widgets.getWidget(head.name);
+      if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
+        return findWidgetReferences(head.name, workspace, includeDeclaration);
       }
     }
   }
@@ -268,9 +261,9 @@ export function findWidgetReferences(
     locations.push({ uri: widget.uri, range: widget.range });
   }
 
-  // Scan all documents for {widgetName ...} invocations (case-insensitive, like Spindle),
-  // plus {/widgetName} closing tags when the widget is a block widget.
-  const widgetInvocationRegex = /\{(\/)?([A-Za-z_$][\w$]*)\b/g;
+  // Scan all documents for widget calls using the shared macro grammar
+  // (case-insensitive, like Spindle), plus {/widgetName} closing tags when the
+  // widget is a block widget.
   const lowerName = widgetName.toLowerCase();
   const isBlock = widget?.block ?? false;
 
@@ -279,24 +272,10 @@ export function findWidgetReferences(
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
-    const lines = docText.split('\n');
-    for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-      const line = lines[lineNum];
-
-      widgetInvocationRegex.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = widgetInvocationRegex.exec(line)) !== null) {
-        if (match[1] && !isBlock) continue;
-        if (match[2].toLowerCase() === lowerName) {
-          const nameStart = match.index + 1 + (match[1] ? 1 : 0); // skip '{' or '{/'
-          locations.push({
-            uri: docUri,
-            range: {
-              start: { line: lineNum, character: nameStart },
-              end: { line: lineNum, character: nameStart + match[2].length },
-            },
-          });
-        }
+    for (const head of macroHeadNames(docText)) {
+      if (head.closing && !isBlock) continue;
+      if (head.name.toLowerCase() === lowerName) {
+        locations.push({ uri: docUri, range: head.range });
       }
     }
   }
