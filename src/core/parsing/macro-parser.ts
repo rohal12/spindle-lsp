@@ -1,6 +1,7 @@
 import type { MacroNode, Range } from '../types.js';
 import { createCodeScanner } from './code-scanner.js';
 import { attributeValueSpans } from './html-scanner.js';
+import { bracketLinkEnd } from './link-parser.js';
 
 export { createCodeScanner, scanBalancedBrace, type CodeScanner } from './code-scanner.js';
 
@@ -117,8 +118,28 @@ export function parseMacros(text: string): MacroNode[] {
   macroHeadRegex.lastIndex = 0;
   let match: RegExpExecArray | null;
 
+  // Spindle tokenizes a complete bracket link as one token, so a macro head
+  // inside it is label text. Whichever of `[[` and a macro head comes first
+  // wins; an unclosed link is text.
+  let linkStart = text.indexOf('[[');
+
   while ((match = macroHeadRegex.exec(text)) !== null) {
     const matchStart = match.index;
+    let insideLink = false;
+    while (linkStart !== -1 && linkStart < matchStart) {
+      const end = bracketLinkEnd(text, linkStart);
+      if (end === -1) {
+        linkStart = text.indexOf('[[', linkStart + 2);
+      } else if (end > matchStart) {
+        macroHeadRegex.lastIndex = end;
+        linkStart = text.indexOf('[[', end);
+        insideLink = true;
+        break;
+      } else {
+        linkStart = text.indexOf('[[', end);
+      }
+    }
+    if (insideLink) continue;
     if (inAttributeValue(matchStart)) {
       // Text; a macro after the value may start inside this one's braces
       macroHeadRegex.lastIndex = matchStart + 1;
@@ -132,6 +153,7 @@ export function parseMacros(text: string): MacroNode[] {
     }
     const matchEnd = closeIdx + 1;
     macroHeadRegex.lastIndex = matchEnd;
+    if (linkStart !== -1 && linkStart < matchEnd) linkStart = text.indexOf('[[', matchEnd);
 
     const closeSlash = match[1];
     const cssPrefix = match[2] || '';

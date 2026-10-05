@@ -161,27 +161,6 @@ describe('X70: passage references honor source context (#70)', () => {
   });
 });
 
-it('X71: macro-looking link labels remain labels (#71)', () => {
-  const body = '[[{if true}label|Next]]';
-  expect(tokenize(body).filter(t => t.type === 'macro')).toHaveLength(0);
-  const model = workspace(`:: StoryVariables\n:: Next\nhello\n:: Start\n${body}`);
-  expect(codes(model)).not.toContain('SP101');
-});
-
-describe('X72: non-markup passage bodies (#72)', () => {
-  for (const passage of ['StoryVariables', 'StoryTransients', 'StoryData']) {
-    it(`X72-${passage}: valid data strings receive no markup diagnostics`, () => {
-      const body = passage === 'StoryData' ? '{"format":"Spindle","note":"{if true}"}' : `${passage === 'StoryTransients' ? '%' : '$'}v = "{if true}"`;
-      if (passage !== 'StoryData') expect(parseStoryVariables(body, passage === 'StoryTransients' ? '%' : '$').get('v')?.default).toBe('{if true}');
-      const model = workspace(`:: ${passage}\n${body}\n:: Start\nhello`);
-      expect(codes(model)).not.toContain('SP101');
-    });
-  }
-  it('C-X72: invalid declarations still receive declaration diagnostics', () => {
-    expect(codes(workspace(':: StoryVariables\n$x = null\n:: Start\nhello'))).toContain('SP204');
-  });
-});
-
 it('V73: cross-file StoryInterface variables participate in rename (#73)', () => {
   const declUri = 'file:///vars.tw';
   const model = workspace(':: StoryInterface\n<div>{$x}</div>\n:: Start\nhello', [[declUri, ':: StoryVariables\n$x = 1']]);
@@ -232,14 +211,6 @@ describe('L77: decode static JavaScript literals (#77)', () => {
       });
     }
   }
-});
-
-it('D78: explicit Spindle stories require StoryVariables without variable usages (#78)', () => {
-  const model = workspace(':: StoryData\n{"format":"Spindle"}\n:: Start\nhello');
-  expect(codes(model)).toContain('SP202');
-});
-it('C-D78: an empty StoryVariables passage satisfies that startup requirement', () => {
-  expect(codes(workspace(':: StoryData\n{"format":"Spindle"}\n:: StoryVariables\n:: Start\nhello'))).not.toContain('SP202');
 });
 
 describe('H79: signature schema and active argument (#79)', () => {

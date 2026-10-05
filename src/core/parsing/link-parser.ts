@@ -69,6 +69,39 @@ function locateTarget(inner: string): { start: number; end: number } {
  * @param text - the text to parse
  * @param lineOffset - optional line offset added to all line numbers (default 0)
  */
+/** Offset of the `]]` closing a link whose inner text starts at `from`, or -1. */
+function findLinkClose(text: string, from: number): number {
+  let i = from;
+  let depth = 1;
+  while (i < text.length) {
+    if (text.startsWith('[[', i)) {
+      depth++;
+      i += 2;
+    } else if (text.startsWith(']]', i)) {
+      if (--depth === 0) return i;
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+  return -1;
+}
+
+/**
+ * End offset (after the closing `]]`) of the complete bracket link opening
+ * at `linkStart`, or -1 if the link never closes. Spindle's tokenizer reads
+ * such a link as a single token, so nothing inside it is markup.
+ */
+export function bracketLinkEnd(text: string, linkStart: number): number {
+  let i = linkStart + 2;
+  if (text[i] === '.' || text[i] === '#') {
+    i = skipSelectors(text, i);
+    if (text[i] === ' ') i++;
+  }
+  const close = findLinkClose(text, i);
+  return close === -1 ? -1 : close + 2;
+}
+
 export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
   const lineStarts = buildLineStarts(text);
   const refs: PassageRef[] = [];
@@ -84,24 +117,14 @@ export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
 
     // Find the closing ]], allowing nested [[...]]
     const innerStart = i;
-    let depth = 1;
-    while (i < text.length) {
-      if (text.startsWith('[[', i)) {
-        depth++;
-        i += 2;
-      } else if (text.startsWith(']]', i)) {
-        if (--depth === 0) break;
-        i += 2;
-      } else {
-        i++;
-      }
-    }
+    const close = findLinkClose(text, innerStart);
 
-    if (depth !== 0) {
+    if (close === -1) {
       // Unclosed link: Spindle treats it as text and rescans after `[[`
       i = text.indexOf('[[', linkStart + 2);
       continue;
     }
+    i = close;
 
     const target = locateTarget(text.slice(innerStart, i));
     if (target.end > target.start) {
