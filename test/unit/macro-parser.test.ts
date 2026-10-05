@@ -87,6 +87,58 @@ describe('parseMacros', () => {
   });
 });
 
+describe('parseMacros CSS-prefixed variable displays (#58)', () => {
+  it.each([
+    ['{.hero-name $player.name}'],
+    ['{#id $var}'],
+    ['{.a.b#c _temp}'],
+    ['{.cls @local}'],
+    ['{.cls %transient.field}'],
+    ['{.cls $list[0].name}'],
+    ['{.cls$x}'],
+    ['{.my-if $x}'],
+    ['{.cls-link $x}'],
+  ])('parses %s as a variable display, not a macro', (text) => {
+    expect(parseMacros(text)).toEqual([]);
+  });
+
+  it('keeps the macro next to a prefixed variable display', () => {
+    const macros = parseMacros('{.hero-name $player.name}{if $x}a{/if}');
+    expect(macros.map(m => m.name)).toEqual(['if', 'if']);
+    expect(macros[0].range.start.character).toBe(25);
+  });
+
+  it('takes the macro name after the selectors and one space', () => {
+    const macros = parseMacros('{.cls if $x}{.cls#id link "Go" "Next"}');
+    expect(macros.map(m => [m.name, m.cssPrefix, m.rawArgs])).toEqual([
+      ['if', '.cls', '$x'],
+      ['link', '.cls#id', '"Go" "Next"'],
+    ]);
+  });
+
+  it('accepts selector segments Spindle accepts', () => {
+    const macros = parseMacros('{.1st#_x-y if $x}{. if $y}{.a{$k}b#c if $z}');
+    expect(macros.map(m => [m.name, m.cssPrefix, m.rawArgs])).toEqual([
+      ['if', '.1st#_x-y', '$x'],
+      ['if', '.', '$y'],
+      ['if', '.a{$k}b#c', '$z'],
+    ]);
+  });
+
+  it('treats selectors not followed by one space and a name as text', () => {
+    // Spindle allows no whitespace between selectors and exactly one space
+    // before the macro name; anything else leaves the braces as text.
+    expect(parseMacros('{.a .b if $x}')).toEqual([]);
+    expect(parseMacros('{.cls  if $x}')).toEqual([]);
+    expect(parseMacros('{.cls\nif $x}')).toEqual([]);
+    expect(parseMacros('{.cls}')).toEqual([]);
+  });
+
+  it('does not take a selector prefix on a closing macro', () => {
+    expect(parseMacros('{/.cls if}')).toEqual([]);
+  });
+});
+
 describe('parseMacros balanced braces', () => {
   it('keeps an object literal argument and its closing brace', () => {
     const text = '{set $x = { a: 1, b: 2 }}';

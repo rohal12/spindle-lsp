@@ -580,6 +580,36 @@ Content.
     expect(sp300.length).toBeGreaterThan(0);
     expect(sp300[0].message).toContain('Target');
   });
+
+  // -----------------------------------------------------------------------
+  // 11. CSS-prefixed variable displays are variables, not macros (#58)
+  // -----------------------------------------------------------------------
+
+  it('treats {.hero-name $player.name} as a variable display across plugins', () => {
+    const story = `:: StoryVariables
+$player = {}
+
+:: Start
+{.hero-name $player.name} {#id $missing}
+`;
+    workspace = buildWorkspace({ 'story.tw': story });
+
+    const diags = computeDiagnostics('file:///story.tw', workspace);
+    expect(diags.map(d => [d.code, d.message])).toEqual([
+      ['SP200', expect.stringContaining('$missing')],
+    ]);
+
+    const refs = findReferences('file:///story.tw', { line: 4, character: 14 }, workspace, false);
+    expect(refs.map(r => r.range.start)).toEqual([{ line: 4, character: 12 }]);
+
+    const edits = computeRename('file:///story.tw', { line: 4, character: 14 }, 'hero', workspace)
+      .get('file:///story.tw') ?? [];
+    // The edits replace the name after the sigil, in StoryVariables and the display
+    expect(edits.map(e => e.range.start)).toEqual([
+      { line: 1, character: 1 },
+      { line: 4, character: 13 },
+    ]);
+  });
 });
 
 // =========================================================================

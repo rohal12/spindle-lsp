@@ -7,14 +7,35 @@ import type { MacroNode, Range } from '../types.js';
 const variableInterpolationRegex = /(?<!\\)\{([$_@%][A-Za-z_$][\w$.]*)\}/g;
 
 /**
+ * Regex source for the CSS selectors that can follow the opening brace of a
+ * macro or variable display (`{.red#alert …}`), as Spindle's tokenizer reads
+ * them in parseSelectors(): `.class` and `#id` segments with nothing between
+ * them, each name made of [A-Za-z0-9_-] and `{$var}` / `{_var}` / `{@var}`
+ * interpolations (and possibly empty). It has no capturing groups.
+ *
+ * Spindle takes a macro name only after the selectors and exactly one space:
+ * a letter directly after them would still belong to the last segment. So
+ * write the prefix of a macro head as `(?:${SELECTOR_PATTERN} )?`; the space
+ * keeps a regex from backtracking into a class name and reading its tail as
+ * the macro name (`{.hero-name $x}` is a variable display, not `{e $x}`).
+ */
+export const SELECTOR_PATTERN = String.raw`(?:[.#](?:[\w-]|\{[$_@][\w.]*\})*)+`;
+
+/**
  * Spindle macro head: the opening brace up to the end of the macro name.
  * The arguments and the closing brace are found by createCodeScanner().
+ * Closing macros take no selectors. The name ends at whitespace, the closing
+ * brace or a `{$var}`-style interpolation (blanked to spaces for the
+ * arguments).
  * Groups:
  *   1 = closing slash (/) — present for closing macros
- *   2 = CSS prefix (e.g. ".red#alert ")
+ *   2 = CSS prefix (e.g. ".red#alert")
  *   3 = macro name
  */
-const macroHeadRegex = /(?<!\\)\{(\/)?(?:((?:[#.][a-zA-Z][\w-]*\s*)*)([A-Za-z][\w-]*))(?=[\s}])/gi;
+const macroHeadRegex = new RegExp(
+  String.raw`(?<!\\)\{(?:(\/)|(${SELECTOR_PATTERN}) )?([A-Za-z][\w-]*)(?=[\s}]|\{[$_@%][A-Za-z_$][\w$.]*\})`,
+  'gi',
+);
 
 /**
  * A quote directly after a letter/digit is an apostrophe (don't), not a
@@ -164,7 +185,13 @@ export function offsetToPosition(offset: number, lineStarts: number[]): { line: 
  * Parse all macros from the given text.
  *
  * Variable interpolation patterns ({$var}, {_var}, {@var}) are replaced with
- * same-length placeholder text before regex matching, preserving character offsets.
+ * same-length placeholder text in the arguments and the brace scan,
+ * preserving character offsets. Macro heads are matched in the original
+ * text, since selectors may contain such interpolations (`{.a{$k} if …}`).
+ *
+ * Selectors followed by anything but one space and a macro name make no
+ * macro: `{.cls $var}` (also `_`, `@`, `%`) is a variable display with a
+ * class, as in Spindle's tokenizer, and `{.a .b if}` is text.
  *
  * A macro ends at its balanced closing brace, so object literals and strings
  * in the arguments are kept whole. A macro whose brace never closes is text,
@@ -185,7 +212,7 @@ export function parseMacros(text: string): MacroNode[] {
   macroHeadRegex.lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = macroHeadRegex.exec(cleaned)) !== null) {
+  while ((match = macroHeadRegex.exec(text)) !== null) {
     const matchStart = match.index;
     const closeIdx = scanner.closeBrace(matchStart + 1);
     if (closeIdx === -1) {
@@ -197,7 +224,7 @@ export function parseMacros(text: string): MacroNode[] {
     macroHeadRegex.lastIndex = matchEnd;
 
     const closeSlash = match[1];
-    const cssPrefix = (match[2] || '').trim();
+    const cssPrefix = match[2] || '';
     const macroName = match[3];
     // Arguments start after the whitespace following the name and run up to
     // the closing brace.
