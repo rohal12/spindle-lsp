@@ -1,0 +1,443 @@
+{
+  "baselineCommit": "11573c18a135cd15cd8372466619fd3ae882f64c",
+  "lspVersion": "0.9.0",
+  "nodeVersion": "22.18.0",
+  "spindleVersion": "0.45.1",
+  "scope": "implementation/backlog audit; product behavior unchanged",
+  "summary": {
+    "total": 61,
+    "passed": 10,
+    "failed": 51,
+    "skipped": 0,
+    "owningDefects": 15
+  },
+  "cases": [
+    {
+      "id": "F66-1",
+      "issue": 66,
+      "name": "F66-1: multiline template in HTML",
+      "status": "failed",
+      "failure": "AssertionError: expected [ '`a b`' ] to deeply equal [ '`a\\nb`' ]"
+    },
+    {
+      "id": "F66-2",
+      "issue": 66,
+      "name": "F66-2: multiline template in HTML",
+      "status": "failed",
+      "failure": "AssertionError: expected [ '`a b`' ] to deeply equal [ '`a\\nb`' ]"
+    },
+    {
+      "id": "C-F66",
+      "issue": 66,
+      "name": "C-F66: single-line HTML macro remains intact and idempotent",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "R67-double",
+      "issue": 67,
+      "name": "R67-double: goto literal",
+      "status": "failed",
+      "failure": "SyntaxError: Unexpected identifier 's'"
+    },
+    {
+      "id": "R67-single",
+      "issue": 67,
+      "name": "R67-single: goto literal",
+      "status": "failed",
+      "failure": "SyntaxError: Unexpected identifier 's'"
+    },
+    {
+      "id": "R67-slash",
+      "issue": 67,
+      "name": "R67-slash: include literal",
+      "status": "failed",
+      "failure": "AssertionError: expected 'AB' to be 'A\\B' // Object.is equality"
+    },
+    {
+      "id": "R67-template",
+      "issue": 67,
+      "name": "R67-template: goto literal",
+      "status": "failed",
+      "failure": "SyntaxError: Unexpected identifier 'B'"
+    },
+    {
+      "id": "C-R67",
+      "issue": 67,
+      "name": "C-R67: ordinary header and bracket link rename agree",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "Q68",
+      "issue": 68,
+      "name": "Q68: create StoryVariables in a story file, preserving opened config (#68)",
+      "status": "failed",
+      "failure": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "id": "Q69-$-value",
+      "issue": 69,
+      "name": "Q69-$-value: parse the edited declaration passage",
+      "status": "failed",
+      "failure": "Error: StoryVariables: Failed to evaluate \"$x = 1$missing = 0\": Invalid or unexpected token"
+    },
+    {
+      "id": "Q69-$-header",
+      "issue": 69,
+      "name": "Q69-$-header: parse the edited declaration passage",
+      "status": "failed",
+      "failure": "AssertionError: expected ':: StoryVariables$missing = 0' to be ':: StoryVariables' // Object.is equality"
+    },
+    {
+      "id": "Q69-$-newline",
+      "issue": 69,
+      "name": "Q69-$-newline: parse the edited declaration passage",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "Q69-%-value",
+      "issue": 69,
+      "name": "Q69-%-value: parse the edited declaration passage",
+      "status": "failed",
+      "failure": "Error: StoryTransients: Failed to evaluate \"%x = 1%missing = 0\": Invalid left-hand side in assignment"
+    },
+    {
+      "id": "Q69-%-header",
+      "issue": 69,
+      "name": "Q69-%-header: parse the edited declaration passage",
+      "status": "failed",
+      "failure": "AssertionError: expected ':: StoryTransients%missing = 0' to be ':: StoryTransients' // Object.is equality"
+    },
+    {
+      "id": "Q69-%-newline",
+      "issue": 69,
+      "name": "Q69-%-newline: parse the edited declaration passage",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "X70-macro-string-references",
+      "issue": 70,
+      "name": "X70-macro-string-references: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { uri: 'file:///story.tw', \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-macro-string-rename",
+      "issue": 70,
+      "name": "X70-macro-string-rename: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected ':: StoryVariables\\n:: New\\nhello\\n:: \u2026' to contain '{print \"[[Old]]\"}'"
+    },
+    {
+      "id": "X70-macro-string-definition",
+      "issue": 70,
+      "name": "X70-macro-string-definition: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected { uri: 'file:///story.tw', \u2026(1) } to be null"
+    },
+    {
+      "id": "X70-macro-string-document-links",
+      "issue": 70,
+      "name": "X70-macro-string-document-links: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { range: { \u2026(2) }, \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-macro-string-code-lenses",
+      "issue": 70,
+      "name": "X70-macro-string-code-lenses: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected '1 reference' to be '0 references' // Object.is equality"
+    },
+    {
+      "id": "X70-macro-string-diagnostics",
+      "issue": 70,
+      "name": "X70-macro-string-diagnostics: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ 'SP300' ] to not include 'SP300'"
+    },
+    {
+      "id": "X70-attribute-references",
+      "issue": 70,
+      "name": "X70-attribute-references: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { uri: 'file:///story.tw', \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-attribute-rename",
+      "issue": 70,
+      "name": "X70-attribute-rename: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected ':: StoryVariables\\n:: New\\nhello\\n:: \u2026' to contain '<div title=\"[[Old]]\">x</div>'"
+    },
+    {
+      "id": "X70-attribute-definition",
+      "issue": 70,
+      "name": "X70-attribute-definition: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected { uri: 'file:///story.tw', \u2026(1) } to be null"
+    },
+    {
+      "id": "X70-attribute-document-links",
+      "issue": 70,
+      "name": "X70-attribute-document-links: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { range: { \u2026(2) }, \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-attribute-code-lenses",
+      "issue": 70,
+      "name": "X70-attribute-code-lenses: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected '1 reference' to be '0 references' // Object.is equality"
+    },
+    {
+      "id": "X70-attribute-diagnostics",
+      "issue": 70,
+      "name": "X70-attribute-diagnostics: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ 'SP300' ] to not include 'SP300'"
+    },
+    {
+      "id": "X70-script-references",
+      "issue": 70,
+      "name": "X70-script-references: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { uri: 'file:///story.tw', \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-script-rename",
+      "issue": 70,
+      "name": "X70-script-rename: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected ':: StoryVariables\\n:: New\\nhello\\n:: \u2026' to contain ':: Code [script]\\nconst docs = \"[[Old\u2026'"
+    },
+    {
+      "id": "X70-script-definition",
+      "issue": 70,
+      "name": "X70-script-definition: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected { uri: 'file:///story.tw', \u2026(1) } to be null"
+    },
+    {
+      "id": "X70-script-document-links",
+      "issue": 70,
+      "name": "X70-script-document-links: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { range: { \u2026(2) }, \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-script-code-lenses",
+      "issue": 70,
+      "name": "X70-script-code-lenses: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected '1 reference' to be '0 references' // Object.is equality"
+    },
+    {
+      "id": "X70-script-diagnostics",
+      "issue": 70,
+      "name": "X70-script-diagnostics: literal context",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "X70-stylesheet-references",
+      "issue": 70,
+      "name": "X70-stylesheet-references: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { uri: 'file:///story.tw', \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-stylesheet-rename",
+      "issue": 70,
+      "name": "X70-stylesheet-rename: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected ':: StoryVariables\\n:: New\\nhello\\n:: \u2026' to contain ':: CSS [stylesheet]\\na::after { conte\u2026'"
+    },
+    {
+      "id": "X70-stylesheet-definition",
+      "issue": 70,
+      "name": "X70-stylesheet-definition: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected { uri: 'file:///story.tw', \u2026(1) } to be null"
+    },
+    {
+      "id": "X70-stylesheet-document-links",
+      "issue": 70,
+      "name": "X70-stylesheet-document-links: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { range: { \u2026(2) }, \u2026(1) } ] to have a length of +0 but got 1"
+    },
+    {
+      "id": "X70-stylesheet-code-lenses",
+      "issue": 70,
+      "name": "X70-stylesheet-code-lenses: literal context",
+      "status": "failed",
+      "failure": "AssertionError: expected '1 reference' to be '0 references' // Object.is equality"
+    },
+    {
+      "id": "X70-stylesheet-diagnostics",
+      "issue": 70,
+      "name": "X70-stylesheet-diagnostics: literal context",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "C-X70",
+      "issue": 70,
+      "name": "C-X70: real links and goto literals are references",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "X71",
+      "issue": 71,
+      "name": "X71: macro-looking link labels remain labels (#71)",
+      "status": "failed",
+      "failure": "AssertionError: expected [ 'SP101' ] to not include 'SP101'"
+    },
+    {
+      "id": "X72-StoryVariables",
+      "issue": 72,
+      "name": "X72-StoryVariables: valid data strings receive no markup diagnostics",
+      "status": "failed",
+      "failure": "AssertionError: expected [ 'SP101' ] to not include 'SP101'"
+    },
+    {
+      "id": "X72-StoryTransients",
+      "issue": 72,
+      "name": "X72-StoryTransients: valid data strings receive no markup diagnostics",
+      "status": "failed",
+      "failure": "AssertionError: expected [ 'SP101' ] to not include 'SP101'"
+    },
+    {
+      "id": "X72-StoryData",
+      "issue": 72,
+      "name": "X72-StoryData: valid data strings receive no markup diagnostics",
+      "status": "failed",
+      "failure": "AssertionError: expected [ 'SP101' ] to not include 'SP101'"
+    },
+    {
+      "id": "C-X72",
+      "issue": 72,
+      "name": "C-X72: invalid declarations still receive declaration diagnostics",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "V73",
+      "issue": 73,
+      "name": "V73: cross-file StoryInterface variables participate in rename (#73)",
+      "status": "failed",
+      "failure": "AssertionError: expected [ { uri: 'file:///vars.tw', \u2026(1) } ] to have a length of 2 but got 1"
+    },
+    {
+      "id": "W74-css",
+      "issue": 74,
+      "name": "W74-css: definition, references, and applied rename",
+      "status": "failed",
+      "failure": "AssertionError: expected undefined to be 'file:///widgets.tw' // Object.is equality"
+    },
+    {
+      "id": "W74-hyphen",
+      "issue": 74,
+      "name": "W74-hyphen: definition, references, and applied rename",
+      "status": "failed",
+      "failure": "AssertionError: expected undefined to be 'file:///widgets.tw' // Object.is equality"
+    },
+    {
+      "id": "E75",
+      "issue": 75,
+      "name": "E75: apply closing macro completion at the typed cursor (#75)",
+      "status": "failed",
+      "failure": "AssertionError: expected '{/{/if}' to be '{/if}' // Object.is equality"
+    },
+    {
+      "id": "L77-unicode-goto",
+      "issue": 77,
+      "name": "L77-unicode-goto: decoded target has a definition and rename",
+      "status": "failed",
+      "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+    },
+    {
+      "id": "L77-unicode-include",
+      "issue": 77,
+      "name": "L77-unicode-include: decoded target has a definition and rename",
+      "status": "failed",
+      "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+    },
+    {
+      "id": "L77-hex-goto",
+      "issue": 77,
+      "name": "L77-hex-goto: decoded target has a definition and rename",
+      "status": "failed",
+      "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+    },
+    {
+      "id": "L77-hex-include",
+      "issue": 77,
+      "name": "L77-hex-include: decoded target has a definition and rename",
+      "status": "failed",
+      "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+    },
+    {
+      "id": "D78",
+      "issue": 78,
+      "name": "D78: explicit Spindle stories require StoryVariables without variable usages (#78)",
+      "status": "failed",
+      "failure": "AssertionError: expected [] to include 'SP202'"
+    },
+    {
+      "id": "C-D78",
+      "issue": 78,
+      "name": "C-D78: an empty StoryVariables passage satisfies that startup requirement",
+      "status": "passed",
+      "failure": null
+    },
+    {
+      "id": "H79-textbox",
+      "issue": 79,
+      "name": "H79-textbox: schema describes each active argument",
+      "status": "failed",
+      "failure": "AssertionError: expected 1 to be greater than 1"
+    },
+    {
+      "id": "H79-radiobutton",
+      "issue": 79,
+      "name": "H79-radiobutton: schema describes each active argument",
+      "status": "failed",
+      "failure": "AssertionError: expected 1 to be greater than 2"
+    },
+    {
+      "id": "H79-partial",
+      "issue": 79,
+      "name": "H79-partial: typing the first receiver keeps parameter zero active",
+      "status": "failed",
+      "failure": "AssertionError: expected 1 to be +0 // Object.is equality"
+    },
+    {
+      "id": "S80",
+      "issue": 80,
+      "name": "S80: variable identifiers do not overlap keyword semantic tokens (#80)",
+      "status": "failed",
+      "failure": "AssertionError: expected 1 to be greater than or equal to 3"
+    },
+    {
+      "id": "B76-default",
+      "issue": 76,
+      "name": "B76-default: no arguments receives a JSON-RPC initialize response",
+      "status": "failed",
+      "failure": "AssertionError: expected 'spindle-lsp v0.9.0\\nLanguage Server P\u2026' to match /^Content-Length:/"
+    },
+    {
+      "id": "C-B76",
+      "issue": 76,
+      "name": "C-B76: explicit --stdio receives a JSON-RPC initialize response",
+      "status": "passed",
+      "failure": null
+    }
+  ]
+}

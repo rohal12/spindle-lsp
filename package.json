@@ -10,6 +10,7 @@
     "build": "node esbuild.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "review:convergence": "vitest run --config vitest.review.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit && vitest run"
   },
