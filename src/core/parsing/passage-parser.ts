@@ -108,3 +108,15 @@ export function parsePassageHeader(line: string, lineNumber: number): ParsedPass
 export function isSpecialPassage(name: string): boolean {
   return SPECIAL_PASSAGES.has(name);
 }
+
+/** Tags whose passages hold JavaScript or CSS instead of story markup. */
+const CODE_PASSAGE_TAGS = new Set(['script', 'stylesheet']);
+
+/**
+ * Check whether a passage is a `script` or `stylesheet` passage. Its body is
+ * compiled as JavaScript/CSS, not rendered as story markup, so story syntax
+ * checks do not apply to it.
+ */
+export function isScriptOrStylesheetPassage(passage: { tags?: string[] }): boolean {
+  return passage.tags?.some(t => CODE_PASSAGE_TAGS.has(t)) ?? false;
+}

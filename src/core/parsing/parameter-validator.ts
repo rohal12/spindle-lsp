@@ -147,6 +147,30 @@ const parameterTypes: ParameterType[] = [
     },
   },
   {
+    // The story variable a form control binds to: `$name` or `"$name"`.
+    // Spindle strips the quotes and the `$` sigil from the first argument
+    // and reads the rest as a dot path into the story variables.
+    name: ['receiver'],
+    validate(arg) {
+      let name: string | undefined;
+      if (arg.type === ArgType.String) {
+        name = arg.text.slice(1, -1);
+      } else if (arg.type === ArgType.Bareword) {
+        name = arg.text;
+      }
+      if (name === undefined) {
+        return new TypeError('Argument is not a variable receiver');
+      }
+      if (/^[_@%]/.test(name)) {
+        return new TypeError(`Variable receiver must be a story variable ($name), got '${name}'`);
+      }
+      if (!/^\$?[A-Za-z_][\w$]*(?:\.[\w$]+)*$/.test(name)) {
+        return new TypeError(`Argument is not a valid variable receiver: '${name}'`);
+      }
+      return null;
+    },
+  },
+  {
     name: ['passage'],
     validate(arg, _args, _index, state) {
       // Extract passage name from the argument

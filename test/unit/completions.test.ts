@@ -108,6 +108,16 @@ describe('getCompletions', () => {
     expect(labels).toContain('{/if}');
   });
 
+  it('does not offer to close containers opened in an earlier passage', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: First\n{for @x of []}\n:: Start\n{if $x}\nsome text\n{/',
+    });
+    const items = getCompletions('file:///test.tw', { line: 5, character: 2 }, '/', ws);
+    const labels = items.map(i => i.label);
+    expect(labels).toEqual(['{/if}']);
+  });
+
   it('returns transient variable completions after %', () => {
     const ws = createWorkspace({
       name: 'test.tw',
