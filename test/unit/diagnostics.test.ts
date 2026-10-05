@@ -939,3 +939,54 @@ describe('SP201: field access on a primitive StoryVariables default', () => {
     expect(computeDiagnostics(uri, workspace).filter(d => d.code === 'SP201')).toEqual([]);
   });
 });
+
+describe('computeDiagnostics for other story formats', () => {
+  // A SugarCube passage: <</if>> reads as a stray closing tag (SP102) and
+  // $gold as an undeclared variable in Spindle.
+  const sugarcube = ':: Start\n<<if $gold > 5>>Rich<</if>>\n{nope}\n[[Missing]]\n';
+  const storyData = (format: string) =>
+    `:: StoryData\n{\n\t"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",\n\t"format": "${format}"\n}\n`;
+
+  it('reports nothing when StoryData names another format', () => {
+    const workspace = createWorkspaceFrom(
+      { name: 'StoryData.twee', content: storyData('SugarCube') },
+      { name: 'Start.twee', content: sugarcube },
+    );
+    expect(computeDiagnostics('file:///Start.twee', workspace)).toEqual([]);
+    expect(computeDiagnostics('file:///StoryData.twee', workspace)).toEqual([]);
+    expect(computeDiagnostics('file:///Start.twee', workspace, { maxLineLength: 5 })).toEqual([]);
+  });
+
+  it('reports as before when StoryData names Spindle, in any casing', () => {
+    for (const format of ['spindle', 'Spindle', ' SPINDLE ']) {
+      const workspace = createWorkspaceFrom(
+        { name: 'StoryData.twee', content: storyData(format) },
+        { name: 'Start.twee', content: sugarcube },
+      );
+      const codes = computeDiagnostics('file:///Start.twee', workspace).map(d => d.code);
+      expect(codes).toContain('SP100');
+      expect(codes).toContain('SP300');
+    }
+  });
+
+  it('reports as before when StoryData is missing, has no format or is not JSON', () => {
+    for (const data of ['', ':: StoryData\n{"ifid": "X"}\n', ':: StoryData\n{"format": "SugarCube",}\n']) {
+      const workspace = createWorkspaceFrom(
+        { name: 'StoryData.twee', content: data },
+        { name: 'Start.twee', content: sugarcube },
+      );
+      expect(computeDiagnostics('file:///Start.twee', workspace).map(d => d.code)).toContain('SP100');
+    }
+  });
+
+  it('follows edits to StoryData', () => {
+    const workspace = createWorkspaceFrom(
+      { name: 'StoryData.twee', content: storyData('SugarCube') },
+      { name: 'Start.twee', content: sugarcube },
+    );
+    workspace.documents.update('file:///StoryData.twee', storyData('spindle'));
+    expect(computeDiagnostics('file:///Start.twee', workspace).map(d => d.code)).toContain('SP100');
+    workspace.documents.update('file:///StoryData.twee', storyData('Harlowe'));
+    expect(computeDiagnostics('file:///Start.twee', workspace)).toEqual([]);
+  });
+});

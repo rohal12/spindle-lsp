@@ -13,8 +13,10 @@ import { glob } from 'glob';
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadPlugins } from '../core/plugin/plugin-loader.js';
 import { buildCapabilities } from './capabilities.js';
+import { gateConnection } from './story-format-gate.js';
 import { allPlugins } from '../plugins/index.js';
 import type { SpindleConfig, SpindlePlugin } from '../core/plugin/plugin-api.js';
+import type { StoryFormat } from '../core/workspace/story-format.js';
 import { loadConfigFromDisk } from '../core/workspace/config-loader.js';
 import {
   MACRO_SOURCE_GLOB,
@@ -96,10 +98,38 @@ export function startServer(_args: string[]): void {
     activePlugins = loadPlugins(allPlugins, config);
     console.error('[spindle-lsp] plugins loaded:', activePlugins.map(p => p.id).join(', '));
 
+    // Spindle semantics apply only to Spindle projects: while StoryData
+    // names another story format, every language feature request answers
+    // null (diagnostics are emptied in computeDiagnostics).
+    const model = workspace;
+    const pluginConnection = gateConnection(connection, () => model.isSpindleProject());
+
     // Initialize each plugin with context
     for (const plugin of activePlugins) {
-      plugin.initialize({ connection, workspace, config });
+      plugin.initialize({ connection: pluginConnection, workspace, config });
     }
+
+    const refresh = params.capabilities.workspace;
+    let spindle = workspace.isSpindleProject();
+    workspace.on('storyFormatChanged', (format: StoryFormat) => {
+      // Log and refresh when the features switch on or off, not when only
+      // the name of another format changes
+      if (format.isSpindle === spindle) return;
+      spindle = format.isSpindle;
+      console.error(format.isSpindle
+        ? '[spindle-lsp] story format is Spindle; language features enabled'
+        : `[spindle-lsp] story format "${format.name}" is not Spindle; language features disabled`);
+      // Ask the client to re-request what it caches for open documents
+      // (diagnostics are republished by the diagnostics plugin)
+      const requests = [
+        refresh?.semanticTokens?.refreshSupport && 'workspace/semanticTokens/refresh',
+        refresh?.inlayHint?.refreshSupport && 'workspace/inlayHint/refresh',
+        refresh?.codeLens?.refreshSupport && 'workspace/codeLens/refresh',
+      ];
+      for (const method of requests) {
+        if (method) connection.sendRequest(method).catch(() => { /* not answered */ });
+      }
+    });
 
     // Load user-defined macros from project config
     if (Object.keys(projectConfig.macros).length > 0) {

@@ -38,6 +38,10 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   // would produce false positives for cross-file references.
   if (!workspace.initialized) return [];
 
+  // Spindle's rules do not apply to another story format's syntax
+  // (SugarCube's <</if>> is not a stray closing tag).
+  if (!workspace.isSpindleProject()) return [];
+
   try {
     const text = workspace.documents.getText(uri);
     if (text === undefined) return [];
@@ -1354,12 +1358,17 @@ export const diagnosticsPlugin: SpindlePlugin = {
       });
     };
 
-    ctx.workspace.on('modelReady', () => {
+    const publishAll = () => {
       for (const uri of ctx.workspace.documents.getUris()) {
         if (isMacroSource(uri)) continue;
         publishFor(uri);
       }
-    });
+    };
+
+    ctx.workspace.on('modelReady', publishAll);
+    // Switching the story format to or from Spindle changes the diagnostics
+    // of every document, not just the edited StoryData file.
+    ctx.workspace.on('storyFormatChanged', publishAll);
     ctx.workspace.on('documentChanged', publishFor);
     // A document that left the store won't be republished — clear its
     // diagnostics so the editor drops stale problems.

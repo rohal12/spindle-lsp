@@ -8,7 +8,7 @@ import { readFileSync as readFixture } from 'node:fs';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { formatDocument } from '../../src/plugins/format.js';
-import { checkFiles } from '../../src/mcp/server.js';
+import { checkFiles, checkProject, checkFormatting, formatFiles } from '../../src/mcp/server.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
 
@@ -270,5 +270,65 @@ describe('MCP spindle_check custom macro sources (#47)', () => {
     expect(results.filter(r => r.code === 'SP100').map(r => r.message)).toEqual([
       'Unrecognized macro: {vendored}',
     ]);
+  });
+});
+
+describe('MCP tools on a story in another format', () => {
+  const storyData = (format: string) =>
+    `:: StoryData\n{\n\t"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",\n\t"format": "${format}"\n}\n`;
+  const act = ':: Start\n<<if $gold > 5>>Rich<</if>>\n{if $x}\n{nope}\n{/if}';
+  let tmpDir: string;
+
+  function project(format: string): void {
+    tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'spindle-mcp-format-')));
+    writeFileSync(join(tmpDir, 'package.json'), '{}\n');
+    mkdirSync(join(tmpDir, 'story'));
+    writeFileSync(join(tmpDir, 'story', 'StoryData.twee'), storyData(format));
+    writeFileSync(join(tmpDir, 'story', 'Act1.twee'), act);
+  }
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('spindle_check returns no results and says why', async () => {
+    project('SugarCube');
+    expect(await checkProject('**/*.{tw,twee}', undefined, tmpDir)).toEqual({
+      results: [],
+      skipped: 'Skipped: story format is SugarCube, not Spindle',
+    });
+    // Also from a single passage file, through the project's StoryData
+    expect(await checkProject('Act1.twee', undefined, join(tmpDir, 'story'))).toEqual({
+      results: [],
+      skipped: 'Skipped: story format is SugarCube, not Spindle',
+    });
+    expect(await checkFiles('**/*.{tw,twee}', undefined, tmpDir)).toEqual([]);
+  });
+
+  it('spindle_format and spindle_format_check leave the files alone', async () => {
+    project('SugarCube');
+    const skipped = 'Skipped: story format is SugarCube, not Spindle';
+    expect(await checkFormatting('**/*.{tw,twee}', tmpDir)).toEqual({
+      needsFormatting: [], alreadyFormatted: [], skipped,
+    });
+    expect(await formatFiles('**/*.{tw,twee}', tmpDir)).toEqual({
+      formatted: 0, unchanged: 0, files: [], skipped,
+    });
+    expect(readFileSync(join(tmpDir, 'story', 'Act1.twee'), 'utf-8')).toBe(act);
+  });
+
+  it('all tools work as before on a Spindle story', async () => {
+    project('spindle');
+    const check = await checkProject('**/*.{tw,twee}', undefined, tmpDir);
+    expect(check.skipped).toBeUndefined();
+    expect(check.results.map(r => r.code)).toContain('SP100');
+
+    const formatCheck = await checkFormatting('**/*.{tw,twee}', tmpDir);
+    expect(formatCheck.skipped).toBeUndefined();
+    expect(formatCheck.needsFormatting).toContain('story/Act1.twee');
+    const formatted = await formatFiles('**/*.{tw,twee}', tmpDir);
+    expect(formatted.skipped).toBeUndefined();
+    expect(formatted.files).toContain('story/Act1.twee');
+    expect(readFileSync(join(tmpDir, 'story', 'Act1.twee'), 'utf-8')).toContain('  {nope}');
   });
 });

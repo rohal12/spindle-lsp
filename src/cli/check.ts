@@ -9,6 +9,7 @@ import type { DiagnosticOptions } from '../plugins/diagnostics.js';
 import { loadConfigFromDisk, loadConfigFile, findConfigFile } from '../core/workspace/config-loader.js';
 import type { SpindleProjectConfig } from '../core/workspace/config-loader.js';
 import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
+import { findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
 import type { Diagnostic } from '../core/types.js';
 import { formatPretty } from './reporters/pretty.js';
 import { formatJson } from './reporters/json.js';
@@ -180,8 +181,7 @@ export async function runCheck(args: string[]): Promise<number> {
     projectConfig = loadConfigFromDisk(configRoot);
   }
 
-  // Create workspace and load files
-  const workspace = new WorkspaceModel({ workspaceRoot: commonDir });
+  // Load files
   const fileContents = new Map<string, string>();
   for (const filePath of uniqueFiles) {
     try {
@@ -193,9 +193,20 @@ export async function runCheck(args: string[]): Promise<number> {
     }
   }
 
-  // JS/TS files defining custom macros (Story.defineMacro) are loaded for
-  // discovery only — they are not checked. Search the project containing
-  // the checked files (independent of the cwd).
+  // Spindle's rules do not apply to a story in another format: report
+  // nothing (the reporters still print their empty output) and say why.
+  const storyFormat = await findStoryFormat(fileContents.values(), commonDir);
+  if (!storyFormat.isSpindle) {
+    console.error(skippedFormatNote(storyFormat));
+    report(options.format, []);
+    return 0;
+  }
+
+  // Create the workspace. JS/TS files defining custom macros
+  // (Story.defineMacro) are loaded for discovery only — they are not
+  // checked. Search the project containing the checked files (independent
+  // of the cwd).
+  const workspace = new WorkspaceModel({ workspaceRoot: commonDir });
   const workspaceContents = new Map(fileContents);
   await addProjectMacroSources(workspaceContents, commonDir);
   workspace.initialize(workspaceContents);
@@ -230,21 +241,28 @@ export async function runCheck(args: string[]): Promise<number> {
     }
   }
 
-  // Format output
-  switch (options.format) {
-    case 'pretty':
-      console.log(formatPretty(allResults));
-      break;
-    case 'json':
-      console.log(formatJson(allResults));
-      break;
-    case 'sarif':
-      console.log(formatSarif(allResults));
-      break;
-  }
+  report(options.format, allResults);
 
   // Cleanup
   workspace.dispose();
 
   return hasErrors ? 1 : 0;
+}
+
+/** Print the results with the chosen reporter. */
+function report(
+  format: CheckOptions['format'],
+  results: Array<{ uri: string; diagnostics: Diagnostic[] }>,
+): void {
+  switch (format) {
+    case 'pretty':
+      console.log(formatPretty(results));
+      break;
+    case 'json':
+      console.log(formatJson(results));
+      break;
+    case 'sarif':
+      console.log(formatSarif(results));
+      break;
+  }
 }

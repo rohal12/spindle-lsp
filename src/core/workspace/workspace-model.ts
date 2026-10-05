@@ -8,6 +8,12 @@ import { parseMacros } from '../parsing/macro-parser.js';
 import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 import { isMacroSource } from './macro-sources.js';
+import {
+  UNDECLARED_STORY_FORMAT,
+  resolveStoryFormat,
+  storyDataFormats,
+} from './story-format.js';
+import type { StoryFormat } from './story-format.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
 
 export interface WorkspaceModelConfig {
@@ -26,6 +32,9 @@ export interface WorkspaceModelConfig {
  *   document change → passage rebuild → widget/variable rescan → emit 'modelReady'
  *
  * Changes are debounced at 200ms for rapid edits.
+ *
+ * Also emits 'storyFormatChanged' when the story format declared by
+ * StoryData changes (see {@link isSpindleProject}).
  */
 export class WorkspaceModel extends EventEmitter {
   readonly documents: DocumentStore;
@@ -36,6 +45,9 @@ export class WorkspaceModel extends EventEmitter {
 
   /** True after initialize() has completed (full workspace scan done). */
   initialized = false;
+
+  /** The story format declared by StoryData, updated with the passages. */
+  private format: StoryFormat = UNDECLARED_STORY_FORMAT;
 
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly DEBOUNCE_MS = 200;
@@ -116,6 +128,24 @@ export class WorkspaceModel extends EventEmitter {
     return this.macros.isBlock(name) || (this.widgets.getWidget(name)?.block ?? false);
   }
 
+  /**
+   * The story format named by the project's StoryData passage (trimmed), or
+   * undefined if no StoryData passage names one.
+   */
+  get storyFormat(): string | undefined {
+    return this.format.name;
+  }
+
+  /**
+   * Whether Spindle semantics apply to this project. False only if a
+   * StoryData passage names another story format (SugarCube, Harlowe, ...)
+   * and none names Spindle; a missing or unreadable StoryData counts as
+   * Spindle.
+   */
+  isSpindleProject(): boolean {
+    return this.format.isSpindle;
+  }
+
   /** Clean up listeners and timers. */
   dispose(): void {
     this.documents.removeListener('documentChanged', this.onDocumentChanged);
@@ -139,6 +169,7 @@ export class WorkspaceModel extends EventEmitter {
     }
     this.refreshDiscoveredMacros();
     this.cascade();
+    this.updateStoryFormat();
     this.emit('documentChanged', uri);
     this.emit('passagesUpdated', uri);
     this.scheduleModelReady();
@@ -150,6 +181,7 @@ export class WorkspaceModel extends EventEmitter {
     this.variables.removeDocument(uri);
     this.refreshDiscoveredMacros();
     this.cascade();
+    this.updateStoryFormat();
     this.emit('documentClosed', uri);
     this.emit('passagesUpdated', uri);
     this.scheduleModelReady();
@@ -165,6 +197,22 @@ export class WorkspaceModel extends EventEmitter {
     }
     this.refreshDiscoveredMacros();
     this.cascade();
+    this.updateStoryFormat();
+  }
+
+  /**
+   * Re-read the story format from the StoryData passages after the passage
+   * index changed, emitting 'storyFormatChanged' if it differs. Called after
+   * the cascade, so listeners see up-to-date indices.
+   */
+  private updateStoryFormat(): void {
+    const format = resolveStoryFormat(storyDataFormats(
+      this.passages.getAllPassages(),
+      (uri) => this.documents.getText(uri),
+    ));
+    if (format.name === this.format.name && format.isSpindle === this.format.isSpindle) return;
+    this.format = format;
+    this.emit('storyFormatChanged', format);
   }
 
   /**

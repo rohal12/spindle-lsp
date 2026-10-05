@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { runFormat } from '../../src/cli/format.js';
 
@@ -118,5 +118,64 @@ describe('CLI format command', () => {
     const lines = result.split('\n');
     expect(lines[3]).toBe('{else}');
     expect(lines[4]).toBe('  b');
+  });
+});
+
+describe('CLI format on a story in another format', () => {
+  const storyData = (format: string) =>
+    `:: StoryData\n{\n\t"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",\n\t"format": "${format}"\n}\n`;
+  // Spindle's formatter would indent the {if} body and add a final newline
+  const act = ':: Start\n{if $x}\n<<set $y to 1>>\n{/if}';
+
+  async function formatQuietly(args: string[]): Promise<{ exitCode: number; output: string; errors: string }> {
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...a: unknown[]) => { errors.push(a.map(String).join(' ')); };
+    try {
+      return { ...await captureStdout(() => runFormat(args)), errors: errors.join('\n') };
+    } finally {
+      console.error = originalError;
+    }
+  }
+
+  it('leaves every file untouched when the StoryData among them names another format', async () => {
+    const dataPath = join(tmpDir, 'StoryData.twee');
+    const actPath = join(tmpDir, 'Act1.twee');
+    writeFileSync(dataPath, storyData('SugarCube') + '   \n');
+    writeFileSync(actPath, act);
+
+    for (const args of [[dataPath, actPath], ['--check', dataPath, actPath]]) {
+      const { exitCode, errors } = await formatQuietly(args);
+      expect(exitCode).toBe(0);
+      expect(errors).toBe('Skipped: story format is SugarCube, not Spindle');
+    }
+    expect(readFileSync(dataPath, 'utf-8')).toBe(storyData('SugarCube') + '   \n');
+    expect(readFileSync(actPath, 'utf-8')).toBe(act);
+  });
+
+  it('finds the StoryData of the project the files belong to', async () => {
+    writeFileSync(join(tmpDir, 'package.json'), '{}\n');
+    mkdirSync(join(tmpDir, 'src'));
+    writeFileSync(join(tmpDir, 'src', 'StoryData.twee'), storyData('Harlowe'));
+    const actPath = join(tmpDir, 'src', 'Act1.twee');
+    writeFileSync(actPath, act);
+
+    const { exitCode, errors } = await formatQuietly([actPath]);
+    expect(exitCode).toBe(0);
+    expect(errors).toContain('story format is Harlowe');
+    expect(readFileSync(actPath, 'utf-8')).toBe(act);
+  });
+
+  it('formats a Spindle story, or one whose format is unknown, as before', async () => {
+    for (const data of [storyData('Spindle'), ':: StoryData\n{"format": \n', '']) {
+      const dataPath = join(tmpDir, 'StoryData.twee');
+      const actPath = join(tmpDir, 'Act1.twee');
+      writeFileSync(dataPath, data);
+      writeFileSync(actPath, act);
+      const { exitCode, errors } = await formatQuietly([dataPath, actPath]);
+      expect(exitCode).toBe(0);
+      expect(errors).toBe('');
+      expect(readFileSync(actPath, 'utf-8')).toBe(':: Start\n{if $x}\n  <<set $y to 1>>\n{/if}\n');
+    }
   });
 });

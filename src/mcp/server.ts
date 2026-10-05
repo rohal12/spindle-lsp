@@ -12,6 +12,7 @@ import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loa
 import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
 import { formatDocument } from '../plugins/format.js';
+import { findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
 import type { Diagnostic } from '../core/types.js';
 
 // ---------------------------------------------------------------------------
@@ -58,18 +59,9 @@ function findConfigRoot(commonDir: string): string {
   return configRoot;
 }
 
-/**
- * Create a workspace model loaded with the given files, the project's JS/TS
- * macro sources (for macro discovery) and the project config.
- */
-async function createWorkspace(files: string[]): Promise<WorkspaceModel> {
-  const commonDir = commonDirectory(files);
-  const configRoot = findConfigRoot(commonDir);
-  const projectConfig = loadConfigFromDisk(configRoot);
-
-  const workspace = new WorkspaceModel({ workspaceRoot: configRoot });
+/** Read the given files (file URI to text), skipping unreadable ones. */
+function readFiles(files: string[]): Map<string, string> {
   const fileContents = new Map<string, string>();
-
   for (const filePath of files) {
     try {
       const text = readFileSync(filePath, 'utf-8');
@@ -79,6 +71,37 @@ async function createWorkspace(files: string[]): Promise<WorkspaceModel> {
       // Skip unreadable files
     }
   }
+  return fileContents;
+}
+
+/**
+ * Why the files of a story in another format are skipped, or undefined for
+ * a Spindle story. The format comes from the StoryData among the files, or
+ * else from the project they belong to.
+ */
+async function skippedReason(
+  fileContents: Map<string, string>,
+  files: string[],
+): Promise<string | undefined> {
+  const format = await findStoryFormat(fileContents.values(), commonDirectory(files));
+  return format.isSpindle ? undefined : skippedFormatNote(format);
+}
+
+/**
+ * Create a workspace model loaded with the given files (`fileContents`),
+ * the project's JS/TS macro sources (for macro discovery) and the project
+ * config.
+ */
+async function createWorkspace(
+  files: string[],
+  fileContents: Map<string, string>,
+): Promise<WorkspaceModel> {
+  const commonDir = commonDirectory(files);
+  const configRoot = findConfigRoot(commonDir);
+  const projectConfig = loadConfigFromDisk(configRoot);
+
+  const workspace = new WorkspaceModel({ workspaceRoot: configRoot });
+  fileContents = new Map(fileContents);
 
   await addProjectMacroSources(fileContents, commonDir);
   workspace.initialize(fileContents);
@@ -109,10 +132,26 @@ export async function checkFiles(
   severity?: 'error' | 'warning' | 'info' | 'hint',
   cwd: string = process.cwd(),
 ): Promise<CheckResult[]> {
-  const files = await resolveFiles(pattern, cwd);
-  if (files.length === 0) return [];
+  return (await checkProject(pattern, severity, cwd)).results;
+}
 
-  const workspace = await createWorkspace(files);
+/**
+ * {@link checkFiles}, also saying why the files were skipped (`skipped`)
+ * when they belong to a story in another format: then there are no results.
+ */
+export async function checkProject(
+  pattern: string,
+  severity?: 'error' | 'warning' | 'info' | 'hint',
+  cwd: string = process.cwd(),
+): Promise<{ results: CheckResult[]; skipped?: string }> {
+  const files = await resolveFiles(pattern, cwd);
+  if (files.length === 0) return { results: [] };
+
+  const fileContents = readFiles(files);
+  const skipped = await skippedReason(fileContents, files);
+  if (skipped) return { results: [], skipped };
+
+  const workspace = await createWorkspace(files, fileContents);
 
   try {
     const results: CheckResult[] = [];
@@ -143,10 +182,98 @@ export async function checkFiles(
       }
     }
 
-    return results;
+    return { results };
   } finally {
     workspace.dispose();
   }
+}
+
+/** Path of `filePath` relative to `cwd` when inside it. */
+function relativeTo(cwd: string, filePath: string): string {
+  return filePath.startsWith(cwd) ? filePath.slice(cwd.length + 1) : filePath;
+}
+
+/** Result of the `spindle_format` tool. */
+export interface FormatResult {
+  formatted: number;
+  unchanged: number;
+  files: string[];
+  /** Why nothing was formatted: the files belong to a story in another format. */
+  skipped?: string;
+}
+
+/**
+ * Format the files matching `pattern` in place (the `spindle_format` tool),
+ * unless they belong to a story in another format.
+ */
+export async function formatFiles(pattern: string, cwd: string = process.cwd()): Promise<FormatResult> {
+  const files = await resolveFiles(pattern, cwd);
+  const contents = readFiles(files);
+  const skipped = files.length > 0 ? await skippedReason(contents, files) : undefined;
+  if (skipped) return { formatted: 0, unchanged: 0, files: [], skipped };
+
+  let formatted = 0;
+  let unchanged = 0;
+  const changedFiles: string[] = [];
+
+  for (const filePath of files) {
+    const text = contents.get(pathToFileURL(filePath).toString());
+    if (text === undefined) continue;
+    try {
+      const result = await formatDocument(text);
+
+      if (result !== text) {
+        writeFileSync(filePath, result, 'utf-8');
+        formatted++;
+        changedFiles.push(relativeTo(cwd, filePath));
+      } else {
+        unchanged++;
+      }
+    } catch {
+      // Skip unwritable files
+    }
+  }
+
+  return { formatted, unchanged, files: changedFiles };
+}
+
+/** Result of the `spindle_format_check` tool. */
+export interface FormatCheckResult {
+  needsFormatting: string[];
+  alreadyFormatted: string[];
+  /** Why nothing was checked: the files belong to a story in another format. */
+  skipped?: string;
+}
+
+/**
+ * List which files matching `pattern` the formatter would change (the
+ * `spindle_format_check` tool), unless they belong to a story in another
+ * format.
+ */
+export async function checkFormatting(
+  pattern: string,
+  cwd: string = process.cwd(),
+): Promise<FormatCheckResult> {
+  const files = await resolveFiles(pattern, cwd);
+  const contents = readFiles(files);
+  const skipped = files.length > 0 ? await skippedReason(contents, files) : undefined;
+  if (skipped) return { needsFormatting: [], alreadyFormatted: [], skipped };
+
+  const needsFormatting: string[] = [];
+  const alreadyFormatted: string[] = [];
+
+  for (const filePath of files) {
+    const text = contents.get(pathToFileURL(filePath).toString());
+    if (text === undefined) continue;
+    try {
+      const result = await formatDocument(text);
+      (result !== text ? needsFormatting : alreadyFormatted).push(relativeTo(cwd, filePath));
+    } catch {
+      // Skip files the formatter fails on
+    }
+  }
+
+  return { needsFormatting, alreadyFormatted };
 }
 
 // ---------------------------------------------------------------------------
@@ -171,9 +298,12 @@ export async function startMcpServer(): Promise<void> {
       severity: z.enum(['error', 'warning', 'info', 'hint']).optional().describe('Minimum severity to include'),
     },
     async (args) => {
-      const results = await checkFiles(args.path, args.severity);
+      const { results, skipped } = await checkProject(args.path, args.severity);
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }],
+        content: [
+          { type: 'text' as const, text: JSON.stringify(results, null, 2) },
+          ...(skipped ? [{ type: 'text' as const, text: skipped }] : []),
+        ],
       };
     },
   );
@@ -189,34 +319,7 @@ export async function startMcpServer(): Promise<void> {
       path: z.string().default('**/*.{tw,twee}').describe('Glob pattern or directory to format'),
     },
     async (args) => {
-      const cwd = process.cwd();
-      const files = await resolveFiles(args.path, cwd);
-
-      let formatted = 0;
-      let unchanged = 0;
-      const changedFiles: string[] = [];
-
-      for (const filePath of files) {
-        try {
-          const text = readFileSync(filePath, 'utf-8');
-          const result = await formatDocument(text);
-
-          if (result !== text) {
-            writeFileSync(filePath, result, 'utf-8');
-            formatted++;
-            const relativePath = filePath.startsWith(cwd)
-              ? filePath.slice(cwd.length + 1)
-              : filePath;
-            changedFiles.push(relativePath);
-          } else {
-            unchanged++;
-          }
-        } catch {
-          // Skip unreadable/unwritable files
-        }
-      }
-
-      const output = { formatted, unchanged, files: changedFiles };
+      const output = await formatFiles(args.path);
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
       };
@@ -234,32 +337,7 @@ export async function startMcpServer(): Promise<void> {
       path: z.string().default('**/*.{tw,twee}').describe('Glob pattern or directory to check'),
     },
     async (args) => {
-      const cwd = process.cwd();
-      const files = await resolveFiles(args.path, cwd);
-
-      const needsFormatting: string[] = [];
-      const alreadyFormatted: string[] = [];
-
-      for (const filePath of files) {
-        try {
-          const text = readFileSync(filePath, 'utf-8');
-          const result = await formatDocument(text);
-
-          const relativePath = filePath.startsWith(cwd)
-            ? filePath.slice(cwd.length + 1)
-            : filePath;
-
-          if (result !== text) {
-            needsFormatting.push(relativePath);
-          } else {
-            alreadyFormatted.push(relativePath);
-          }
-        } catch {
-          // Skip unreadable files
-        }
-      }
-
-      const output = { needsFormatting, alreadyFormatted };
+      const output = await checkFormatting(args.path);
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
       };
