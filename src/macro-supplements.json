@@ -108,8 +108,8 @@
       { "name": "next" }
     ],
     "container": true,
-    "description": "Displays its contents after a specified delay.\n\nUsage:\n\n```\n{timed delay}\n  ...\n  {next delay}\n  ...\n{/timed}\n```",
-    "parameters": ["text"]
+    "description": "Displays its contents after a specified delay (immediately when omitted).\n\nUsage:\n\n```\n{timed delay}\n  ...\n  {next delay}\n  ...\n{/timed}\n```",
+    "parameters": ["text", ""]
   },
   "repeat": {
     "name": "repeat",

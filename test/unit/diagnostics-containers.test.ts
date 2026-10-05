@@ -51,6 +51,15 @@ describe('{next} branches of {timed}', () => {
     expect(diagnose(timedStory, { workspaceRoot: root })).toEqual([]);
   });
 
+  it('accepts {timed} without a delay, which shows its first section at once', () => {
+    // Spindle's Timed.tsx: branch.rawArgs ? parseDelay(branch.rawArgs) : 0
+    expect(diagnose(':: Start\n{timed}\nA\n{next 1s}\nB\n{/timed}\n')).toEqual([]);
+  });
+
+  it('rejects {timed} with more than one argument', () => {
+    expect(codes(diagnose(':: Start\n{timed 1s 2s}\nA\n{/timed}\n'))).toEqual(['SP111']);
+  });
+
   it('rejects {next} with more than one argument', () => {
     const diags = diagnose(':: Start\n{timed 1s}\nFirst\n{next 2s 3s}\nSecond\n{/timed}\n');
     expect(codes(diags)).toEqual(['SP111']);
