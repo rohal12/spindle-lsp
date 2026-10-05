@@ -313,15 +313,14 @@ function validateChildren(
 
   for (let i = startIndex; i < endIndex; i++) {
     const child = macros[i];
-    const childInfo = workspace.macros.getMacro(child.name);
 
-    if (!childInfo) continue;
-
-    // Skip contents of nested containers
-    if (childInfo.block && child.open && child.pair !== -1) {
+    // Skip contents of nested containers, block widgets included
+    if (child.open && child.pair !== -1 && workspace.isContainer(child.name)) {
       i = child.pair;
       continue;
     }
+
+    if (!workspace.macros.getMacro(child.name)) continue;
 
     // Count direct children that match constraints. Like macro lookup,
     // matching ignores capitalization: Spindle lower-cases macro names.

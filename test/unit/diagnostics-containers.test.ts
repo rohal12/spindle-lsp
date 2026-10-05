@@ -111,6 +111,14 @@ describe('branch macros sit directly inside their parent', () => {
     expect(diags[0].message).toContain('{box}');
   });
 
+  it('does not count branches inside a block widget as children of the outer block', () => {
+    const widgets = ':: Widgets [widget]\n{widget "box"}\n<div>{@children}</div>\n{/widget}\n';
+    const tooMany = diagnose(`${vars}${widgets}:: Start\n{if $x}\n{box}\n{else}\n{/box}\n{else}\nc\n{/if}\n`);
+    expect(codes(tooMany)).toEqual(['SP107']);
+    const tooFew = diagnose(`${vars}${widgets}:: Start\n{listbox "$x"}\n{box}\n{option "a"}\n{/box}\n{/listbox}\n`);
+    expect(codes(tooFew).sort()).toEqual(['SP107', 'SP115']);
+  });
+
   it('accepts branches of nested blocks of the same kind', () => {
     expect(diagnose(`${vars}:: Start\n{if $x}\n{if $x}\na\n{else}\nb\n{/if}\n{else}\nc\n{/if}\n`)).toEqual([]);
     expect(diagnose(`${vars}:: Start\n{timed 1s}\nA\n{timed 1s}\nB\n{next 1s}\nC\n{/timed}\n{next 1s}\nD\n{/timed}\n`)).toEqual([]);
