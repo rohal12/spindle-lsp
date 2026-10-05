@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  # npm trusted publishing (OIDC): no npm token.
+  id-token: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          # OIDC publishing needs npm 11.5.1+; Node 22 ships npm 10.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          # Skip if HEAD is already tagged
+          if git tag --points-at HEAD | grep -qE '^v[0-9]'; then
+            echo "HEAD is already tagged, skipping release."
+            exit 0
+          fi
+
+          # Get latest tag version
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          CURRENT_VERSION=${LATEST_TAG#v}
+
+          # Determine bump type from commits since last tag
+          # Major: "BREAKING CHANGE:" footer at start of line, or "type!:" in subject
+          # Minor: "feat:" or "feat(scope):" in subject
+          # Patch: everything else
+          BUMP="patch"
+          BODIES=$(git log "${LATEST_TAG}..HEAD" --pretty=%B 2>/dev/null || git log --pretty=%B)
+          SUBJECTS=$(git log "${LATEST_TAG}..HEAD" --pretty=%s 2>/dev/null || git log --pretty=%s)
+          # BREAKING CHANGE is treated as minor while in 0.x (pre-1.0 beta)
+          if echo "$BODIES" | grep -qE '^BREAKING CHANGE: ' || echo "$SUBJECTS" | grep -qE '^[a-z]+(\(.+\))?!: '; then
+            BUMP="minor"
+          elif echo "$SUBJECTS" | grep -qE '^feat(\(|:)'; then
+            BUMP="minor"
+          fi
+
+          # Calculate new version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          case $BUMP in
+            major) NEW_VERSION="$((MAJOR+1)).0.0" ;;
+            minor) NEW_VERSION="${MAJOR}.$((MINOR+1)).0" ;;
+            patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH+1))" ;;
+          esac
+
+          echo "Releasing v${NEW_VERSION} (${BUMP} bump from v${CURRENT_VERSION})"
+
+          # Update package.json version locally (no git commit)
+          npm version "${NEW_VERSION}" --no-git-tag-version --allow-same-version
+
+          # Build after the version is set: the build injects it into dist/bin.js
+          npm run build
+
+          # Publish to npm
+          npm publish
+
+          # Create git tag and GitHub release
+          git tag "v${NEW_VERSION}"
+          git push origin "v${NEW_VERSION}"
+          gh release create "v${NEW_VERSION}" \
+            --title "v${NEW_VERSION}" \
+            --generate-notes
