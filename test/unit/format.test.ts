@@ -274,6 +274,23 @@ describe('formatDocument', () => {
     expect(result).toContain('const x = 1;');
   });
 
+  it('leaves prose after a same-line <script> element alone (issue #34)', async () => {
+    const input = ':: Start\n<script>console.log(1)</script>\nHello\nWorld\n';
+    expect(await formatDocument(input)).toBe(input);
+  });
+
+  it('formats a later <script> block after a same-line script (issue #34)', async () => {
+    const input = ':: Start\n<script>console.log(1)</script>\nHello\n<script>\nconst   x=1\n</script>\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n<script>console.log(1)</script>\nHello\n<script>\n  const x = 1;\n</script>\n');
+  });
+
+  it('indents macros after a same-line <script> element (issue #34)', async () => {
+    const input = ':: Start\n<script>console.log(1)</script>\n{if $x}\nHello\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n<script>console.log(1)</script>\n{if $x}\n  Hello\n{/if}\n');
+  });
+
   // -- HTML block formatting ---------------------------------------------
 
   it('formats multi-line HTML and preserves Spindle tokens', async () => {

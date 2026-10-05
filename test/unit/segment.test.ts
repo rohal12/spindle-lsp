@@ -65,6 +65,22 @@ describe('segmentRegions', () => {
     expect(types.filter(t => t === 'spindle')).toHaveLength(2);
   });
 
+  it('ends a <script> region at a closing tag on the opening line', () => {
+    const input = '<script>console.log(1)</script>\nHello\nWorld\n';
+    const regions = segmentRegions(input);
+    expect(regions).toEqual([
+      { type: 'script', lines: ['<script>console.log(1)</script>'] },
+      { type: 'spindle', lines: ['Hello', 'World'] },
+    ]);
+  });
+
+  it('keeps a later <script> block separate from a same-line script', () => {
+    const input = '<script src="a.js"></script>\ntext\n<script>\nfoo()\n</script>\n';
+    const regions = segmentRegions(input);
+    expect(regions.map(r => r.type)).toEqual(['script', 'spindle', 'script']);
+    expect(regions[2].lines).toEqual(['<script>', 'foo()', '</script>']);
+  });
+
   it('detects multi-line HTML blocks', () => {
     const input = '{if $x}\n<div>\n  <span>text</span>\n</div>\n{/if}\n';
     const regions = segmentRegions(input);

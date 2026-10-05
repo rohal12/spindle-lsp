@@ -131,6 +131,11 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
 
     for (const region of regions) {
       if (region.type === 'script') {
+        // Same-line <script>…</script> — leave as written
+        if (region.lines.length === 1) {
+          resultLines.push(region.lines[0]);
+          continue;
+        }
         // Inline <script> — format JS content between tags
         const firstLine = region.lines[0];
         const lastLine = region.lines[region.lines.length - 1];

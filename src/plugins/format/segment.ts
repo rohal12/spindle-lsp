@@ -94,6 +94,11 @@ export function segmentRegions(body: string): Region[] {
     if (/^<script(\s|>)/i.test(trimmed)) {
       const scriptLines: string[] = [line];
       i++;
+      // Same-line element `<script>…</script>`: the region is this line only
+      if (/<\/script\s*>/i.test(line)) {
+        regions.push({ type: 'script', lines: scriptLines });
+        continue;
+      }
       while (i < lines.length && !/<\/script>/i.test(lines[i])) {
         scriptLines.push(lines[i]);
         i++;
