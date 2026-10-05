@@ -5,7 +5,7 @@ fixes closed 15 contracts (#66-#80) one consumer group at a time, by agents
 working on shared code in parallel. This ledger measures what is left between
 the consumers: a symbol, span or document that one consumer treats as X and
 another as Y. The method is the matrix in [process.md](process.md); the retained
-corpus is `test/review/convergence.review.ts` (+ `test/review/support/`), run by
+corpus was `test/review/convergence.review.ts` and is now sharded over `test/review/shard-*.review.ts` (+ `test/review/support/`), run by
 `npm run review:convergence` and, since this change, by `npm test`.
 
 Baseline: HEAD `161a986` (branch `fix/review-convergence`), LSP 0.9.0, Node

@@ -58,7 +58,7 @@ export function splitPassages(source: string): OraclePassage[] {
 export interface OracleToken { token: Token; start: number; end: number; passage: OraclePassage }
 
 /** Runtime tokens of every markup passage, with offsets mapped back to the (possibly CRLF) document. */
-export function runtimeTokens(source: string): OracleToken[] {
+function runtimeTokensUncached(source: string): OracleToken[] {
   const text = stripBom(source);
   const out: OracleToken[] = [];
   for (const passage of splitPassages(text)) {
@@ -135,7 +135,7 @@ const TWO_LITERALS = new RegExp(`^\\s*${LITERAL}\\s+(${LITERAL})\\s*$`);
 
 
 /** Passage targets the runtime resolves statically, per document text. */
-export function runtimePassageRefs(source: string): OracleRef[] {
+function runtimePassageRefsUncached(source: string): OracleRef[] {
   const text = stripBom(source);
   const refs: OracleRef[] = [];
   for (const { token, start, end } of runtimeTokens(text)) {
@@ -166,7 +166,7 @@ export function runtimeMacroHeads(text: string): Array<{ name: string; isClose: 
 }
 
 /** Order-insensitive multiset of runtime macro (name, whitespace-normalized args). */
-export function runtimePayload(text: string): string[] {
+function runtimePayloadUncached(text: string): string[] {
   return runtimeTokens(text).flatMap(({ token }) => {
     if (token.type === 'macro') return [`m:${token.isClose ? '/' : ''}${token.name}:${token.rawArgs.replace(/\s+/g, ' ').trim()}`];
     if (token.type === 'link') return [`l:${token.target}`];
@@ -174,3 +174,26 @@ export function runtimePayload(text: string): string[] {
     return [];
   }).sort();
 }
+
+// ---------------------------------------------------------------------------
+// The oracle is a pure function of the document text, and every property of a
+// scene asks it about the same texts, so results are kept (bounded) per text.
+// Callers get their own array: they sort and map freely.
+// ---------------------------------------------------------------------------
+
+function memo<T>(fn: (text: string) => T[]): (text: string) => T[] {
+  const kept = new Map<string, T[]>();
+  return text => {
+    let hit = kept.get(text);
+    if (hit === undefined) {
+      hit = fn(text);
+      kept.set(text, hit);
+      if (kept.size > 400) kept.delete(kept.keys().next().value as string);
+    }
+    return hit.slice();
+  };
+}
+
+export const runtimeTokens = memo(runtimeTokensUncached);
+export const runtimePassageRefs = memo(runtimePassageRefsUncached);
+export const runtimePayload = memo(runtimePayloadUncached);

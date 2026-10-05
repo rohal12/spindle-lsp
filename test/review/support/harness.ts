@@ -36,14 +36,48 @@ export const root = process.cwd();
 export type Files = Record<string, string>;
 export const U = (name: string) => `file:///${name}`;
 
+// Models are expensive to build and the properties of one scene all read the
+// same workspace, so `build` shares read-only models between them (a small LRU,
+// so a long scene list never holds more than a few). A property that mutates a
+// model (open/update/close) must take its own with `buildFresh`: the state
+// differentials compare histories, so they never share.
 const live: WorkspaceModel[] = [];
-export function build(files: Files, order: string[] = Object.keys(files)): WorkspaceModel {
+const shared = new Map<string, WorkspaceModel>();
+const SHARED_LIMIT = 24;
+
+function make(files: Files, order: string[]): WorkspaceModel {
   const model = new WorkspaceModel({ workspaceRoot: root });
   model.initialize(new Map(order.map(n => [U(n), files[n]] as [string, string])));
+  return model;
+}
+/** A read-only workspace; the same `files` and `order` give the same model while it is recent. */
+export function build(files: Files, order: string[] = Object.keys(files)): WorkspaceModel {
+  const key = JSON.stringify([order, order.map(n => files[n])]);
+  const hit = shared.get(key);
+  if (hit) { shared.delete(key); shared.set(key, hit); return hit; }
+  const model = make(files, order);
+  shared.set(key, model);
+  if (shared.size > SHARED_LIMIT) {
+    const [oldKey, oldModel] = shared.entries().next().value as [string, WorkspaceModel];
+    shared.delete(oldKey);
+    oldModel.dispose();
+  }
+  return model;
+}
+/** A workspace of the caller's own, disposed after the test; for properties that change it. */
+export function buildFresh(files: Files, order: string[] = Object.keys(files)): WorkspaceModel {
+  const model = make(files, order);
   live.push(model);
   return model;
 }
-export function disposeAll() { for (const m of live.splice(0)) m.dispose(); }
+export function disposeAll() {
+  for (const m of live.splice(0)) m.dispose();
+}
+/** Release the shared models (end of a test file). */
+export function disposeShared() {
+  for (const m of shared.values()) m.dispose();
+  shared.clear();
+}
 
 export function texts(model: WorkspaceModel): Files {
   const out: Files = {};
@@ -102,10 +136,22 @@ export interface Probe {
   prep: { range: Range; placeholder: string } | null;
 }
 
+// A sweep depends on the model and the text it holds, so it is kept per model
+// and only while the text is unchanged (never across models: two histories that
+// reach the same text are exactly what the state differentials compare).
+const sweeps = new WeakMap<WorkspaceModel, Map<string, { stamp: string; probes: Probe[] }>>();
+/** Every document's text: what a sweep of any one of them can depend on. */
+const sweepStamp = (model: WorkspaceModel) => model.documents.getUris().sort().map(u => `${u}\0${model.documents.getText(u)}`).join('\u0001');
+
 export function sweep(model: WorkspaceModel, uri: string): Probe[] {
   const text = model.documents.getText(uri)!;
+  let byUri = sweeps.get(model);
+  if (!byUri) sweeps.set(model, (byUri = new Map()));
+  const kept = byUri.get(uri);
+  const stamp = sweepStamp(model);
+  if (kept && kept.stamp === stamp) return kept.probes;
   const d = doc(text);
-  return cursorOffsets(text).map(offset => {
+  const probes = cursorOffsets(text).map(offset => {
     const pos = d.positionAt(offset);
     return {
       uri, offset, pos,
@@ -115,6 +161,8 @@ export function sweep(model: WorkspaceModel, uri: string): Probe[] {
       prep: prepareRename(uri, pos, model),
     };
   });
+  byUri.set(uri, { stamp, probes });
+  return probes;
 }
 
 /** Everything the read-only consumers say about a workspace, for state differentials. */

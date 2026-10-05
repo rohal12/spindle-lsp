@@ -15,7 +15,7 @@ import { formatDocument } from '../../../src/plugins/format.js';
 import { getHoverInfo } from '../../../src/plugins/hover.js';
 import { findPassageReferences, findWidgetReferences } from '../../../src/plugins/references.js';
 import {
-  build, cursorOffsets, doc, notApplicable, rangeProblem, snapshot, spanKey, sweep, texts, U,
+  build, buildFresh, cursorOffsets, doc, notApplicable, rangeProblem, snapshot, spanKey, sweep, texts, U,
   type Files, type Probe,
 } from './harness.js';
 import {
@@ -485,18 +485,18 @@ export function propStateIncremental(files: Files) {
   const names = Object.keys(files);
   const fresh = snapshot(build(files));
   // open documents one at a time, as an editor does
-  const m1 = build({}, []);
+  const m1 = buildFresh({}, []);
   for (const n of names) m1.documents.open(U(n), files[n]);
   expect(snapshot(m1), 'opening documents one by one differs from a fresh build').toEqual(fresh);
   // an unsaved edit, then its revert
   const first = names[0];
-  const m2 = build(files);
+  const m2 = buildFresh(files);
   m2.documents.update(U(first), files[first] + '\n:: Scratch Passage\n[[Nowhere At All]]\n');
   m2.documents.update(U(first), files[first]);
   expect(snapshot(m2), 'edit and revert leaves stale state').toEqual(fresh);
   // close and reopen each document
   for (const n of names) {
-    const m3 = build(files);
+    const m3 = buildFresh(files);
     m3.documents.close(U(n));
     const rest = { ...files }; delete rest[n];
     expect(snapshot(m3), `closing ${n} differs from a workspace without it`).toEqual(snapshot(build(rest)));

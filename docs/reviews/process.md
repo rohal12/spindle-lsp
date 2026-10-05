@@ -151,9 +151,26 @@ satisfy this requirement without a new universal AST.
 
 ## Retain and measure the corpus
 
-The executable corpus is `test/review/convergence.review.ts` (matrix cells,
-sweeps and oracle in `test/review/support/`), with its separate
-`vitest.review.config.ts`. It is part of the normal gate: `npm test` runs the
+The executable corpus is `test/review/support/corpus.ts` (fixtures, scenes and
+the named cells without a check), `support/properties.ts` and
+`support/interactive.ts` (the cell bodies), `support/harness.ts` and
+`support/oracle.ts` (sweeps and the runtime oracle), with its separate
+`vitest.review.config.ts`. The cells are sharded over
+`test/review/shard-*.review.ts` (each a one-line call to `registerShard` in
+`support/shards.ts`; the shard names and counts are in
+`support/shard-names.ts`) so vitest runs them in parallel workers: scenes are
+dealt round-robin to the `matrix-N` shards, the state differentials to the
+`state-N` shards, and completion/signature, CLI, LSP and the named cells have
+one shard each. Every shard walks the whole cell list, so a cell keeps its
+sequence number whichever shard runs it; adding a scene or cell needs no new
+file. `test/review/global-setup.ts` builds the executable once for the
+entrypoint cells and, after the run, merges the shards' records and compares
+them with the results file (below). Within a shard, a workspace built with
+`build` is shared by the properties of a scene and `sweep`/oracle results are
+kept per model/text; a property that mutates a workspace must use `buildFresh`.
+Keep each shard well under the worker RPC timeout: cells yield to the event
+loop between them, but a single cell must not run for tens of seconds. It is
+part of the normal gate: `npm test` runs the
 unit/integration suite and then the corpus. Run:
 
 ```sh
@@ -163,13 +180,15 @@ npm run typecheck
 npm run review:convergence                 # the matrix alone; exits 0 when every cell passes
 npm run review:convergence -- --reporter=json --outputFile=/tmp/spindle-review.json
 REVIEW_WRITE_RESULTS=1 npm run review:convergence   # rewrite the results file after adding/changing cells
+REVIEW_PARTIAL=1 npx vitest run --config vitest.review.config.ts test/review/shard-named.review.ts   # one shard; skips the results comparison
 ```
 
 Every cell is named `<family>/<role-or-spelling>/<context>[ <property>]` and
 recorded with its six dimensions and a state (pass / fail / not-run /
 not-applicable) in `docs/reviews/2026-10-06-cross-consumer-results.json`; the
-last test of the corpus fails when that file lists different cells or states
-from the run. A failing cell is a defect: do not invert assertions, add
+global setup fails the run (exit 1, after the tests) when that file lists
+different cells or states from the run, or when a shard did not record all of
+its cells. A failing cell is a defect: do not invert assertions, add
 expected-failure markers, delete cases, or skip them to shrink the failure
 count. A repaired contract keeps its cells here (they are the retained
 evidence) and, when the fix has a narrower unit of behavior, also gets a unit

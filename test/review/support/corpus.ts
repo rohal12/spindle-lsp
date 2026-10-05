@@ -1,57 +1,18 @@
 /**
- * Retained cross-consumer matrix (see docs/reviews/process.md and
- * docs/reviews/2026-10-06-cross-consumer.md).
- *
- * Cells are NAMED selections from {passage role} x {source context} x
- * {spelling} x {boundary} x {state} x {consumer}; this is not a Cartesian
- * product. Each cell has a pass / fail / not-run / not-applicable status that
- * is written to docs/reviews/2026-10-06-cross-consumer-results.json (set
- * REVIEW_WRITE_RESULTS=1 to regenerate it; the last test in this file checks
- * that the committed file lists the cells and states of the current run).
- * The installed Spindle (tokenize / buildAST / link macro parseArgs) is the
- * oracle: see test/review/support/oracle.ts.
+ * The corpus of the retained cross-consumer matrix: the fixtures, the named
+ * scenes built from them, and the cells that have nothing to execute. It holds
+ * no tests; the shard files (`*.review.ts`) register the cells through
+ * `support/shards.ts`.
  */
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
-import {
-  NotApplicable, disposeAll, notApplicable, records, root,
-  type CellRecord, type Dims, type Files,
-} from './support/harness.js';
-import {
-  propBounds, propFormat, propHover, propMacroHeadOracle, propNavigationAgree, propPassageOracle,
-  propRename, propStateIncremental, propStateOrder, propTokens,
-} from './support/properties.js';
-import { registerInteractiveCells } from './support/interactive.js';
-
-const RESULTS = join(root, 'docs/reviews/2026-10-06-cross-consumer-results.json');
-
-afterEach(() => disposeAll());
-
-/** Declares one cell: an `it` whose outcome is recorded. */
-export function cell(id: string, dims: Dims, fn: () => void | Promise<void>) {
-  it(id, async () => {
-    const rec: CellRecord = { id, ...dims, status: 'pass' };
-    records.push(rec);
-    try {
-      await fn();
-    } catch (error) {
-      if (error instanceof NotApplicable) { rec.status = 'not-applicable'; rec.note = error.message; return; }
-      rec.status = 'fail';
-      rec.note = String((error as Error).message).split('\n')[0].slice(0, 300);
-      throw error;
-    }
-  });
-}
+import type { Dims, Files } from './harness.js';
 
 // ---------------------------------------------------------------------------
 // Fixture construction
 // ---------------------------------------------------------------------------
 
-const STORY_DATA = '{"ifid":"D674C58C-DEFA-4F70-B7A2-27742230C0FC","format":"Spindle","format-version":"0.45.1"}';
-const BASE = `:: StoryData\n${STORY_DATA}\n\n:: StoryVariables\n$v = 0\n$o = {"a": {"b": 1}, "name": "x"}\n\n:: StoryTransients\n%tr = 0\n`;
-const TARGET_FILE = ':: Target\nThe target.\n';
+export const STORY_DATA = '{"ifid":"D674C58C-DEFA-4F70-B7A2-27742230C0FC","format":"Spindle","format-version":"0.45.1"}';
+export const BASE = `:: StoryData\n${STORY_DATA}\n\n:: StoryVariables\n$v = 0\n$o = {"a": {"b": 1}, "name": "x"}\n\n:: StoryTransients\n%tr = 0\n`;
+export const TARGET_FILE = ':: Target\nThe target.\n';
 
 type Role = 'ordinary' | 'widget' | 'StoryInit' | 'StoryInterface' | 'StoryData' | 'StoryVariables' | 'StoryTransients' | 'script' | 'stylesheet';
 const ROLES: Role[] = ['ordinary', 'widget', 'StoryInit', 'StoryInterface', 'StoryData', 'StoryVariables', 'StoryTransients', 'script', 'stylesheet'];
@@ -71,7 +32,7 @@ function inRole(role: Role, s: string): string {
   }
 }
 
-interface Scene {
+export interface Scene {
   id: string;
   dims: Omit<Dims, 'consumer'>;
   files: Files;
@@ -142,9 +103,9 @@ const CONTEXTS: Record<string, (t: string) => string> = {
 };
 const WIDGET_FILE = ':: Widgets [widget]\n{widget "wid"}\ninside\n{/widget}\n\n:: BlockWidgets [widget]\n{widget "bw"}\n<b>{@children}</b>\n{/widget}\n';
 
-const scenes: Scene[] = [];
+export const scenes: Scene[] = [];
 function scene(id: string, dims: Omit<Dims, 'consumer'>, files: Files) { scenes.push({ id, dims, files }); }
-function files(story: string, extra: Files = {}): Files {
+export function files(story: string, extra: Files = {}): Files {
   // a story document that declares StoryData/StoryVariables/StoryTransients itself is the only declaration
   const own = (['StoryData', 'StoryVariables', 'StoryTransients'] as const).filter(n => story.includes(`:: ${n}\n`));
   const base = own.length === 0 ? BASE : BASE.split('\n\n').filter(part => !own.some(n => part.startsWith(`:: ${n}`))).join('\n\n');
@@ -271,7 +232,7 @@ scene('E/two-stories/unicode-order', { role: 'ordinary', context: 'multiple-per-
 // The matrix
 // ---------------------------------------------------------------------------
 
-const STATE_SUBSET = new Set([
+export const STATE_SUBSET = new Set([
   'A/ordinary/bracket-plain', 'A/ordinary/goto-double', 'A/ordinary/var-set', 'A/ordinary/widget-use',
   'A/widget/goto-double', 'A/StoryInit/link-macro-double', 'A/script/bracket-plain',
   'B/ordinary/bracket-in-attr', 'B/ordinary/var-property-path', 'B/ordinary/widget-block-pair',
@@ -280,28 +241,8 @@ const STATE_SUBSET = new Set([
   'E/two-stories/unicode-order', 'C/astral/bracket-plain', 'C/escaped-brackets-header/goto-double',
 ]);
 
-describe('cross-consumer matrix', () => {
-  for (const s of scenes) {
-    const d = (consumer: string): Dims => ({ ...s.dims, consumer });
-    cell(`${s.id} [bounds]`, d('all consumers: ranges within document and UTF-16 valid'), () => propBounds(s.files));
-    cell(`${s.id} [navigation]`, d('references x definition x prepareRename'), () => propNavigationAgree(s.files));
-    cell(`${s.id} [passage-oracle]`, d('diagnostics x references x document links x code lens vs runtime'), () => propPassageOracle(s.files));
-    cell(`${s.id} [macro-oracle]`, d('diagnostics x semantic tokens x widget references vs runtime'), () => propMacroHeadOracle(s.files));
-    cell(`${s.id} [rename]`, d('prepareRename/rename applied, rebuilt, re-diagnosed, reparsed'), () => propRename(s.files));
-    cell(`${s.id} [format]`, d('formatting: idempotent, same diagnostics, same runtime payload'), () => propFormat(s.files));
-    cell(`${s.id} [hover]`, d('hover: variables and macros agree with semantic tokens and runtime tokens'), () => propHover(s.files));
-    cell(`${s.id} [tokens]`, d('semantic tokens validity and agreement'), () => propTokens(s.files));
-    if (STATE_SUBSET.has(s.id)) {
-      cell(`${s.id} [state-order]`, { ...s.dims, state: 'initialization order permuted', consumer: 'all read-only consumers' }, () => propStateOrder(s.files));
-      cell(`${s.id} [state-incremental]`, { ...s.dims, state: 'open one by one / unsaved edit+revert / close+reopen', consumer: 'all read-only consumers' }, () => propStateIncremental(s.files));
-    }
-  }
-});
-
-registerInteractiveCells(cell, { files, BASE, TARGET_FILE });
-
 // Cells that are named, and decided, but have nothing to execute. Each carries its justification in the results file.
-const NOT_APPLICABLE: Array<[string, Dims, string]> = [
+export const NOT_APPLICABLE: Array<[string, Dims, string]> = [
   ['N/lone-cr-line-endings', { role: 'any', context: 'any', spelling: 'any', boundary: 'lone CR line endings', state: 'any', consumer: 'all' },
     'Twee 3 and Spindle\'s compiler know LF and CRLF only (the compiler normalizes CRLF to LF; a lone CR is an ordinary character in a header or macro). The server splits lines at LF everywhere, so a lone CR is not a line break to it, while the LSP position encoding counts it as one. Files with lone CR line endings are not Twee; boundary cells use LF, CRLF and mixed LF/CRLF.'],
   ['N/cli-document-lifecycle', { role: 'any', context: 'any', spelling: 'any', boundary: 'any', state: 'unsaved edit / add / remove / close document', consumer: 'CLI check/format' },
@@ -315,34 +256,3 @@ const NOT_APPLICABLE: Array<[string, Dims, string]> = [
   ['N/semantic-token-overlap-negotiation', { role: 'any', context: 'any', spelling: 'any', boundary: 'any', state: 'any', consumer: 'semantic tokens' },
     'The server never emits overlapping tokens (tokens property: sorted, non-overlapping on every scene), so there is no overlap behavior left to negotiate; the legend and delta encoding are covered by test/unit/semantic-tokens.test.ts.'],
 ];
-describe('named cells without an executable check', () => {
-  for (const [id, dims, reason] of NOT_APPLICABLE) cell(id, dims, () => notApplicable(reason));
-});
-
-// ---------------------------------------------------------------------------
-// Retained results
-// ---------------------------------------------------------------------------
-
-afterAll(() => {
-  if (!process.env.REVIEW_WRITE_RESULTS) return;
-  const counts: Record<string, number> = { pass: 0, fail: 0, 'not-run': 0, 'not-applicable': 0 };
-  for (const r of records) counts[r.status]++;
-  writeFileSync(RESULTS, JSON.stringify({
-    generated: '2026-10-06',
-    spindleVersion: INSTALLED_SPINDLE_VERSION,
-    summary: { total: records.length, ...counts },
-    cells: records,
-  }, null, 1) + '\n');
-});
-
-describe('retained results', () => {
-  // When regenerating (REVIEW_WRITE_RESULTS=1) the file is rewritten after the run, so there is nothing to compare yet
-  (process.env.REVIEW_WRITE_RESULTS ? it.skip : it)('docs/reviews/2026-10-06-cross-consumer-results.json lists every cell of this run with its status', () => {
-    const file = JSON.parse(readFileSync(RESULTS, 'utf-8')) as { cells: CellRecord[] };
-    const mine = new Map(records.map(r => [r.id, r.status]));
-    const kept = new Map(file.cells.map(c => [c.id, c.status]));
-    expect([...kept.keys()].sort()).toEqual([...mine.keys()].sort());
-    for (const [id, status] of mine) expect(kept.get(id), id).toBe(status);
-    expect(records.every(r => r.status !== 'not-run')).toBe(true);
-  });
-});

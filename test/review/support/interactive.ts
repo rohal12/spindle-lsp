@@ -5,7 +5,7 @@
  * consumers. Cells are registered through the `cell` function of
  * convergence.review.ts.
  */
-import { afterAll, beforeAll, expect } from 'vitest';
+import { afterAll, expect, inject } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,7 +28,6 @@ import { findReferences } from '../../../src/plugins/references.js';
 import { getDefinition } from '../../../src/plugins/definition.js';
 import { computeRename, prepareRename } from '../../../src/plugins/rename.js';
 import { WorkspaceModel } from '../../../src/core/workspace/workspace-model.js';
-import { buildDist, type DistBuild } from '../../integration/support/dist-build.js';
 import { runtimeBracketLink } from '../../helpers/link-macro-oracle.js';
 import { build, cursorOffsets, doc, notApplicable, rangeProblem, root, type Dims, type Files } from './harness.js';
 import { runtimePassageRefs, runtimeTokens, splitPassages } from './oracle.js';
@@ -309,9 +308,9 @@ function writeProject(files: Files): Project {
 const norm = (d: { range: unknown; message: string; code?: unknown; severity?: unknown }) => JSON.stringify([d.code, d.range, d.message]);
 
 function registerEntrypointCells(cell: CellFn, ctx: Ctx): void {
-  let dist: DistBuild;
-  beforeAll(() => { dist = buildDist(); }, 120_000);
-  afterAll(() => { dist?.dispose(); for (const d of projects.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  // The executable is built once for the whole run (global-setup.ts)
+  const dist = { get executable() { return inject('reviewExecutable'); } };
+  afterAll(() => { for (const d of projects.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
   const scenes: Array<[string, string, Files]> = [
     ['multi-file-refs', 'lf', ctx.files(':: Start\n[[Target]] {goto "Target"} {link "go" "Missing"}x{/link}\n{set $v = 1}{$undeclared}{wid}\n')],

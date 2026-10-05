@@ -7,7 +7,7 @@ new issue for another instance of the same failure.
 
 Normal checks: `npm test` and `npm run typecheck`. `npm test` runs the unit and
 integration suite (`npm run test:unit`) and then the retained cross-consumer
-matrix (`npm run review:convergence`, `test/review/convergence.review.ts`), so
+matrix (`npm run review:convergence`, sharded over `test/review/shard-*.review.ts`), so
 a failing matrix cell fails the normal gate. Every cell must pass: a failure is
 a defect to fix in `src/`, never a result to report as expected. Do not skip,
 invert, or weaken assertions to make it green. Cell names, states and the
