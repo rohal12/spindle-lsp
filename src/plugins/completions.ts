@@ -4,6 +4,9 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parseDocumentMacros, buildLineStarts } from '../core/parsing/macro-parser.js';
 import { inAttributeValue } from '../core/parsing/html-scanner.js';
+import { isMarkupPassage } from '../core/parsing/passage-parser.js';
+import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
+import { parseLinks } from '../core/parsing/link-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core completion function (no LSP dependency)
@@ -59,46 +62,81 @@ export function getCompletions(
     return getClosingMacroCompletions(uri, text, position, workspace, range);
   }
 
+  // The code and prose of passages Spindle does not read as markup (script,
+  // stylesheet, StoryData, StoryVariables, ...) are not story syntax: offer nothing there
+  const passage = workspace.passages.getPassageAt(uri, position.line);
+  if (passage && !isMarkupPassage(passage)) return [];
+
+  const fullLine = lines[position.line].replace(/\r$/, '');
+  // The edit replaces the typed prefix, and the identifier characters that
+  // follow the cursor, so accepting an item never duplicates what is there
+  // (hyphenated names, `$` sigils and spaces are not word characters to every client).
+  const editFor = (items: CompletionItem[], typed: number, tailPattern = /^[\w$]*/): CompletionItem[] => {
+    const tail = tailPattern.exec(fullLine.substring(position.character))![0].length;
+    const range = {
+      start: { line: position.line, character: position.character - typed },
+      end: { line: position.line, character: position.character + tail },
+    };
+    return items.map(item => ({ ...item, textEdit: { range, newText: item.insertText ?? item.label } }));
+  };
+
   // --- Context: dot-path field `%var.` ---
   const transientDotPathMatch = /%([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(lineText);
   if (transientDotPathMatch) {
-    return getTransientDotPathCompletions(transientDotPathMatch[1], workspace);
+    return editFor(getTransientDotPathCompletions(transientDotPathMatch[1], workspace), (transientDotPathMatch[2] ?? '').length);
   }
 
   // --- Context: dot-path field `$var.` ---
   const dotPathMatch = /\$([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(lineText);
   if (dotPathMatch) {
-    return getDotPathCompletions(dotPathMatch[1], workspace);
+    return editFor(getDotPathCompletions(dotPathMatch[1], workspace), (dotPathMatch[2] ?? '').length);
   }
 
   // --- Context: story variable `$` ---
-  if (/\$[A-Za-z_$]?[\w$]*$/.test(lineText) && !/\$[A-Za-z_$][\w$]*\./.test(lineText)) {
-    return getStoryVariableCompletions(workspace);
+  const storyVar = /\$([A-Za-z_$]?[\w$]*)$/.exec(lineText);
+  if (storyVar && !/\$[A-Za-z_$][\w$]*\./.test(lineText)) {
+    return editFor(getStoryVariableCompletions(workspace), storyVar[1].length);
   }
 
   // --- Context: temporary variable `_` ---
-  if (/_[A-Za-z_$]?[\w$]*$/.test(lineText)) {
-    return getTempVariableCompletions(text);
+  const tempVar = /_([A-Za-z_$]?[\w$]*)$/.exec(lineText);
+  if (tempVar) {
+    return editFor(getTempVariableCompletions(text), tempVar[1].length);
   }
 
   // --- Context: local variable `@` ---
-  if (/@[A-Za-z_$]?[\w$]*$/.test(lineText)) {
-    return getLocalVariableCompletions(text);
+  const localVar = /@([A-Za-z_$]?[\w$]*)$/.exec(lineText);
+  if (localVar) {
+    return editFor(getLocalVariableCompletions(text), localVar[1].length);
   }
 
   // --- Context: transient variable `%` ---
-  if (/%[A-Za-z_$]?[\w$]*$/.test(lineText) && !/%[A-Za-z_$][\w$]*\./.test(lineText)) {
-    return getTransientVariableCompletions(workspace);
+  const transientVar = /%([A-Za-z_$]?[\w$]*)$/.exec(lineText);
+  if (transientVar && !/%[A-Za-z_$][\w$]*\./.test(lineText)) {
+    return editFor(getTransientVariableCompletions(workspace), transientVar[1].length);
   }
 
   // --- Context: passage link `[[` ---
-  if (/\[\[[^\]]*$/.test(lineText)) {
-    return getPassageNameCompletions(workspace);
+  const link = /\[\[([^\]]*)$/.exec(lineText);
+  if (link) {
+    if (inAttribute()) return [];
+    // The target of the whole link text (up to `]]`), as Spindle's parseLink splits it
+    const rest = fullLine.substring(position.character);
+    const inner = link[1] + (/^(?:(?!\]\]).)*/.exec(rest)![0]);
+    const target = linkTargetSpan(inner);
+    if (link[1].length < target.start || link[1].length > target.end) return [];
+    const range = {
+      start: { line: position.line, character: position.character - (link[1].length - target.start) },
+      end: { line: position.line, character: position.character + (target.end - link[1].length) },
+    };
+    return getPassageNameCompletions(workspace, workspace.capabilities.linkQuoteEscapes)
+      .map(item => ({ ...item, textEdit: { range, newText: item.insertText ?? item.label } }));
   }
 
   // --- Context: macro invocation `{` or `{partial` ---
-  if (/(?:^|[^\\])\{[A-Za-z\w-]*$/.test(lineText)) {
-    return inAttribute() ? [] : getMacroCompletions(workspace);
+  const macro = /(?:^|[^\\])\{([A-Za-z\w-]*)$/.exec(lineText);
+  if (macro) {
+    return inAttribute() ? [] : editFor(getMacroCompletions(workspace), macro[1].length, /^[\w-]*/);
   }
 
   return [];
@@ -287,8 +325,36 @@ function getTransientDotPathCompletions(varName: string, workspace: WorkspaceMod
   }));
 }
 
-function getPassageNameCompletions(workspace: WorkspaceModel): CompletionItem[] {
-  const passages = workspace.passages.getAllPassages();
+/**
+ * Where the target is in a link's inner text, as Spindle's tokenizer splits
+ * it (`display|target`, then `display->target`, then `target<-display`, else
+ * the whole text). The span runs from just after the separator, whitespace
+ * after it excluded, to the end of the target text.
+ */
+function linkTargetSpan(inner: string): { start: number; end: number } {
+  const skip = (from: number) => from + /^\s*/.exec(inner.slice(from))![0].length;
+  const pipe = inner.indexOf('|');
+  if (pipe !== -1) return { start: skip(pipe + 1), end: inner.length };
+  const arrow = inner.indexOf('->');
+  if (arrow !== -1) return { start: skip(arrow + 2), end: inner.length };
+  const reverse = inner.indexOf('<-');
+  if (reverse !== -1) return { start: 0, end: reverse };
+  return { start: skip(0), end: inner.length };
+}
+
+/**
+ * Whether `[[name]]` reads back as a link to `name`: a name with `|`, `->`,
+ * `<-`, `]]` or edge whitespace names another passage (or none), and before
+ * Spindle 0.51.1 a double quote or line break sends the click elsewhere. Such
+ * a passage cannot be linked with brackets, so it is not offered there.
+ */
+function linkable(name: string, quoteEscapes: boolean): boolean {
+  const links = parseLinks(`[[${name}]]`);
+  return links.length === 1 && links[0].name === name && !bracketLinkMismatch('label', name, quoteEscapes);
+}
+
+function getPassageNameCompletions(workspace: WorkspaceModel, quoteEscapes = false): CompletionItem[] {
+  const passages = workspace.passages.getAllPassages().filter(p => linkable(p.name, quoteEscapes));
   if (passages.length === 0) return [];
 
   return passages.map(p => ({

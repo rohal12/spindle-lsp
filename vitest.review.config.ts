@@ -1,11 +1,13 @@
 import { defineConfig } from 'vitest/config';
 
-// Desired-behavior checks for the open review backlog. Failures remain visible;
-// this command is separate from the normal suite until the backlog is resolved.
+// The retained cross-consumer matrix (test/review/convergence.review.ts). It is
+// part of `npm test`: every cell must pass, and a failing cell is a defect, not
+// an expected failure. Entry-point cells build the executable and talk to it
+// over stdio, so the timeouts are generous.
 export default defineConfig({
   test: {
     include: ['test/review/**/*.review.ts'],
-    testTimeout: 10_000,
-    hookTimeout: 20_000,
+    testTimeout: 60_000,
+    hookTimeout: 120_000,
   },
 });

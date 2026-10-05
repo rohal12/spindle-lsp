@@ -3,7 +3,8 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { findPassageRefAt, parseDocumentPassageRefs, type PassageRef } from '../core/parsing/link-parser.js';
 import { parseMacros, macroHeadNames, macroHeadNameAt } from '../core/parsing/macro-parser.js';
-import { parsePassageHeader } from '../core/parsing/passage-parser.js';
+import { isMarkupPassage, parsePassageHeader, type PassageRole } from '../core/parsing/passage-parser.js';
+import { executableCode } from '../core/workspace/variable-tracker.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ export function findReferences(
   includeDeclaration: boolean,
 ): ReferenceLocation[] {
   const text = workspace.documents.getText(uri);
-  if (text === undefined) return [];
+  if (text === undefined || !workspace.hasPassages(uri)) return [];
 
   const lines = text.split('\n');
   if (position.line >= lines.length) return [];
@@ -45,33 +46,12 @@ export function findReferences(
     }
   }
 
-  // --- $variable ---
-  {
-    const varRegex = /\$([\w$]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = varRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        const varName = match[1];
-        return findVariableReferences(varName, workspace, includeDeclaration);
-      }
-    }
-  }
-
-  // --- %transient ---
-  {
-    const transRegex = /(?<!\w)%([\w$]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = transRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        const varName = match[1];
-        if (!isTransientAt(varName, uri, position.line, start, workspace)) break;
-        return findTransientReferences(varName, workspace, includeDeclaration);
-      }
-    }
+  // --- $variable / %transient ---
+  const variable = variableAt(uri, position, workspace);
+  if (variable) {
+    return variable.sigil === '%'
+      ? findTransientReferences(variable.name, workspace, includeDeclaration)
+      : findVariableReferences(variable.name, workspace, includeDeclaration);
   }
 
   // --- Widget ---
@@ -91,26 +71,75 @@ export function findReferences(
     return findPassageReferences(passageRef.name, workspace, includeDeclaration);
   }
 
-  // --- Passage name in link (also check passage names) ---
-  {
-    const allPassages = workspace.passages.getAllPassages();
-    const passageNames = new Set(allPassages.map(p => p.name));
-    // Try to extract a word at cursor and see if it's a passage name
-    const wordRegex = /[A-Za-z_$][\w$\s]*/g;
-    let match: RegExpExecArray | null;
-    while ((match = wordRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        const word = match[0].trim();
-        if (passageNames.has(word)) {
-          return findPassageReferences(word, workspace, includeDeclaration);
-        }
-      }
-    }
-  }
-
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// The variable under the cursor
+// ---------------------------------------------------------------------------
+
+/**
+ * The code Spindle evaluates in each line of a document (see
+ * executableCode()): every character of prose, comments, string contents and
+ * of passages that are not markup is a space. `_temp` and `@local` variables,
+ * which have no tracker, only mean something where this has text.
+ */
+export function executableCodeLines(lines: string[], passages: Array<PassageRole & { range: Range }>): string[] {
+  const code = lines.map(l => ' '.repeat(l.length));
+  passages.forEach((passage, index) => {
+    if (!isMarkupPassage(passage)) return;
+    const first = passage.range.start.line + 1;
+    const last = index + 1 < passages.length ? passages[index + 1].range.start.line : lines.length;
+    executableCode(lines.slice(first, last).join('\n')).split('\n').forEach((l, i) => { code[first + i] = l; });
+  });
+  return code;
+}
+
+export interface VariableAtCursor {
+  sigil: '$' | '%';
+  /** Base name, without the sigil or any property path. */
+  name: string;
+  /** The tracker's reference (or declaration) range: sigil, name and property path. */
+  range: Range;
+}
+
+// Spindle's expression transform reads a name as `\w+` (expression.ts): `$a$b` is two variables
+const VARIABLE_CANDIDATE = /(?:\$|(?<!\w)%)(?=\w)/g;
+const VARIABLE_PATH = /^([$%])(\w+(?:\.[A-Za-z_$][\w$]*)*)/;
+
+/**
+ * The `$variable` or `%transient` whose reference or declaration, as the
+ * variable tracker records it, contains the cursor. Text that merely looks
+ * like a variable (comments, attribute values, string contents, code in
+ * script/stylesheet/data passages) is not one: navigation, rename and
+ * highlighting must agree with the tracker about what is a reference.
+ */
+export function variableAt(uri: string, position: Position, workspace: WorkspaceModel): VariableAtCursor | null {
+  const line = workspace.documents.getText(uri)?.split('\n')[position.line];
+  if (line === undefined) return null;
+  // A cursor between two adjacent variables (`$a$b`) belongs to the one it is in front of
+  let atEnd: VariableAtCursor | null = null;
+  VARIABLE_CANDIDATE.lastIndex = 0;
+  let found: RegExpExecArray | null;
+  while ((found = VARIABLE_CANDIDATE.exec(line)) !== null) {
+    const match = VARIABLE_PATH.exec(line.slice(found.index))!;
+    const start = found.index;
+    const end = start + match[0].length;
+    VARIABLE_CANDIDATE.lastIndex = start + 1;
+    if (position.character < start || position.character > end) continue;
+    const sigil = match[1] as '$' | '%';
+    const name = match[2].split('.')[0];
+    const refs = sigil === '%'
+      ? findTransientReferences(name, workspace, true)
+      : findVariableReferences(name, workspace, true);
+    const hit = refs.find(r =>
+      r.uri === uri && r.range.start.line === position.line && r.range.start.character === start);
+    if (!hit) continue;
+    const symbol = { sigil, name, range: hit.range };
+    if (position.character < end) return symbol;
+    atEnd ??= symbol;
+  }
+  return atEnd;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,8 +158,7 @@ export function findPassageReferences(
 
   // Include declaration (the name in the passage header)
   if (includeDeclaration) {
-    const passage = workspace.passages.getPassage(passageName);
-    if (passage) {
+    for (const passage of workspace.passages.getPassages(passageName)) {
       locations.push({
         uri: passage.uri,
         range: passage.nameRange,
@@ -157,7 +185,7 @@ export function findPassageRefs(
 ): Array<{ uri: string; ref: PassageRef }> {
   const found: Array<{ uri: string; ref: PassageRef }> = [];
   for (const docUri of workspace.documents.getUris()) {
-    if (isMacroSource(docUri)) continue;
+    if (isMacroSource(docUri) || !workspace.hasPassages(docUri)) continue;
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
@@ -268,7 +296,7 @@ export function findWidgetReferences(
   const isBlock = widget?.block ?? false;
 
   for (const docUri of workspace.documents.getUris()) {
-    if (isMacroSource(docUri)) continue;
+    if (isMacroSource(docUri) || !workspace.hasPassages(docUri)) continue;
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 

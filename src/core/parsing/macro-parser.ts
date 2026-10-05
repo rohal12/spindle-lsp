@@ -619,6 +619,16 @@ export function parseDocumentStructure(
   return { macros, errors: elements.errors };
 }
 
+/** The span of a macro's name within its head (`{`, closing slash and selector prefix excluded). */
+export function macroNameRange(macro: MacroNode): Range {
+  const offset = 1 + (macro.open ? 0 : 1) + (macro.cssPrefix ? macro.cssPrefix.length + 1 : 0);
+  const { line, character } = macro.range.start;
+  return {
+    start: { line, character: character + offset },
+    end: { line, character: character + offset + macro.name.length },
+  };
+}
+
 /**
  * The macros of a whole document as Spindle runs them: the bodies of passages
  * it does not tokenize as markup are masked first (see

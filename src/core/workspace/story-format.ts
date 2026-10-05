@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { stripBom } from './document-store.js';
 import type { Passage } from '../types.js';
 import { PassageIndex } from './passage-index.js';
 import { findProjectFiles, findProjectRoot } from './macro-sources.js';
@@ -155,13 +156,13 @@ export function storyFormatOfTexts(
  * output and hidden directories).
  */
 export async function findStoryFormat(texts: Iterable<string>, dir: string): Promise<StoryFormat> {
-  const own = storyFormatOfTexts(texts);
+  const own = storyFormatOfTexts([...texts].map(stripBom));
   if (own.hasStoryData) return { name: own.name, isSpindle: own.isSpindle };
 
   const projectTexts: string[] = [];
   for (const file of await findProjectFiles(findProjectRoot(dir), '**/*.{tw,twee}')) {
     try {
-      projectTexts.push(readFileSync(file, 'utf-8'));
+      projectTexts.push(stripBom(readFileSync(file, 'utf-8')));
     } catch {
       // Skip unreadable files
     }

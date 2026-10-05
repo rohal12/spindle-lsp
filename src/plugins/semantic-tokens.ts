@@ -1,7 +1,7 @@
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseDocumentMacros } from '../core/parsing/macro-parser.js';
-import { isTransientAt } from './references.js';
+import { macroNameRange, parseDocumentMacros } from '../core/parsing/macro-parser.js';
+import { executableCodeLines, findTransientReferences, findVariableReferences } from './references.js';
 
 // ---------------------------------------------------------------------------
 // Token legend
@@ -73,7 +73,8 @@ export function computeSemanticTokensAbsolute(
   workspace: WorkspaceModel,
 ): AbsoluteToken[] {
   const text = workspace.documents.getText(uri);
-  if (text === undefined) return [];
+  // JavaScript/TypeScript sources and headerless text hold no story markup
+  if (text === undefined || !workspace.hasPassages(uri)) return [];
 
   const lines = text.split('\n');
   const tokens: AbsoluteToken[] = [];
@@ -110,29 +111,45 @@ export function computeSemanticTokensAbsolute(
   const macros = parseDocumentMacros(text, passages, undefined, workspace.capabilities);
   for (const macro of macros) {
     const macroLine = macro.range.start.line;
-    const macroChar = macro.range.start.character;
     if (headerLines.has(macroLine)) continue;
 
     const isDefined = !!workspace.macros.getMacro(macro.name);
 
-    let nameOffset = 1; // for '{'
-    if (!macro.open) nameOffset += 1; // for '/'
-    if (macro.cssPrefix) nameOffset += macro.cssPrefix.length + 1;
+    const nameRange = macroNameRange(macro);
 
     tokens.push({
       line: macroLine,
-      startChar: macroChar + nameOffset,
+      startChar: nameRange.start.character,
       length: macro.name.length,
       tokenType: encodeType('function'),
       tokenModifiers: encodeModifiers(isDefined ? ['defaultLibrary'] : []),
     });
   }
 
-  // Variable tokens
-  const storyVarRegex = /(?<!\w)\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
+  // Variable tokens. A `$` or `%` variable is a token exactly where the
+  // variable tracker records a reference or declaration (the one list that
+  // navigation, rename and diagnostics share); `_temp` and `@local` have no
+  // tracker, so they are tokens in the code Spindle evaluates. Prose, comments,
+  // string contents and non-markup passages (script, stylesheet, StoryData) are not code.
+  const storyVarRegex = /\$(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
   const tempVarRegex = /(?<!\w)_([A-Za-z_$][\w$]*)/g;
   const localVarRegex = /(?<!\w)@([A-Za-z_$][\w$]*)/g;
-  const transientVarRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
+  const transientVarRegex = /(?<!\w)%(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
+
+  const tracked = new Set<string>();
+  const trackName = (sigil: '$' | '%', name: string) => {
+    const key = `${sigil}${name}`;
+    if (tracked.has(key)) return;
+    tracked.add(key);
+    const refs = sigil === '$' ? findVariableReferences(name, workspace, true) : findTransientReferences(name, workspace, true);
+    for (const r of refs) if (r.uri === uri) tracked.add(`${sigil}@${r.range.start.line}:${r.range.start.character}`);
+  };
+  const isTracked = (sigil: '$' | '%', name: string, line: number, character: number) => {
+    trackName(sigil, name);
+    return tracked.has(`${sigil}@${line}:${character}`);
+  };
+
+  const codeLines = executableCodeLines(lines, passages);
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     if (headerLines.has(lineIndex)) continue;
@@ -142,6 +159,7 @@ export function computeSemanticTokensAbsolute(
     storyVarRegex.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = storyVarRegex.exec(line)) !== null) {
+      if (!isTracked('$', m[1].split('.')[0], lineIndex, m.index)) continue;
       tokens.push({
         line: lineIndex,
         startChar: m.index,
@@ -152,8 +170,9 @@ export function computeSemanticTokensAbsolute(
     }
 
     // Temp vars (_var)
+    const code = codeLines[lineIndex];
     tempVarRegex.lastIndex = 0;
-    while ((m = tempVarRegex.exec(line)) !== null) {
+    while ((m = tempVarRegex.exec(code)) !== null) {
       tokens.push({
         line: lineIndex,
         startChar: m.index,
@@ -165,7 +184,7 @@ export function computeSemanticTokensAbsolute(
 
     // Local vars (@var)
     localVarRegex.lastIndex = 0;
-    while ((m = localVarRegex.exec(line)) !== null) {
+    while ((m = localVarRegex.exec(code)) !== null) {
       tokens.push({
         line: lineIndex,
         startChar: m.index,
@@ -178,7 +197,7 @@ export function computeSemanticTokensAbsolute(
     // Transient vars (%var)
     transientVarRegex.lastIndex = 0;
     while ((m = transientVarRegex.exec(line)) !== null) {
-      if (!isTransientAt(m[1].split('.')[0], uri, lineIndex, m.index, workspace)) continue;
+      if (!isTracked('%', m[1].split('.')[0], lineIndex, m.index)) continue;
       tokens.push({
         line: lineIndex,
         startChar: m.index,

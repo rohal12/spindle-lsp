@@ -85,6 +85,8 @@ function buildDefaultIsBlock(text: string): (name: string) => boolean {
  *  5. Normalize passage headers: `::  Name  [tag]` -> `:: Name [tag]`
  */
 export async function formatDocument(text: string, options?: FormatOptions): Promise<string> {
+  // A byte order mark is not story text: format what follows it and keep the mark
+  if (text.charCodeAt(0) === 0xfeff) return '\uFEFF' + await formatDocument(text.slice(1), options);
   // Format with LF endings, then give the output the document's own style
   const eol = dominantEol(text);
   const output = await formatLf(text.replace(/\r\n/g, '\n'), options);
