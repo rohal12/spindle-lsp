@@ -3,6 +3,7 @@ import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
+import { activeWidgetArgument } from '../core/parsing/widget-arguments.js';
 
 // ---------------------------------------------------------------------------
 // Core signature help function (no LSP dependency)
@@ -44,13 +45,12 @@ export function getSignatureHelp(
   const macroName = macroMatch[1];
   const argsBefore = macroMatch[2];
 
-  // Count arguments before cursor to determine active parameter
-  const activeParameter = argsBefore.trim() === '' ? 0 : lexArguments(argsBefore).length;
-
   // Check builtin macros
   const macroInfo = workspace.macros.getMacro(macroName);
   if (macroInfo && macroInfo.parameters && macroInfo.parameters.length > 0) {
     const paramLabels = macroInfo.parameters;
+    // Count arguments before cursor to determine active parameter
+    const activeParameter = argsBefore.trim() === '' ? 0 : lexArguments(argsBefore).length;
     return {
       signatures: [{
         label: `{${macroName} ${paramLabels.join(' ')}}`,
@@ -73,7 +73,8 @@ export function getSignatureHelp(
         parameters: paramLabels.map(p => ({ label: p })),
       }],
       activeSignature: 0,
-      activeParameter,
+      // Widget arguments are split the way Spindle's WidgetInvocation does
+      activeParameter: activeWidgetArgument(argsBefore),
     };
   }
 
