@@ -61,7 +61,7 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     }
 
     // --- Widget definitions ---
-    const widgetMatch = line.match(/\{widget\s+"([^"]+)"/);
+    const widgetMatch = line.match(/\{widget\s+["']?([^\s"'}]+)/);
     if (widgetMatch) {
       const widgetName = widgetMatch[1];
       const refs = findWidgetReferences(widgetName, workspace, true);

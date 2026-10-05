@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { prepareRename, computeRename } from '../../src/plugins/rename.js';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { prepareRename, computeRename, type RenameEdit } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -133,4 +134,35 @@ describe('computeRename', () => {
     expect(allEdits.length).toBeGreaterThanOrEqual(2);
     expect(allEdits.every(e => e.newText === 'hello')).toBe(true);
   });
+
+  it('renames widgets defined with single-quoted and bare names', () => {
+    const files = {
+      'widgets.tw': ":: W [widget]\n{widget 'hello' @name}Hi{/widget}\n{widget bye $who}Bye{/widget}",
+      'test.tw': ':: Start\n{hello "Sam"} {bye "Sam"}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+
+    let out = applyRename(files, computeRename('file:///test.tw', { line: 1, character: 2 }, 'greet', ws));
+    expect(out['widgets.tw']).toBe(":: W [widget]\n{widget 'greet' @name}Hi{/widget}\n{widget bye $who}Bye{/widget}");
+    expect(out['test.tw']).toBe(':: Start\n{greet "Sam"} {bye "Sam"}');
+
+    // Starting from the bare-name definition itself
+    out = applyRename(files, computeRename('file:///widgets.tw', { line: 2, character: 9 }, 'farewell', ws));
+    expect(out['widgets.tw']).toBe(":: W [widget]\n{widget 'hello' @name}Hi{/widget}\n{widget farewell $who}Bye{/widget}");
+    expect(out['test.tw']).toBe(':: Start\n{hello "Sam"} {farewell "Sam"}');
+  });
 });
+
+function applyRename(
+  files: Record<string, string>,
+  edits: Map<string, RenameEdit[]>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, content] of Object.entries(files)) {
+    const doc = TextDocument.create(`file:///${name}`, 'twee', 1, content);
+    out[name] = TextDocument.applyEdits(doc, edits.get(`file:///${name}`) ?? []);
+  }
+  return out;
+}

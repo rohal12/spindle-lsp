@@ -82,7 +82,7 @@ function addWidgetParamHints(
       if (idx >= 0) {
         hints.push({
           position: { line: macro.range.start.line, character: idx },
-          label: `@${widget.params[i]}:`,
+          label: `${widget.params[i]}:`,
           kind: 'parameter',
         });
       }

@@ -85,7 +85,7 @@ describe('WorkspaceModel', () => {
 
     const greeting = model.widgets.getWidget('greeting');
     expect(greeting).toBeDefined();
-    expect(greeting!.params).toEqual(['name']);
+    expect(greeting!.params).toEqual(['@name']);
   });
 
   it('emits modelReady after initialize', async () => {
