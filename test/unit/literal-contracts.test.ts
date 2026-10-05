@@ -252,3 +252,47 @@ describe('L77 (extra): static literal decoding', () => {
     expect(ref.name).toBe('\\u004eext');
   });
 });
+
+describe('R67/X70 (CRLF): template-literal passage targets', () => {
+  const crlf = (text: string) => text.replace(/\n/g, '\r\n');
+  // astral characters make UTF-16 columns differ from code points
+  const source = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\n\u{1F600}{goto `Old`} {include `Old`}\n{print `Old`} [[Old]]');
+
+  it('R67-template-crlf: ranges, rename edits and meaning survive CRLF', () => {
+    const model = workspace(source);
+    const refs = parseMacroPassageRefs(source).filter(r => r.name === 'Old');
+    expect(refs.length).toBeGreaterThanOrEqual(2);
+    for (const ref of refs) {
+      expect(ref.range.start.line).toBe(ref.range.end.line);
+      const line = source.split('\r\n')[ref.range.start.line];
+      expect(line.slice(ref.range.start.character, ref.range.end.character)).toBe('Old');
+    }
+    const output = renamed(model, 1, 5, 'A`${x}\\B');
+    // CRLF line endings and unrelated text are preserved
+    expect(output.split('\r\n')).toHaveLength(source.split('\r\n').length);
+    expect(output.replace(/\r\n/g, '\n')).not.toMatch(/(?<!\r)\r(?!\n)/);
+    const args = runtimeMacroArgs(output).filter(a => a.startsWith('`'));
+    for (const a of args.slice(0, 2)) expect(new Function(`return (${a})`)()).toBe('A`${x}\\B');
+    expect(output).toContain('\u{1F600}{goto `A\\`\\${x}\\\\B`}');
+  });
+
+  it('R67-template-crlf-multiline: a template target on a later line after CRLF', () => {
+    const text = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\ntext\n{goto\n  `Old`}');
+    const model = workspace(text);
+    const output = renamed(model, 1, 5, 'New');
+    expect(output).toBe(crlf(':: StoryVariables\n:: New\nhello\n:: Start\ntext\n{goto\n  `New`}'));
+  });
+
+  it('X70-template-crlf-diagnostics: a broken link beside a template target diagnoses the same as LF', () => {
+    const ok = workspace(source);
+    expect(codes(ok)).toEqual(codes(workspace(source.replace(/\r\n/g, '\n'))));
+    const broken = crlf(':: StoryVariables\n:: Start\n{goto `Start`} [[Ghost]]');
+    expect(codes(workspace(broken))).toContain('SP300');
+    expect(codes(workspace(broken))).toEqual(codes(workspace(broken.replace(/\r\n/g, '\n'))));
+  });
+
+  it('X70-template-crlf-controls: dynamic templates are not static targets under CRLF', () => {
+    const text = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto `O${$x}`}\n{goto `Old`}');
+    expect(parseMacroPassageRefs(text).map(r => r.name)).toEqual(['Old']);
+  });
+});
