@@ -149,7 +149,7 @@ function resolveSymbolAtCursor(
 
   // --- $variable ---
   {
-    const varRegex = /\$([A-Za-z_$][\w$]*)/g;
+    const varRegex = /\$([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = varRegex.exec(line)) !== null) {
       const start = match.index;
@@ -170,7 +170,7 @@ function resolveSymbolAtCursor(
 
   // --- %transient ---
   {
-    const transRegex = /(?<!\w)%([A-Za-z_$][\w$]*)/g;
+    const transRegex = /(?<!\w)%([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = transRegex.exec(line)) !== null) {
       const start = match.index;

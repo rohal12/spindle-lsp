@@ -164,7 +164,7 @@ const parameterTypes: ParameterType[] = [
       if (/^[_@%]/.test(name)) {
         return new TypeError(`Variable receiver must be a story variable ($name), got '${name}'`);
       }
-      if (!/^\$?[A-Za-z_][\w$]*(?:\.[\w$]+)*$/.test(name)) {
+      if (!/^(?:\$\w|[A-Za-z_])[\w$]*(?:\.[\w$]+)*$/.test(name)) {
         return new TypeError(`Argument is not a valid variable receiver: '${name}'`);
       }
       return null;

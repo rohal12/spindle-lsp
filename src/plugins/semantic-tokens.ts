@@ -124,10 +124,10 @@ export function computeSemanticTokensAbsolute(
   }
 
   // Variable and keyword tokens
-  const storyVarRegex = /(?<!\w)\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+  const storyVarRegex = /(?<!\w)\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
   const tempVarRegex = /(?<!\w)_([A-Za-z_$][\w$]*)/g;
   const localVarRegex = /(?<!\w)@([A-Za-z_$][\w$]*)/g;
-  const transientVarRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+  const transientVarRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
   const sugarKeywordRegex = /\b(to|is|isnot|eq|neq|gt|gte|lt|lte|and|or|not|def|ndef)\b/g;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {

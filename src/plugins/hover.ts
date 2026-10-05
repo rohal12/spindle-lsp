@@ -107,7 +107,7 @@ function getVariableHover(
 ): HoverResult | null {
   // Story variables: $name
   {
-    const re = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+    const re = /\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(line)) !== null) {
       const start = match.index;
@@ -169,7 +169,7 @@ function getVariableHover(
 
   // Transient variables: %name
   {
-    const re = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+    const re = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(line)) !== null) {
       const start = match.index;

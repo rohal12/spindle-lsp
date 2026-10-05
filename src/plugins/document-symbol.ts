@@ -83,7 +83,7 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
       const contentEnd = passage.range.end.line + 1;
 
       for (let i = contentStart; i < contentEnd && i < lines.length; i++) {
-        const varMatch = lines[i].match(/^\$([A-Za-z_$][\w$]*)\s*=/);
+        const varMatch = lines[i].match(/^\$(\w+)\s*=/);
         if (varMatch) {
           const charEnd = varMatch[0].length;
           passageSymbol.children!.push({

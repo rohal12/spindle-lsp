@@ -2,11 +2,20 @@ import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } 
 import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
 import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
 
-/** Regex to match $variable references including dot notation. */
-const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+/**
+ * Regex to match $variable references including dot notation. A name may
+ * start with a digit: Spindle's expression transform reads `$5` as a variable.
+ */
+const varRefRegex = /\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
 
 /** Regex to match %transient variable references including dot notation. */
-const transientRefRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+const transientRefRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
+
+/**
+ * A StoryVariables / StoryTransients declaration line, as Spindle's
+ * parseStoryVariables() reads it: any `\w+` name, a digit first included.
+ */
+const DECLARATION_RE = { '$': /^\$(\w+)\s*=\s*(.*)$/, '%': /^%(\w+)\s*=\s*(.*)$/ } as const;
 
 /** Passages excluded from variable scanning. */
 const EXCLUDED_PASSAGES = new Set([
@@ -104,7 +113,7 @@ export const BUILTIN_STORE_VAR_MACROS: ReadonlySet<string> = new Set([
  * the opening quote, group 2 is the macro name, group 4 the variable path.
  */
 const QUOTED_RECEIVER_RE = new RegExp(
-  String.raw`(?<!\\)(\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+(["']))\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])`,
+  String.raw`(?<!\\)(\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+(["']))\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])`,
   'g',
 );
 
@@ -122,7 +131,7 @@ function blankLiteralText(literal: string): string {
   for (let i = 1; i < literal.length - 1; i++) {
     if (literal[i] !== '{') continue;
     const templateCode = literal[0] === '`' && literal[i - 1] === '$' && literal[i - 2] !== '\\';
-    if (!templateCode && !/^[$%][A-Za-z_$]/.test(literal.slice(i + 1, i + 3))) continue;
+    if (!templateCode && !/^[$%][\w$]/.test(literal.slice(i + 1, i + 3))) continue;
 
     let depth = 0;
     for (let j = i; j < literal.length - 1; j++) {
@@ -335,7 +344,7 @@ export class VariableTracker {
       const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
 
-      const match = /^\$([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(trimmed);
+      const match = DECLARATION_RE.$.exec(trimmed);
       if (!match) continue;
 
       const name = match[1];
@@ -408,7 +417,7 @@ export class VariableTracker {
       const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
 
-      const match = /^%([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(trimmed);
+      const match = DECLARATION_RE['%'].exec(trimmed);
       if (!match) continue;
 
       const name = match[1];
