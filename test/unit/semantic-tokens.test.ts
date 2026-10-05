@@ -155,3 +155,34 @@ describe('computeSemanticTokens', () => {
     expect(data.length).toBeGreaterThan(0);
   });
 });
+
+describe('CSS-prefixed variable displays (#58)', () => {
+  function tokensOn(body: string) {
+    const ws = createWorkspace({ name: 'test.tw', content: `:: Start\n${body}` });
+    return computeSemanticTokensAbsolute('file:///test.tw', ws).filter(t => t.line === 1);
+  }
+
+  it.each([
+    ['{.hero-name $player.name}', 12, '$player.name', 'global'],
+    ['{#id $var}', 5, '$var', 'global'],
+    ['{.a.b#c _temp}', 8, '_temp', 'local'],
+    ['{.cls @local}', 6, '@local', 'readonly'],
+  ])('tokenizes %s like a plain variable display', (body, startChar, name, modifier) => {
+    expect(tokensOn(body)).toEqual([
+      {
+        line: 1,
+        startChar,
+        length: name.length,
+        tokenType: typeIdx('variable'),
+        tokenModifiers: modBit(modifier),
+      },
+    ]);
+  });
+
+  it('marks the macro name after the selectors of a prefixed macro', () => {
+    const fn = tokensOn('{.cls#id link "Go" "Next"}').filter(t => t.tokenType === typeIdx('function'));
+    expect(fn).toEqual([
+      { line: 1, startChar: 9, length: 4, tokenType: typeIdx('function'), tokenModifiers: modBit('defaultLibrary') },
+    ]);
+  });
+});

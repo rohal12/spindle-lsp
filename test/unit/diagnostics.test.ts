@@ -849,3 +849,39 @@ describe('SP200/SP203/SP206 in StoryInit, string interpolations and receivers (#
     expect(sp206[0].message).toContain("'$list.nope'");
   });
 });
+
+describe('CSS-prefixed variable displays (#58)', () => {
+  const uri = 'file:///test.tw';
+
+  function diagnose(body: string) {
+    const text = `:: StoryVariables\n$player = {}\n\n:: Start\n${body}\n`;
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    return computeDiagnostics(uri, workspace);
+  }
+
+  it('does not report {.hero-name $player.name} as an unrecognized macro', () => {
+    expect(diagnose('{.hero-name $player.name}')).toEqual([]);
+  });
+
+  it.each([
+    ['{#id $player}'],
+    ['{.a.b#c _temp}'],
+    ['{.cls @local}'],
+    ['{.my-if $player}'],
+    ['{.cls-link $player}'],
+  ])('reports no macro diagnostics for %s', (body) => {
+    expect(diagnose(body).filter(d => String(d.code).startsWith('SP1'))).toEqual([]);
+  });
+
+  it('reports SP200 for an undeclared variable in a prefixed display, like {$var}', () => {
+    const plain = diagnose('{$undeclared}').filter(d => d.code === 'SP200');
+    const prefixed = diagnose('{.hero-name $undeclared}').filter(d => d.code === 'SP200');
+    expect(plain).toHaveLength(1);
+    expect(prefixed).toHaveLength(1);
+    expect(prefixed[0].message).toBe(plain[0].message);
+    expect(prefixed[0].range).toEqual({
+      start: { line: 4, character: 12 },
+      end: { line: 4, character: 23 },
+    });
+  });
+});

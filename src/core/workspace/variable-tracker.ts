@@ -1,6 +1,6 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
 import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
-import { createCodeScanner, type CodeScanner } from '../parsing/macro-parser.js';
+import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
 
 /** Regex to match $variable references including dot notation. */
 const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
@@ -103,8 +103,10 @@ export const BUILTIN_STORE_VAR_MACROS: ReadonlySet<string> = new Set([
  * A macro whose first argument is a quoted `$variable`: group 1 runs up to
  * the opening quote, group 2 is the macro name, group 4 the variable path.
  */
-const QUOTED_RECEIVER_RE =
-  /(?<!\\)(\{(?:[#.][a-zA-Z][\w-]*\s*)*([A-Za-z][\w-]*)\s+(["']))\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])/g;
+const QUOTED_RECEIVER_RE = new RegExp(
+  String.raw`(?<!\\)(\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+(["']))\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])`,
+  'g',
+);
 
 /** Replace every character except line terminators with a space. */
 function blank(text: string): string {

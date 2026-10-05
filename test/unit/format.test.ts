@@ -268,6 +268,19 @@ describe('formatDocument', () => {
     expect(result.split('\n')[2]).toBe('  Warning!');
   });
 
+  it('does not indent after a prefixed variable display whose class ends in a macro name (#58)', async () => {
+    const input = ':: Start\n{.my-if $danger}\nWarning!\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('Warning!');
+  });
+
+  it('does not indent after selectors Spindle reads as text (#58)', async () => {
+    // Spindle allows no whitespace between selectors: this is not an {if}
+    const input = ':: Start\n{.red .bold if $danger}\nWarning!\n';
+    const result = await formatDocument(input);
+    expect(result.split('\n')[2]).toBe('Warning!');
+  });
+
   // -- Script passage formatting ------------------------------------------
 
   it('formats JavaScript in [script]-tagged passages', async () => {

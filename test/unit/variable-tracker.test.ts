@@ -486,3 +486,31 @@ describe('VariableTracker undeclared references as Spindle validates them (#62)'
     expect(tracker.getUndeclaredTransient(uri)).toEqual([]);
   });
 });
+
+describe('VariableTracker CSS-prefixed variable displays (#58)', () => {
+  function scan(text: string): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$player = {}');
+    tracker.scanDocument('file:///story.tw', text, []);
+    return tracker;
+  }
+
+  it('records the variable of a prefixed display as a checked usage', () => {
+    const tracker = scan(':: Start\n{.hero-name $player.name} {#id $ghost}');
+    expect(tracker.getUsages('player').map(u => u.range)).toEqual([
+      { start: { line: 1, character: 12 }, end: { line: 1, character: 24 } },
+    ]);
+    expect(tracker.getUndeclared('file:///story.tw').map(u => u.name)).toEqual(['ghost']);
+  });
+
+  it('binds the quoted receiver of a prefixed input macro', () => {
+    const tracker = scan(':: Start\n{.cls#id textbox "$player"}');
+    expect(tracker.getUsages('player')).toHaveLength(1);
+  });
+
+  it('does not bind a quoted receiver after selectors Spindle reads as text', () => {
+    // No whitespace is allowed between selectors, so this is not a {textbox}
+    const tracker = scan(':: Start\n{.red .bold textbox "$player"}');
+    expect(tracker.getUsages('player')).toEqual([]);
+  });
+});

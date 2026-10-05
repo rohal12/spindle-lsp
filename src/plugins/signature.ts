@@ -4,7 +4,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { activeWidgetArgument } from '../core/parsing/widget-arguments.js';
-import { buildLineStarts, createCodeScanner } from '../core/parsing/macro-parser.js';
+import { buildLineStarts, createCodeScanner, SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core signature help function (no LSP dependency)
@@ -21,7 +21,7 @@ export interface SignatureHelpResult {
 }
 
 /** A macro head followed by its arguments: `{name ` with an optional CSS prefix. */
-const macroHeadRegex = /(?<!\\)\{(?:[#.][a-zA-Z][\w-]*\s*)*([A-Za-z][\w-]*)\s+/g;
+const macroHeadRegex = new RegExp(String.raw`(?<!\\)\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+`, 'g');
 
 /**
  * Find the innermost macro whose arguments are still open at the end of
