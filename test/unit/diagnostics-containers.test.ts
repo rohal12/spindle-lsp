@@ -101,3 +101,37 @@ describe('container child constraints ignore capitalization', () => {
     expect(codes(diagnose(':: Start\n{CASE 1}\n'))).toEqual(['SP107']);
   });
 });
+
+describe('block widget invocations are containers', () => {
+  const widgets = ':: Widgets [widget]\n{widget "box"}\n<div>{@children}</div>\n{/widget}\n{widget "greet"}\nHi\n{/widget}\n\n';
+
+  it('accepts a closed block widget invocation', () => {
+    expect(diagnose(`${widgets}:: Start\n{greet}\n{box}\nHello\n{/box}\n`)).toEqual([]);
+  });
+
+  it('flags a block widget invocation without its closing tag', () => {
+    const diags = diagnose(`${widgets}:: Start\n{greet}\n{box}\nHello\n`);
+    expect(codes(diags)).toEqual(['SP101']);
+    expect(diags[0].message).toBe('Malformed container: no matching {/box}');
+    expect(diags[0].range.start.line).toBe(10);
+  });
+
+  it('flags an unmatched closing tag of a block widget', () => {
+    const diags = diagnose(`${widgets}:: Start\n{greet}\n{box}Hello{/box}\n{/Box}\n`);
+    expect(codes(diags)).toEqual(['SP101']);
+    expect(diags[0].range.start.line).toBe(11);
+    expect(diags[0].message).toBe('Malformed container: no matching {Box}');
+  });
+
+  it('does not pair a block widget across passages', () => {
+    const diags = diagnose(`${widgets}:: Start\n{greet}\n{box}\n:: Other\n{/box}\n`);
+    expect(codes(diags)).toEqual(['SP101', 'SP101']);
+  });
+
+  it('does not make inline widgets containers', () => {
+    expect(diagnose(`${widgets}:: Start\n{box}{greet}{/box}\n`)).toEqual([]);
+    const diags = diagnose(`${widgets}:: Start\n{box}{greet}{/box}\nHello\n{/greet}\n`);
+    expect(codes(diags)).toEqual(['SP104']);
+    expect(diags[0].message).toContain('greet');
+  });
+});

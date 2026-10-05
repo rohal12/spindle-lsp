@@ -50,7 +50,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     const macros = parseMacros(markupText);
     pairMacros(
       macros,
-      (name) => workspace.macros.isBlock(name),
+      (name) => workspace.isContainer(name),
       passages.map(p => p.range.start.line),
     );
 
@@ -161,59 +161,56 @@ function validateMacros(
     const macro = macros[curIndex];
     const info = workspace.macros.getMacro(macro.name);
 
-    if (info) {
-      // Known macro
-      if (info.block) {
-        // SP101: unmatched container
-        if (macro.open && macro.pair === -1) {
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.MalformedContainer,
-            `Malformed container: no matching {/${macro.name}}`,
-          ));
-        } else if (!macro.open && macro.pair === -1) {
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.MalformedContainer,
-            `Malformed container: no matching {${macro.name}}`,
-          ));
-        }
-
-        // SP114/SP115: children constraints
-        if (info.children && info.children.length > 0 && macro.open && macro.pair !== -1) {
-          validateChildren(macros, curIndex, macro, info.children, workspace, diagnostics);
-        }
-      } else {
-        // SP104: closing tag on non-container
-        if (!macro.open) {
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.IllegalClosingTag,
-            `Illegal closing tag: {${macro.name}} is not a container`,
-          ));
-        }
-      }
-
-      // SP107: parents constraint
-      if (info.parents && info.parents.length > 0 && macro.open) {
-        if (!isInsideParent(macros, curIndex, info.parents, workspace)) {
-          const parentList = info.parents.join(', ');
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.InvalidChildren,
-            `Invalid: {${macro.name}} can only be inside {${parentList}}`,
-          ));
-        }
-      }
-    } else {
-      // Check if it's a user-defined widget before flagging SP100
-      const widget = workspace.widgets.getWidget(macro.name);
-      if (!widget && macro.open) {
+    // Neither a macro nor a user-defined widget
+    if (!info && !workspace.widgets.getWidget(macro.name)) {
+      if (macro.open) {
         // SP100: unrecognized macro
         diagnostics.push(makeDiag(
           macro.range,
           DiagnosticCode.UndefinedMacro,
           `Unrecognized macro: {${macro.name}}`,
+        ));
+      }
+      continue;
+    }
+
+    if (workspace.isContainer(macro.name)) {
+      // SP101: unmatched container
+      if (macro.open && macro.pair === -1) {
+        diagnostics.push(makeDiag(
+          macro.range,
+          DiagnosticCode.MalformedContainer,
+          `Malformed container: no matching {/${macro.name}}`,
+        ));
+      } else if (!macro.open && macro.pair === -1) {
+        diagnostics.push(makeDiag(
+          macro.range,
+          DiagnosticCode.MalformedContainer,
+          `Malformed container: no matching {${macro.name}}`,
+        ));
+      }
+
+      // SP114/SP115: children constraints
+      if (info?.children && info.children.length > 0 && macro.open && macro.pair !== -1) {
+        validateChildren(macros, curIndex, macro, info.children, workspace, diagnostics);
+      }
+    } else if (!macro.open) {
+      // SP104: closing tag on non-container
+      diagnostics.push(makeDiag(
+        macro.range,
+        DiagnosticCode.IllegalClosingTag,
+        `Illegal closing tag: {${macro.name}} is not a container`,
+      ));
+    }
+
+    // SP107: parents constraint
+    if (info?.parents && info.parents.length > 0 && macro.open) {
+      if (!isInsideParent(macros, curIndex, info.parents, workspace)) {
+        const parentList = info.parents.join(', ');
+        diagnostics.push(makeDiag(
+          macro.range,
+          DiagnosticCode.InvalidChildren,
+          `Invalid: {${macro.name}} can only be inside {${parentList}}`,
         ));
       }
     }
