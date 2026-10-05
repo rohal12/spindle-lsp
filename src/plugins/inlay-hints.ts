@@ -48,10 +48,8 @@ function addWidgetParamHints(
   workspace: WorkspaceModel,
   hints: InlayHintItem[],
 ): void {
-  const allWidgets = workspace.widgets.getAllWidgets();
-  if (allWidgets.length === 0) return;
+  if (workspace.widgets.getAllWidgets().length === 0) return;
 
-  const widgetMap = new Map(allWidgets.map(w => [w.name, w]));
   const macros = parseMacros(text);
 
   for (const macro of macros) {
@@ -59,7 +57,7 @@ function addWidgetParamHints(
     // Check if macro is within the requested range
     if (macro.range.start.line < range.start.line || macro.range.start.line > range.end.line) continue;
 
-    const widget = widgetMap.get(macro.name);
+    const widget = workspace.widgets.getWidget(macro.name);
     if (!widget || widget.params.length === 0) continue;
 
     if (!macro.rawArgs || macro.rawArgs.trim() === '') continue;

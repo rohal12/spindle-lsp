@@ -36,6 +36,27 @@ describe('computeInlayHints', () => {
     expect(labels).toContain('@count:');
   });
 
+  it('provides parameter hints for invocations differing in case', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "Counter" @count}{@count}{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{counter 5}',
+      },
+    );
+    const fullRange = {
+      start: { line: 0, character: 0 },
+      end: { line: 10, character: 0 },
+    };
+    const hints = computeInlayHints('file:///test.tw', fullRange, ws);
+    expect(hints).toEqual([
+      { position: { line: 1, character: 9 }, label: '@count:', kind: 'parameter' },
+    ]);
+  });
+
   it('provides type hints for StoryVariables', () => {
     const ws = createWorkspace({
       name: 'test.tw',

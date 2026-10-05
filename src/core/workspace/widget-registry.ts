@@ -24,6 +24,7 @@ function parseParams(argString: string): string[] {
  * Scans passages tagged [widget] for {widget "name" @params} definitions.
  */
 export class WidgetRegistry {
+  /** Widgets keyed by lower-cased name; Spindle resolves widgets case-insensitively. */
   private widgets = new Map<string, WidgetDef>();
 
   /** Per-URI set of lower-cased macro names opened in that document. */
@@ -79,7 +80,7 @@ export class WidgetRegistry {
           end: toPosition(nameStart + widgetName.length),
         };
 
-        this.widgets.set(widgetName, {
+        this.widgets.set(widgetName.toLowerCase(), {
           name: widgetName,
           params: parseParams(match[3]),
           uri: passage.uri,
@@ -90,9 +91,9 @@ export class WidgetRegistry {
     }
   }
 
-  /** Get a widget definition by name. */
+  /** Get a widget definition by name (case-insensitive). */
   getWidget(name: string): WidgetDef | undefined {
-    return this.widgets.get(name);
+    return this.widgets.get(name.toLowerCase());
   }
 
   /** Get all registered widget definitions. */

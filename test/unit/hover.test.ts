@@ -77,6 +77,22 @@ describe('getHoverInfo', () => {
     expect(result!.contents).toContain('@name');
   });
 
+  it('resolves widget hover case-insensitively', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: Widgets [widget]\n{widget "Greeting" @name}Hello, {@name}!{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{greeting "World"}',
+      },
+    );
+    const result = getHoverInfo('file:///test.tw', { line: 1, character: 2 }, ws);
+    expect(result).not.toBeNull();
+    expect(result!.contents).toContain('**Widget** `Greeting`');
+  });
+
   it('shows the declared sigil of $ and _ widget params', () => {
     const ws = createWorkspace(
       {

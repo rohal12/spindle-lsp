@@ -255,8 +255,9 @@ export function findWidgetReferences(
     }
   }
 
-  // Scan all documents for {widgetName ...} invocations
+  // Scan all documents for {widgetName ...} invocations (case-insensitive, like Spindle)
   const widgetInvocationRegex = /\{([A-Za-z_$][\w$]*)\b/g;
+  const lowerName = widgetName.toLowerCase();
 
   for (const docUri of workspace.documents.getUris()) {
     const docText = workspace.documents.getText(docUri);
@@ -272,13 +273,13 @@ export function findWidgetReferences(
       widgetInvocationRegex.lastIndex = 0;
       let match: RegExpExecArray | null;
       while ((match = widgetInvocationRegex.exec(line)) !== null) {
-        if (match[1] === widgetName) {
+        if (match[1].toLowerCase() === lowerName) {
           const nameStart = match.index + 1; // skip '{'
           locations.push({
             uri: docUri,
             range: {
               start: { line: lineNum, character: nameStart },
-              end: { line: lineNum, character: nameStart + widgetName.length },
+              end: { line: lineNum, character: nameStart + match[1].length },
             },
           });
         }

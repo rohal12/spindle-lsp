@@ -139,6 +139,22 @@ describe('computeDiagnostics', () => {
     expect(sp301[0].range.start.line).toBe(4);
   });
 
+  it('resolves widget invocations case-insensitively', () => {
+    const widgetFile = ':: Widgets [widget]\n{widget "Hello" @name}Hello{/widget}';
+    const storyFile = ':: Start\n{hello "Sam"}\n{HELLO}';
+    const workspace = createWorkspaceFrom(
+      { name: 'widgets.tw', content: widgetFile },
+      { name: 'story.tw', content: storyFile },
+    );
+    const diags = computeDiagnostics('file:///story.tw', workspace);
+    expect(diags.filter(d => d.code === 'SP100')).toHaveLength(0);
+    const sp301 = diags.filter(d => d.code === 'SP301');
+    expect(sp301).toHaveLength(1);
+    expect(sp301[0].range.start.line).toBe(2);
+    const widgetDiags = computeDiagnostics('file:///widgets.tw', workspace);
+    expect(widgetDiags.filter(d => d.code === 'SP303')).toHaveLength(0);
+  });
+
   it('does not produce SP301 when widget arg count matches', () => {
     const widgetFile = `:: Widgets [widget]\n{widget "greet" @name}\nHello {@name}\n{/widget}`;
     const storyFile = `:: Start\n{greet "World"}`;

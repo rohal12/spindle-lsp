@@ -172,4 +172,12 @@ describe('WidgetRegistry', () => {
     });
   });
 
+  it('looks up widgets case-insensitively, keeping the original spelling', () => {
+    const registry = scanWidgets(':: W [widget]\n{widget "Hello" @name}Hi{/widget}\n');
+    for (const name of ['Hello', 'hello', 'HELLO']) {
+      expect(registry.getWidget(name)?.name).toBe('Hello');
+    }
+    expect(registry.getAllWidgets().map(w => w.name)).toEqual(['Hello']);
+  });
+
 });

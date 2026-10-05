@@ -115,6 +115,26 @@ describe('findWidgetReferences', () => {
     // 1 definition + 1 invocation
     expect(refs.length).toBe(2);
   });
+
+  it('matches invocations case-insensitively', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "Greeting" @name}Hello {@name}!{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{greeting "World"} {GREETING "Earth"}',
+      },
+    );
+    const refs = findWidgetReferences('Greeting', ws, false);
+    expect(refs.map(r => r.range)).toEqual([
+      { start: { line: 1, character: 1 }, end: { line: 1, character: 9 } },
+      { start: { line: 1, character: 20 }, end: { line: 1, character: 28 } },
+    ]);
+    // Starting from an invocation spelled differently from the definition
+    expect(findReferences('file:///test.tw', { line: 1, character: 3 }, ws, false)).toHaveLength(2);
+  });
 });
 
 describe('findReferences (top-level)', () => {

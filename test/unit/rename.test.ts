@@ -153,6 +153,26 @@ describe('computeRename', () => {
     expect(out['widgets.tw']).toBe(":: W [widget]\n{widget 'hello' @name}Hi{/widget}\n{widget farewell $who}Bye{/widget}");
     expect(out['test.tw']).toBe(':: Start\n{hello "Sam"} {farewell "Sam"}');
   });
+
+  it('renames widget invocations spelled with a different case', () => {
+    const files = {
+      'widgets.tw': ':: W [widget]\n{widget "Hello" @name}Hi{/widget}',
+      'test.tw': ':: Start\n{hello "Sam"} {HELLO "Al"}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+    const expected = {
+      'widgets.tw': ':: W [widget]\n{widget "Greet" @name}Hi{/widget}',
+      'test.tw': ':: Start\n{Greet "Sam"} {Greet "Al"}',
+    };
+
+    expect(prepareRename('file:///test.tw', { line: 1, character: 2 }, ws)!.placeholder).toBe('hello');
+    expect(applyRename(files, computeRename('file:///test.tw', { line: 1, character: 2 }, 'Greet', ws)))
+      .toEqual(expected);
+    expect(applyRename(files, computeRename('file:///widgets.tw', { line: 1, character: 10 }, 'Greet', ws)))
+      .toEqual(expected);
+  });
 });
 
 function applyRename(
