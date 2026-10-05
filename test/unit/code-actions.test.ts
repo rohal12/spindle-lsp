@@ -56,6 +56,16 @@ describe('computeCodeActions', () => {
     expect(action.edits[0].newText).toContain('$unknown = 0');
   });
 
+  it('offers no declaration for a $ followed by digits, such as a price (#62)', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$health = 100\n\n:: Start\nIt costs $5.',
+    });
+    const sp200 = computeDiagnostics('file:///test.tw', ws).filter(d => d.code === 'SP200');
+    expect(sp200.map(d => d.message)).toEqual(["Variable '$5' is not declared in StoryVariables"]);
+    expect(computeCodeActions('file:///test.tw', sp200, ws)).toEqual([]);
+  });
+
   it('produces quick fix for SP202 (no StoryVariables)', () => {
     const ws = createWorkspace({
       name: 'test.tw',
