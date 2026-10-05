@@ -255,12 +255,40 @@ describe('formatDocument', () => {
     expect(result).toContain('color: red;');
   });
 
+  it('formats code in passages with multiple tags (issue #35)', async () => {
+    for (const tags of ['[script extra]', '[extra script]']) {
+      const result = await formatDocument(`:: JS ${tags}\nconst x={a:1};\n`);
+      expect(result).toBe(`:: JS ${tags}\nconst x = { a: 1 };\n`);
+    }
+    for (const tags of ['[stylesheet extra]', '[extra stylesheet]']) {
+      const result = await formatDocument(`:: CSS ${tags}\n.foo{color:red}\n`);
+      expect(result).toContain('color: red;');
+    }
+  });
+
   // -- Inline <script> formatting ----------------------------------------
 
   it('formats JavaScript inside <script> tags', async () => {
     const input = ':: Start\n<script>\nconst   x=1\n</script>\n';
     const result = await formatDocument(input);
     expect(result).toContain('const x = 1;');
+  });
+
+  it('leaves prose after a same-line <script> element alone (issue #34)', async () => {
+    const input = ':: Start\n<script>console.log(1)</script>\nHello\nWorld\n';
+    expect(await formatDocument(input)).toBe(input);
+  });
+
+  it('formats a later <script> block after a same-line script (issue #34)', async () => {
+    const input = ':: Start\n<script>console.log(1)</script>\nHello\n<script>\nconst   x=1\n</script>\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n<script>console.log(1)</script>\nHello\n<script>\n  const x = 1;\n</script>\n');
+  });
+
+  it('indents macros after a same-line <script> element (issue #34)', async () => {
+    const input = ':: Start\n<script>console.log(1)</script>\n{if $x}\nHello\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n<script>console.log(1)</script>\n{if $x}\n  Hello\n{/if}\n');
   });
 
   // -- HTML block formatting ---------------------------------------------
@@ -418,6 +446,27 @@ describe('formatDocument', () => {
     expect(svgLine).toContain('viewBox="0 0 24 24"');
   });
 
+  // -- Literal placeholder restoration (issue #15) ---------------------------
+
+  it('restores tokens and SVG containing replacement patterns literally', async () => {
+    for (const seq of ['$&', "$'", '$`', '$$', '$1']) {
+      const input = [
+        ':: Start',
+        '<div>',
+        `{print "${seq}"}`,
+        `<span class="{print '${seq}'}">x</span>`,
+        `<svg><text>${seq}</text></svg>`,
+        '</div>',
+        '',
+      ].join('\n');
+      const result = await formatDocument(input);
+      expect(result).toContain(`{print "${seq}"}`);
+      expect(result).toContain(`class="{print '${seq}'}"`);
+      expect(result).toContain(`<svg><text>${seq}</text></svg>`);
+      expect(result).not.toMatch(/<!--S(P|VG):\d+-->|__SP\d+__/);
+    }
+  });
+
   // -- Expression interpolation in style attributes (issue #8) ----------------
 
   it('does not split style attributes with expression interpolations', async () => {
@@ -507,6 +556,64 @@ describe('formatDocument', () => {
     const first = await formatDocument(input);
     const second = await formatDocument(first);
     expect(second).toBe(first);
+  });
+
+  // -- Markdown whitespace semantics (issue #33) ---------------------------
+
+  it('keeps two-space hard line breaks before a following line', async () => {
+    const input = ':: Start\nline  \nnext   \nlast  \n\npara\n';
+    const result = await formatDocument(input);
+    // Normalized to exactly two spaces; dropped where no line follows
+    expect(result).toBe(':: Start\nline  \nnext  \nlast\n\npara\n');
+  });
+
+  it('keeps hard line breaks inside macro bodies', async () => {
+    const input = ':: Start\n{if $x}\nline  \nnext\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n{if $x}\n  line  \n  next\n{/if}\n');
+  });
+
+  it('keeps a hard line break when wrapping long lines', async () => {
+    const input = ':: Start\naaa bbb ccc ddd  \nnext\n';
+    const result = await formatDocument(input, { maxLineLength: 8 });
+    expect(result).toBe(':: Start\naaa bbb\nccc ddd  \nnext\n');
+  });
+
+  it('keeps nested list indentation in top-level prose', async () => {
+    const input = ':: Start\n- a\n  - b\n    - c\n- d\n\n  continued item\n';
+    expect(await formatDocument(input)).toBe(input);
+  });
+
+  it('keeps fenced code indentation in top-level prose', async () => {
+    const input = ':: Start\n```\nif (x) {\n    y();\n}\n```\n';
+    expect(await formatDocument(input)).toBe(input);
+  });
+
+  it('keeps relative list indentation inside macro bodies', async () => {
+    const input = ':: Start\n{if $x}\n- a\n  - b\n- c\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n{if $x}\n  - a\n    - b\n  - c\n{/if}\n');
+    expect(await formatDocument(result)).toBe(result);
+  });
+
+  it('re-bases over-indented list bodies without flattening them', async () => {
+    const input = ':: Start\n{if $x}\n      - a\n        - b\n{else}\n- c\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\n{if $x}\n  - a\n    - b\n{else}\n  - c\n{/if}\n');
+  });
+
+  it('nests macro bodies under an indented opening line', async () => {
+    const input = ':: Start\n- item\n\n  {if $x}\n  inner\n  {/if}\n';
+    const result = await formatDocument(input);
+    // The {if} line stays inside the list item; its body indents beneath it
+    expect(result).toBe(':: Start\n- item\n\n  {if $x}\n    inner\n  {/if}\n');
+    expect(await formatDocument(result)).toBe(result);
+  });
+
+  it('still normalizes indentation of macro bodies without lists or fences', async () => {
+    const input = ':: Start\n    Intro\n{if $x}\n      {set $y = 1}\n   Text\n{/if}\n';
+    const result = await formatDocument(input);
+    expect(result).toBe(':: Start\nIntro\n{if $x}\n  {set $y = 1}\n  Text\n{/if}\n');
   });
 
   // -- Idempotency -------------------------------------------------------
