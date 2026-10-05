@@ -966,18 +966,21 @@ function validateUnusedWidgets(
 
 function validateLineLength(
   text: string,
-  passages: Array<{ name: string; range: import('../core/types.js').Range; tags?: string[] }>,
+  passages: Passage[],
   maxLength: number,
   diagnostics: Diagnostic[],
 ): void {
   // Skip script/stylesheet passages — those have their own formatting rules
-  const excludedTags = new Set(['script', 'stylesheet']);
-  const excludedPassages = new Set(passages
-    .filter(p => p.tags?.some(t => excludedTags.has(t)))
-    .map(p => p.name));
+  const excludedLines = new Set<number>();
+  for (const passage of passages.filter(isScriptOrStylesheetPassage)) {
+    for (let i = passage.range.start.line; i <= passage.range.end.line; i++) {
+      excludedLines.add(i);
+    }
+  }
 
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
+    if (excludedLines.has(i)) continue;
     const line = lines[i];
     // Skip passage headers
     if (/^::\s+/.test(line)) continue;

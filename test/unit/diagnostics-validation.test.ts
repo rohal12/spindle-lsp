@@ -129,3 +129,19 @@ describe('script and stylesheet passages', () => {
     expect(diags.filter(d => d.code === 'SP300')).toHaveLength(1);
   });
 });
+
+describe('SP500: line length', () => {
+  it('skips script and stylesheet passage bodies', () => {
+    const text = [
+      ':: Script [script]',
+      'const someLongVariable = 1234567890;',
+      ':: Styles [stylesheet]',
+      'body { color: red; background: blue; }',
+      ':: Start',
+      'This prose line is far too long.',
+    ].join('\n');
+    const sp500 = codes(text, 'SP500', { maxLineLength: 10 });
+    expect(sp500).toHaveLength(1);
+    expect(sp500[0].range.start.line).toBe(5);
+  });
+});
