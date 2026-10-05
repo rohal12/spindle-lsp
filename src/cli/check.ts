@@ -6,7 +6,8 @@ import { glob } from 'glob';
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
 import type { DiagnosticOptions } from '../plugins/diagnostics.js';
-import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
+import { loadConfigFromDisk, loadConfigFile, findConfigFile } from '../core/workspace/config-loader.js';
+import type { SpindleProjectConfig } from '../core/workspace/config-loader.js';
 import type { Diagnostic } from '../core/types.js';
 import { formatPretty } from './reporters/pretty.js';
 import { formatJson } from './reporters/json.js';
@@ -118,6 +119,18 @@ export async function runCheck(args: string[]): Promise<number> {
   // Determine workspace root (cwd)
   const cwd = process.cwd();
 
+  // An explicit --config path is loaded exactly as given. Fail early (before
+  // globbing) if it cannot be read or parsed.
+  let explicitConfig: SpindleProjectConfig | null = null;
+  if (options.configPath) {
+    try {
+      explicitConfig = loadConfigFile(resolve(cwd, options.configPath));
+    } catch (err: unknown) {
+      console.error(`spindle-lsp check: ${err instanceof Error ? err.message : String(err)}`);
+      return 2;
+    }
+  }
+
   // Resolve files via glob
   const files: string[] = [];
   for (const pattern of options.patterns) {
@@ -143,15 +156,16 @@ export async function runCheck(args: string[]): Promise<number> {
     return 0;
   }
 
-  // Load project config — search from the common ancestor of matched files,
-  // walking up to find the config file (covers running from a different cwd)
-  let configRoot: string;
-  if (options.configPath) {
-    configRoot = resolve(cwd, options.configPath, '..');
+  // Load project config — unless given explicitly, search from the common
+  // ancestor of matched files, walking up to find the config file (covers
+  // running from a different cwd)
+  let projectConfig: SpindleProjectConfig;
+  if (explicitConfig) {
+    projectConfig = explicitConfig;
   } else {
     // Find the common directory of all matched files
     const dirs = uniqueFiles.map(f => resolve(f, '..'));
-    configRoot = dirs.reduce((a, b) => {
+    let configRoot = dirs.reduce((a, b) => {
       while (!b.startsWith(a)) a = resolve(a, '..');
       return a;
     });
@@ -163,8 +177,8 @@ export async function runCheck(args: string[]): Promise<number> {
       if (parent === search) break;
       search = parent;
     }
+    projectConfig = loadConfigFromDisk(configRoot);
   }
-  const projectConfig = loadConfigFromDisk(configRoot);
 
   // Create workspace and load files
   const workspace = new WorkspaceModel();
@@ -182,7 +196,7 @@ export async function runCheck(args: string[]): Promise<number> {
 
   // Load user macros from config
   if (Object.keys(projectConfig.macros).length > 0) {
-    workspace.macros.loadSupplements(projectConfig.macros);
+    workspace.macros.loadConfig(projectConfig.macros);
   }
 
   // Compute diagnostics for each file

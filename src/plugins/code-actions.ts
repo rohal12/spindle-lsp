@@ -1,7 +1,12 @@
-import type { Diagnostic, Range } from '../core/types.js';
+import { readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseDocument, isMap, isScalar, stringify as stringifyYaml } from 'yaml';
+import type { Diagnostic, Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode } from '../core/diagnostic-codes.js';
+import { findConfigFile } from '../core/workspace/config-loader.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,7 +16,14 @@ export interface CodeAction {
   title: string;
   kind: string;
   diagnosticCodes: string[];
+  /** URI of a file that must be created (empty) before applying `edits`. */
+  createFile?: string;
   edits: Array<{ uri: string; range: Range; newText: string }>;
+}
+
+export interface CodeActionOptions {
+  /** Workspace root (filesystem path or file:// URI) used to locate the project config. */
+  workspaceRoot?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -22,7 +34,7 @@ export interface CodeAction {
  * Compute quick-fix code actions for the given diagnostics.
  *
  * Supported fixes:
- *  - SP100 (undefined macro) -> "Add 'macroName' to spindle.config.yaml"
+ *  - SP100 (undefined macro) -> "Add 'macroName' to <project config>"
  *  - SP200 (undeclared variable) -> "Declare '$varName' in StoryVariables"
  *  - SP202 (no StoryVariables) -> "Create StoryVariables passage"
  *  - SP203 (undeclared transient) -> "Declare '%varName' in StoryTransients"
@@ -32,13 +44,14 @@ export function computeCodeActions(
   uri: string,
   diagnostics: Diagnostic[],
   workspace: WorkspaceModel,
+  options: CodeActionOptions = {},
 ): CodeAction[] {
   const actions: CodeAction[] = [];
 
   for (const diag of diagnostics) {
     switch (diag.code) {
       case DiagnosticCode.UndefinedMacro: {
-        const action = fixUndefinedMacro(diag);
+        const action = fixUndefinedMacro(uri, diag, workspace, options);
         if (action) actions.push(action);
         break;
       }
@@ -70,32 +83,213 @@ export function computeCodeActions(
 }
 
 // ---------------------------------------------------------------------------
-// Quick fix: SP100 — Add macro to spindle.config.yaml
+// Quick fix: SP100 — Add macro to the project config
 // ---------------------------------------------------------------------------
 
-function fixUndefinedMacro(diag: Diagnostic): CodeAction | null {
+const DEFAULT_CONFIG_FILENAME = 'spindle.config.yaml';
+
+/** Metadata written for a newly configured macro. */
+const NEW_MACRO_ENTRY = { description: '' };
+
+type TextEdit = { range: Range; newText: string };
+
+function fixUndefinedMacro(
+  uri: string,
+  diag: Diagnostic,
+  workspace: WorkspaceModel,
+  options: CodeActionOptions,
+): CodeAction | null {
   // Extract macro name from message: "Unrecognized macro: {macroName}"
   const match = diag.message.match(/\{(\w[\w-]*)\}/);
   if (!match) return null;
 
   const macroName = match[1];
-  const configUri = 'file:///spindle.config.yaml';
+  const root = resolveConfigRoot(uri, options.workspaceRoot);
+  if (!root) return null;
 
-  // Generate YAML snippet to append
-  const yamlSnippet = `\n  ${macroName}:\n    description: ""\n`;
-
-  return {
-    title: `Add '${macroName}' to spindle.config.yaml`,
+  const existingPath = findConfigFile(root);
+  const configPath = existingPath ?? join(root, DEFAULT_CONFIG_FILENAME);
+  const configUri = pathToFileURL(configPath).toString();
+  const action = {
+    title: `Add '${macroName}' to ${basename(configPath)}`,
     kind: 'quickfix',
     diagnosticCodes: [DiagnosticCode.UndefinedMacro],
-    edits: [{
-      uri: configUri,
-      range: {
-        start: { line: Number.MAX_SAFE_INTEGER, character: 0 },
-        end: { line: Number.MAX_SAFE_INTEGER, character: 0 },
-      },
-      newText: yamlSnippet,
-    }],
+  };
+
+  if (!existingPath) {
+    const start: Position = { line: 0, character: 0 };
+    return {
+      ...action,
+      createFile: configUri,
+      edits: [{
+        uri: configUri,
+        range: { start, end: start },
+        newText: stringifyYaml({ macros: { [macroName]: NEW_MACRO_ENTRY } }),
+      }],
+    };
+  }
+
+  // Prefer the live editor contents when the config is open
+  let text = workspace.documents.getText(configUri);
+  if (text === undefined) {
+    try {
+      text = readFileSync(existingPath, 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  const edit = configPath.toLowerCase().endsWith('.json')
+    ? addMacroToJsonConfig(text, macroName)
+    : addMacroToYamlConfig(text, macroName);
+  if (!edit) return null;
+
+  return { ...action, edits: [{ uri: configUri, ...edit }] };
+}
+
+/**
+ * Determine the directory whose config the quick fix should target.
+ * Uses the workspace root when known; otherwise walks up from the document's
+ * directory to the nearest existing config (falling back to the document's
+ * directory), mirroring the CLI's search.
+ */
+function resolveConfigRoot(uri: string, workspaceRoot: string | undefined): string | null {
+  if (workspaceRoot) {
+    return workspaceRoot.startsWith('file:') ? fileURLToPath(workspaceRoot) : workspaceRoot;
+  }
+  if (!uri.startsWith('file:')) return null;
+
+  const docDir = dirname(fileURLToPath(uri));
+  let search = docDir;
+  for (let i = 0; i < 10; i++) {
+    if (findConfigFile(search)) return search;
+    const parent = dirname(search);
+    if (parent === search) break;
+    search = parent;
+  }
+  return docDir;
+}
+
+/** Key path of the `macros` mapping, honouring the legacy `spindle-0` wrapper (see config-loader). */
+function macrosPath(root: unknown): string[] {
+  const legacy = (root as Record<string, unknown> | null)?.['spindle-0'];
+  return legacy !== null && typeof legacy === 'object' ? ['spindle-0', 'macros'] : ['macros'];
+}
+
+function definesMacro(macros: unknown, macroName: string): boolean {
+  if (macros === null || typeof macros !== 'object') return false;
+  const lower = macroName.toLowerCase();
+  return Object.keys(macros).some(k => k.toLowerCase() === lower);
+}
+
+/**
+ * Build an edit adding `macroName` under the `macros` mapping of a YAML config.
+ * When `macros` is a non-empty block mapping, the entry is inserted right after
+ * its last item, matching its indentation and leaving the rest of the file
+ * untouched. Otherwise the document is updated through the YAML library and
+ * only the changed span is replaced. Returns null when the config is not valid
+ * YAML, is not a mapping, or already defines the macro.
+ */
+function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null {
+  const doc = parseDocument(text);
+  if (doc.errors.length > 0) return null;
+  if (doc.contents !== null && !isMap(doc.contents)) return null;
+
+  const path = macrosPath(doc.toJS());
+  const parent = path.length > 1 ? doc.getIn(path.slice(0, -1), true) : doc.contents;
+  const macros = doc.getIn(path, true);
+  if (isMap(macros) && definesMacro(macros.toJS(doc), macroName)) return null;
+
+  if (isMap(parent) && isMap(macros) && !macros.flow && macros.items.length > 0 && macros.range) {
+    const macrosKey = parent.items.find(p => isScalar(p.key) && p.key.value === 'macros')?.key;
+    const firstKey = macros.items[0].key;
+    if (isScalar(macrosKey) && macrosKey.range && isScalar(firstKey) && firstKey.range) {
+      const indent = columnOf(text, firstKey.range[0]);
+      const step = Math.max(indent - columnOf(text, macrosKey.range[0]), 1);
+      const entry = stringifyYaml({ [macroName]: NEW_MACRO_ENTRY }, { indent: step })
+        .replace(/^(?=.)/gm, ' '.repeat(indent));
+
+      // Insert at the start of the line following the end of the last item
+      let offset = macros.range[1];
+      if (offset > 0 && text[offset - 1] !== '\n') {
+        const nl = text.indexOf('\n', offset);
+        offset = nl === -1 ? text.length : nl + 1;
+      }
+      const lead = offset === text.length && text.length > 0 && !text.endsWith('\n') ? '\n' : '';
+      const pos = offsetToPosition(text, offset);
+      return { range: { start: pos, end: pos }, newText: lead + entry };
+    }
+  }
+
+  if (isMap(macros)) {
+    macros.set(macroName, doc.createNode(NEW_MACRO_ENTRY));
+  } else {
+    doc.setIn(path, doc.createNode({ [macroName]: NEW_MACRO_ENTRY }));
+  }
+  return minimalEdit(text, doc.toString({ lineWidth: 0 }));
+}
+
+/**
+ * Build an edit adding `macroName` under the `macros` object of a JSON config,
+ * keeping the file's indentation. Returns null when the config is not a valid
+ * JSON object or already defines the macro.
+ */
+function addMacroToJsonConfig(text: string, macroName: string): TextEdit | null {
+  let raw: unknown;
+  try {
+    raw = text.trim() ? JSON.parse(text) : {};
+  } catch {
+    return null;
+  }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+  const path = macrosPath(raw);
+  const container = path.length > 1
+    ? (raw as Record<string, Record<string, unknown>>)[path[0]]
+    : raw as Record<string, unknown>;
+  const macros = container.macros;
+  if (definesMacro(macros, macroName)) return null;
+
+  if (macros !== null && typeof macros === 'object' && !Array.isArray(macros)) {
+    (macros as Record<string, unknown>)[macroName] = NEW_MACRO_ENTRY;
+  } else {
+    container.macros = { [macroName]: NEW_MACRO_ENTRY };
+  }
+
+  const indent = text.match(/^[ \t]+(?=")/m)?.[0] ?? '  ';
+  const newline = text.endsWith('\n') || !text.trim() ? '\n' : '';
+  return minimalEdit(text, JSON.stringify(raw, null, indent) + newline);
+}
+
+/** Zero-based column of `offset` within its line. */
+function columnOf(text: string, offset: number): number {
+  return offset - (text.lastIndexOf('\n', offset - 1) + 1);
+}
+
+function offsetToPosition(text: string, offset: number): Position {
+  const before = text.slice(0, offset);
+  const lineStart = before.lastIndexOf('\n') + 1;
+  return { line: before.split('\n').length - 1, character: offset - lineStart };
+}
+
+/** A single edit turning `oldText` into `newText` that spans only the differing region. */
+function minimalEdit(oldText: string, newText: string): TextEdit {
+  const max = Math.min(oldText.length, newText.length);
+  let prefix = 0;
+  while (prefix < max && oldText[prefix] === newText[prefix]) prefix++;
+
+  let suffix = 0;
+  while (
+    suffix < max - prefix
+    && oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+  ) suffix++;
+
+  return {
+    range: {
+      start: offsetToPosition(oldText, prefix),
+      end: offsetToPosition(oldText, oldText.length - suffix),
+    },
+    newText: newText.slice(prefix, newText.length - suffix),
   };
 }
 
@@ -288,6 +482,7 @@ export const codeActionsPlugin: SpindlePlugin = {
         params.textDocument.uri,
         diagnostics,
         ctx.workspace,
+        { workspaceRoot: ctx.config.workspaceRoot },
       );
 
       return actions.map(a => ({
@@ -296,14 +491,25 @@ export const codeActionsPlugin: SpindlePlugin = {
         diagnostics: params.context.diagnostics.filter(d =>
           a.diagnosticCodes.includes(String(d.code)),
         ),
-        edit: {
-          changes: Object.fromEntries(
-            a.edits.map(e => [
-              e.uri,
-              [{ range: toLspRange(e.range), newText: e.newText }],
-            ]),
-          ),
-        },
+        edit: a.createFile
+          ? {
+            // Resource operations are only expressible via documentChanges
+            documentChanges: [
+              { kind: 'create' as const, uri: a.createFile, options: { ignoreIfExists: true } },
+              ...a.edits.map(e => ({
+                textDocument: { uri: e.uri, version: null },
+                edits: [{ range: toLspRange(e.range), newText: e.newText }],
+              })),
+            ],
+          }
+          : {
+            changes: Object.fromEntries(
+              a.edits.map(e => [
+                e.uri,
+                [{ range: toLspRange(e.range), newText: e.newText }],
+              ]),
+            ),
+          },
       }));
     });
   },

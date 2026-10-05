@@ -152,6 +152,20 @@ describe('MacroRegistry', () => {
     expect(registry.getMacro('set')!.source).toBe('builtin');
   });
 
+  it('reloading config keeps discovered macros and drops removed config overrides', () => {
+    const registry = new MacroRegistry();
+    registry.loadBuiltins();
+    registry.setDiscoveredMacros([{ name: 'hello', block: true, description: 'Discovered' }]);
+    registry.loadConfig({ hello: { container: false, description: 'Configured' } });
+    expect(registry.isBlock('hello')).toBe(false);
+    expect(registry.getMacro('hello')!.description).toBe('Configured');
+
+    // Removing the override falls back to the discovered definition
+    registry.loadConfig({});
+    expect(registry.isBlock('hello')).toBe(true);
+    expect(registry.getMacro('hello')!.description).toBe('Discovered');
+  });
+
   it('supplement skipArgs is preserved', () => {
     const registry = new MacroRegistry();
     registry.loadBuiltins();

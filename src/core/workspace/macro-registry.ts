@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, parse as parsePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MacroInfo, ChildConstraint } from '../types.js';
+import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 
 /**
  * Supplement entry as found in macro-supplements.json or user config.
@@ -30,10 +31,19 @@ interface BuiltinMacroEntry {
 }
 
 /**
- * Registry of all known macros, merging data from three tiers:
+ * Registry of all known macros, merging data from four tiers
+ * (later tiers win for the fields they set):
  * 1. Builtins — from @rohal12/spindle/tooling getMacroRegistry()
  * 2. Supplements — macro-supplements.json (descriptions, parameters, children)
- * 3. User config — workspace-level overrides
+ * 3. Discovered — Story.defineMacro() calls found in the workspace
+ *    (see setDiscoveredMacros). At runtime these replace a built-in of the
+ *    same name, so they win over tiers 1–2.
+ * 4. User config — workspace-level overrides (loadConfig); explicit
+ *    configuration always wins over discovered metadata.
+ *
+ * Discovered macros are kept in a separate layer and composed on lookup,
+ * so they can be replaced wholesale whenever the workspace changes without
+ * disturbing the other tiers.
  *
  * All lookups are case-insensitive.
  */
@@ -42,6 +52,12 @@ export class MacroRegistry {
 
   /** Entries as they were before the current user config was applied (undefined = absent). */
   private configSnapshot = new Map<string, MacroInfo | undefined>();
+
+  /** Tier 3: macros discovered from Story.defineMacro() calls, keyed by lowercase name. */
+  private discovered = new Map<string, Partial<MacroInfo> & { name: string }>();
+
+  /** Tier 4: user config entries, kept so they can be re-applied over discovered macros. */
+  private configEntries = new Map<string, SupplementEntry>();
 
   /**
    * Load built-in macro metadata from @rohal12/spindle's macro-registry.json.
@@ -124,6 +140,7 @@ export class MacroRegistry {
       }
     }
     this.configSnapshot.clear();
+    this.configEntries.clear();
 
     for (const rawKey of Object.keys(config)) {
       const key = rawKey.toLowerCase();
@@ -131,8 +148,48 @@ export class MacroRegistry {
         const existing = this.macros.get(key);
         this.configSnapshot.set(key, existing ? { ...existing } : undefined);
       }
+      this.configEntries.set(key, { ...this.configEntries.get(key), ...config[rawKey] });
     }
     this.mergeEntries(config);
+  }
+
+  /**
+   * Replace the set of macros discovered from Story.defineMacro() calls.
+   * Previously discovered definitions that are no longer present are dropped,
+   * restoring whatever the other tiers define for that name.
+   *
+   * Mirrors Story.defineMacro(): a macro is a block when `block: true`, or
+   * when it declares sub-macros and does not set `block: false`. Each
+   * sub-macro becomes a known macro that may only appear inside its parent.
+   */
+  setDiscoveredMacros(macros: DiscoveredMacro[]): void {
+    this.discovered.clear();
+
+    for (const m of macros) {
+      const subMacros = m.subMacros ?? [];
+      this.discovered.set(m.name.toLowerCase(), {
+        name: m.name,
+        block: m.block === true || (m.block !== false && subMacros.length > 0),
+        subMacros,
+        storeVar: m.storeVar,
+        interpolate: m.interpolate,
+        merged: m.merged,
+        description: m.description,
+        source: 'user',
+      });
+    }
+
+    for (const m of macros) {
+      for (const sub of m.subMacros ?? []) {
+        const key = sub.toLowerCase();
+        const existing = this.discovered.get(key);
+        if (existing) {
+          existing.parents = [...(existing.parents ?? []), m.name];
+        } else {
+          this.discovered.set(key, { name: sub, block: false, subMacros: [], source: 'user', parents: [m.name] });
+        }
+      }
+    }
   }
 
   /** Add or replace a single macro entry. */
@@ -157,23 +214,63 @@ export class MacroRegistry {
 
   /** Get a macro by name (case-insensitive). */
   getMacro(name: string): MacroInfo | undefined {
-    return this.macros.get(name.toLowerCase());
+    return this.resolve(name.toLowerCase());
   }
 
   /** Check if a macro is a block (container) macro. */
   isBlock(name: string): boolean {
-    return this.macros.get(name.toLowerCase())?.block ?? false;
+    return this.getMacro(name)?.block ?? false;
   }
 
   /** Check if a macro is a sub-macro (has parents). */
   isSubMacro(name: string): boolean {
-    const info = this.macros.get(name.toLowerCase());
+    const info = this.getMacro(name);
     return (info?.parents != null && info.parents.length > 0);
   }
 
   /** Get all registered macros. */
   getAllMacros(): MacroInfo[] {
-    return Array.from(this.macros.values());
+    const keys = new Set([...this.macros.keys(), ...this.discovered.keys()]);
+    return Array.from(keys, key => this.resolve(key)!);
+  }
+
+  /**
+   * Compose the effective entry for a lowercase key: builtins/supplements/
+   * config (stored in `macros`), overlaid by discovered metadata, with user
+   * config re-applied on top so it keeps precedence.
+   */
+  private resolve(key: string): MacroInfo | undefined {
+    const base = this.macros.get(key);
+    const found = this.discovered.get(key);
+    if (!found) return base;
+
+    const info: MacroInfo = {
+      ...base,
+      name: base?.name ?? found.name,
+      block: found.block ?? base?.block ?? false,
+      subMacros: found.subMacros?.length ? found.subMacros : base?.subMacros ?? [],
+      source: 'user',
+      storeVar: found.storeVar ?? base?.storeVar,
+      interpolate: found.interpolate ?? base?.interpolate,
+      merged: found.merged ?? base?.merged,
+      description: found.description ?? base?.description,
+      // A discovered sub-macro may also belong to other (e.g. built-in) parents
+      parents: found.parents
+        ? [...new Set([...(base?.parents ?? []), ...found.parents])]
+        : base?.parents,
+    };
+
+    const config = this.configEntries.get(key);
+    if (config) {
+      if (config.description !== undefined) info.description = config.description;
+      if (config.parameters !== undefined) info.parameters = config.parameters;
+      if (config.children !== undefined) info.children = config.children;
+      if (config.parents !== undefined) info.parents = config.parents;
+      if (config.skipArgs !== undefined) info.skipArgs = config.skipArgs;
+      if (config.container !== undefined) info.block = config.container;
+    }
+
+    return info;
   }
 
   /**
