@@ -40,6 +40,9 @@ interface BuiltinMacroEntry {
 export class MacroRegistry {
   private macros = new Map<string, MacroInfo>();
 
+  /** Entries as they were before the current user config was applied (undefined = absent). */
+  private configSnapshot = new Map<string, MacroInfo | undefined>();
+
   /**
    * Load built-in macro metadata from @rohal12/spindle's macro-registry.json.
    * This is the base layer that provides name, block, subMacros, flags, source.
@@ -107,8 +110,28 @@ export class MacroRegistry {
   /**
    * Overlay user config onto the registry.
    * Same format as supplements; applied last so it wins.
+   *
+   * Replaces any previously loaded config: entries from the last call are
+   * reverted first, so macros removed from the config disappear (or fall
+   * back to their builtin/supplement definition).
    */
   loadConfig(config: Record<string, SupplementEntry>): void {
+    for (const [key, previous] of this.configSnapshot) {
+      if (previous) {
+        this.macros.set(key, previous);
+      } else {
+        this.macros.delete(key);
+      }
+    }
+    this.configSnapshot.clear();
+
+    for (const rawKey of Object.keys(config)) {
+      const key = rawKey.toLowerCase();
+      if (!this.configSnapshot.has(key)) {
+        const existing = this.macros.get(key);
+        this.configSnapshot.set(key, existing ? { ...existing } : undefined);
+      }
+    }
     this.mergeEntries(config);
   }
 
