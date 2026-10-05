@@ -247,3 +247,64 @@ describe('S80: variable identifiers do not overlap keyword semantic tokens (#80)
     expect(spans(text, 'keyword')).toEqual([[2, 2, 4]]);
   });
 });
+
+describe('S80 gaps: expression contexts for keywords', () => {
+  const uri = 'file:///story.tw';
+  const tokensOf = (text: string) => computeSemanticTokensAbsolute(uri, createWorkspace({ name: 'story.tw', content: text }));
+  const spans = (text: string, type: string) =>
+    tokensOf(text).filter(t => t.tokenType === typeIdx(type)).map(t => [t.line, t.startChar, t.startChar + t.length]);
+  function expectNoOverlap(text: string) {
+    const tokens = tokensOf(text);
+    for (let i = 1; i < tokens.length; i++) {
+      if (tokens[i].line === tokens[i - 1].line) {
+        expect(tokens[i].startChar).toBeGreaterThanOrEqual(tokens[i - 1].startChar + tokens[i - 1].length);
+      }
+    }
+  }
+
+  it('S80-decl-control: StoryVariables is plain JavaScript in Spindle 0.45.1 (story-variables.ts uses new Function), not a keyword context', () => {
+    const text = ':: StoryVariables\n$a = 1\n$b = "x is y"\n$c = [1, 2]\n:: Start\nx';
+    expectNoOverlap(text);
+    expect(spans(text, 'keyword')).toEqual([]);
+    // the same words in StoryInit are not keywords either (outside macros)
+    expect(spans(':: StoryInit\n$a is 1 and $b', 'keyword')).toEqual([]);
+  });
+
+  it('S80-template: keywords in ${} interpolations are tokenized, template text is not', () => {
+    const text = ':: Start\n{print `this is ${$a is 1 and not $b} or to ${"is"}`}';
+    expectNoOverlap(text);
+    // `this is`/`or to` are literal text; `"is"` is a nested string
+    const line = text.split('\n')[1];
+    expect(spans(text, 'keyword').map(([, s, e]) => line.slice(s, e))).toEqual(['is', 'and', 'not']);
+    expect(spans(text, 'keyword').map(([, s]) => s)).toEqual([21, 26, 30]);
+  });
+
+  it('S80-template-nested: nested templates, braces and strings inside an interpolation', () => {
+    const text = ':: Start\n{set $x to `a ${ {k: "or"}.k is `b ${$y and 1} not` } is`}';
+    expectNoOverlap(text);
+    const line = text.split('\n')[1];
+    const words = spans(text, 'keyword').map(([, s, e]) => line.slice(s, e));
+    expect(words).toEqual(['to', 'is', 'and']);
+  });
+
+  it('S80-template-controls: escaped ${ and unterminated templates stay text', () => {
+    expect(spans(':: Start\n{print `a \\${ is } b`}', 'keyword')).toEqual([]);
+    expect(spans(':: Start\n{print `no is or not here`}', 'keyword')).toEqual([]);
+    expect(spans(':: Start\n{print `a ${$x is 1}`}', 'keyword')).toEqual([[1, 15, 17]]);
+    expect(spans(':: Start\n{print `a ${$x is 1} is`}', 'keyword')).toEqual([[1, 15, 17]]);
+    // prose around the macro is untouched
+    expect(spans(':: Start\nis {print `${1}`} and', 'keyword')).toEqual([]);
+  });
+
+  it('S80-template-crlf-utf16: multiline CRLF interpolation and astral characters keep UTF-16 columns', () => {
+    const text = ':: Start\r\n{print `\u{1F600} ${$a\r\n  is 1} \u{1F600} and`}\r\nis';
+    expectNoOverlap(text);
+    expect(spans(text, 'keyword')).toEqual([[2, 2, 4]]);
+    const astral = ':: Start\r\n{set $s to `\u{1F600}${$a is 1}` and \u{1F600}}';
+    const line = astral.split('\r\n')[1];
+    const kw = spans(astral, 'keyword');
+    expect(kw.map(([, s, e]) => line.slice(s, e))).toEqual(['to', 'is', 'and']);
+    // every range lies within its line
+    for (const [l, s, e] of kw) expect(e).toBeLessThanOrEqual(astral.split('\r\n')[l].length);
+  });
+});

@@ -23,5 +23,11 @@ Integration note: Q68-other-doc was adjusted after merge because #78 reports
 SP202 once, on the owning story document; the test now locates that document.
 
 Known gaps: Spindle `>=0.34.0` peer range unverified; #74 stray `{/w}` closers
-still count as widget references; #80 no longer tokenizes keywords outside
-macro arguments; #78 SP202 owner vs. quickfix target (`getUris()[0]`) may differ.
+still count as widget references; #80 keywords are tokenized only in macro
+arguments (incl. `${}` interpolations; string/template text excluded) -- Spindle 0.45.1 has no
+keyword sugar at all (`expression.ts` only rewrites sigils; `StoryVariables` is plain
+`new Function`), so no other context is an expression for them (controls in `S80-decl-control`); #78 SP202 owner vs. quickfix target (`getUris()[0]`) may differ.
+
+Follow-up (gap J): `${}` interpolation keywords restored (`S80-template*`), CRLF template-target
+cases added (`R67-template-crlf*`, `X70-template-crlf*`), and a pre-existing UTF-16 offset bug
+(code-point splitting in the keyword mask) fixed.

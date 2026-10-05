@@ -50,34 +50,87 @@ export interface AbsoluteToken {
   tokenModifiers: number;
 }
 
-/** Replace the characters of every string/template literal in `code` with spaces. */
+/**
+ * Replace the characters of every string literal in `code` with spaces
+ * (newlines kept). Template literals are blanked too, except the code of their
+ * `${...}` interpolations, which Spindle evaluates (expression.ts transform()
+ * recurses into them); strings nested there are blanked in turn.
+ */
 function blankStringLiterals(code: string): string {
-  let out = '';
-  for (let i = 0; i < code.length; i++) {
+  const out = code.split('');
+  const n = code.length;
+  const blank = (from: number, to: number) => {
+    for (let k = from; k < Math.min(to, n); k++) if (out[k] !== '\n') out[k] = ' ';
+  };
+
+  // Blank a quoted string starting at `i`; returns the index after it
+  const skipString = (i: number): number => {
     const quote = code[i];
-    if (quote !== '"' && quote !== "'" && quote !== '`') {
-      out += quote;
-      continue;
-    }
     let end = i + 1;
-    while (end < code.length && code[end] !== quote) end += code[end] === '\\' ? 2 : 1;
+    while (end < n && code[end] !== quote) end += code[end] === '\\' ? 2 : 1;
     // An unterminated literal runs to the end of the arguments
-    const stop = Math.min(end, code.length - 1);
-    out += code.slice(i, stop + 1).replace(/[^\n]/g, ' ');
-    i = stop;
-  }
-  return out;
+    const stop = Math.min(end, n - 1);
+    blank(i, stop + 1);
+    return stop + 1;
+  };
+
+  // Scan code from `i`; inside an interpolation stop at its closing brace
+  const scanCode = (start: number, inInterpolation: boolean): number => {
+    let i = start;
+    let depth = 0;
+    while (i < n) {
+      const ch = code[i];
+      if (ch === '"' || ch === "'") i = skipString(i);
+      else if (ch === '`') i = scanTemplate(i);
+      else {
+        if (inInterpolation) {
+          if (ch === '{') depth++;
+          else if (ch === '}' && depth-- === 0) return i;
+        }
+        i++;
+      }
+    }
+    return i;
+  };
+
+  const scanTemplate = (start: number): number => {
+    blank(start, start + 1);
+    let i = start + 1;
+    while (i < n) {
+      const ch = code[i];
+      if (ch === '\\') {
+        blank(i, i + 2);
+        i += 2;
+      } else if (ch === '$' && code[i + 1] === '{') {
+        blank(i, i + 2);
+        i = scanCode(i + 2, true);
+        if (i < n) blank(i, ++i); // the interpolation's closing brace
+      } else if (ch === '`') {
+        blank(i, i + 1);
+        return i + 1;
+      } else {
+        blank(i, i + 1);
+        i++;
+      }
+    }
+    return i;
+  };
+
+  scanCode(0, false);
+  return out.join('');
 }
 
 /**
  * The text with everything but sugar-keyword candidates replaced by spaces
  * (newlines kept): the arguments of macros, minus string literals. Prose,
  * macro names, passage content outside macros and strings are not code.
+ * (Spindle 0.45.1 has no keyword sugar at runtime; this marks where an
+ * expression is evaluated, which is the only place such words could be code.)
  */
 function keywordCandidateLines(text: string, macros: ReturnType<typeof parseMacros>): string[] {
   const lineStarts = buildLineStarts(text);
   const offset = (p: { line: number; character: number }) => lineStarts[p.line] + p.character;
-  const mask: string[] = Array.from(text, ch => (ch === '\n' ? '\n' : ' '));
+  const mask: string[] = text.split('').map(ch => (ch === '\n' ? '\n' : ' '));
   for (const macro of macros) {
     if (!macro.open || !macro.rawArgs) continue;
     const end = offset(macro.range.end) - 1; // the closing brace
@@ -98,7 +151,8 @@ function keywordCandidateLines(text: string, macros: ReturnType<typeof parseMacr
  *  - Local variables (@var) -> 'variable' + 'readonly'
  *  - Transient variables (%var) -> 'variable' + 'defaultLibrary'
  *  - Sugar keywords -> 'keyword', only as words of a macro's arguments
- *    outside string/template literals (not inside variable names, property
+ *    outside string/template literal text, including inside `${}`
+ *    interpolations (not inside variable names, property
  *    paths, prose or strings)
  *  - Passage headers -> 'namespace'
  *
