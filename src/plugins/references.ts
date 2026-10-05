@@ -128,13 +128,13 @@ export function findPassageReferences(
 ): ReferenceLocation[] {
   const locations: ReferenceLocation[] = [];
 
-  // Include declaration (passage header)
+  // Include declaration (the name in the passage header)
   if (includeDeclaration) {
     const passage = workspace.passages.getPassage(passageName);
     if (passage) {
       locations.push({
         uri: passage.uri,
-        range: passage.headerEnd,
+        range: passage.nameRange,
       });
     }
   }
