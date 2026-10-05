@@ -8,6 +8,8 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import { DiagnosticCode } from '../core/diagnostic-codes.js';
 import { findConfigFile } from '../core/workspace/config-loader.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
+import { conditionalExpression } from '../core/parsing/attribute-blocks.js';
+import { buildLineStarts } from '../core/parsing/macro-parser.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +42,7 @@ export interface CodeActionOptions {
  *  - SP202 (no StoryVariables) -> "Create StoryVariables passage"
  *  - SP203 (undeclared transient) -> "Declare '%varName' in StoryTransients"
  *  - SP204 (null variable value) -> "Replace null with 0"
+ *  - SP103 ({if C}A{else}B{/if} in an HTML attribute) -> "Rewrite as {C ? 'A' : 'B'}"
  */
 export function computeCodeActions(
   uri: string,
@@ -73,6 +76,11 @@ export function computeCodeActions(
       }
       case DiagnosticCode.NullVariableValue: {
         const action = fixNullVariableValue(uri, diag);
+        if (action) actions.push(action);
+        break;
+      }
+      case DiagnosticCode.UnevaluatedAttributeBlock: {
+        const action = fixAttributeConditional(uri, diag, workspace);
         if (action) actions.push(action);
         break;
       }
@@ -439,6 +447,30 @@ function fixNullVariableValue(uri: string, diag: Diagnostic): CodeAction | null 
       range: diag.range,
       newText: '0',
     }],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Quick fix: SP103 — Rewrite {if C}A{else}B{/if} in an attribute
+// ---------------------------------------------------------------------------
+
+/**
+ * Spindle evaluates `{C ? 'A' : 'B'}` in an attribute value where it outputs
+ * `{if C}A{else}B{/if}` as text. conditionalExpression() decides when the
+ * rewrite is safe; the diagnostic range covers the whole construct.
+ */
+function fixAttributeConditional(uri: string, diag: Diagnostic, workspace: WorkspaceModel): CodeAction | null {
+  const text = workspace.documents.getText(uri);
+  if (text === undefined) return null;
+  const lineStarts = buildLineStarts(text);
+  const offset = (p: Position) => (lineStarts[p.line] ?? text.length) + p.character;
+  const expression = conditionalExpression(text.slice(offset(diag.range.start), offset(diag.range.end)));
+  if (!expression) return null;
+  return {
+    title: `Rewrite as ${expression}`,
+    kind: 'quickfix',
+    diagnosticCodes: [DiagnosticCode.UnevaluatedAttributeBlock],
+    edits: [{ uri, range: diag.range, newText: expression }],
   };
 }
 

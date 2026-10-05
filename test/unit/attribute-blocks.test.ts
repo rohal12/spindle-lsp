@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findUnevaluatedBlocks } from '../../src/core/parsing/attribute-blocks.js';
+import { conditionalExpression, findUnevaluatedBlocks } from '../../src/core/parsing/attribute-blocks.js';
 
 const MACROS = new Set(['if', 'else', 'elseif', 'for', 'print', 'set', 'switch', 'case']);
 const CONTAINERS = new Set(['if', 'for', 'switch']);
@@ -81,5 +81,63 @@ describe('findUnevaluatedBlocks', () => {
 
   it('finds a macro nested inside text braces', () => {
     expect(blocks('{"cls": "{if $a}x{/if}"}')).toEqual([['macro', '{if $a}x{/if}']]);
+  });
+});
+
+describe('conditionalExpression', () => {
+  it('rewrites {if C}A{else}B{/if} as a conditional expression', () => {
+    expect(conditionalExpression('{if @d.delta > 0}delta-positive{else}delta-negative{/if}'))
+      .toBe(`{@d.delta > 0 ? 'delta-positive' : 'delta-negative'}`);
+  });
+
+  it('rewrites {if C}A{/if} with an empty else', () => {
+    expect(conditionalExpression('{if $x}active{/if}')).toBe(`{$x ? 'active' : ''}`);
+  });
+
+  it('keeps whitespace in the branches and trims the condition', () => {
+    expect(conditionalExpression('{if   _on  } on{else}{/if}')).toBe(`{_on ? ' on' : ''}`);
+  });
+
+  it('escapes quotes and backslashes in the branches', () => {
+    expect(conditionalExpression(`{if %t}it's{else}a\\b{/if}`)).toBe(`{%t ? 'it\\'s' : 'a\\\\b'}`);
+  });
+
+  it('keeps string literals in the condition', () => {
+    expect(conditionalExpression('{if $s == "foo"}a{/if}')).toBe(`{$s == "foo" ? 'a' : ''}`);
+  });
+
+  it('declines a condition that does not start with a sigil', () => {
+    expect(conditionalExpression('{if !$x}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if ($x)}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if true}a{/if}')).toBeNull();
+  });
+
+  it('declines a condition that binds looser than ?:', () => {
+    expect(conditionalExpression('{if $a ? $b : $c}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if $a = 1}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if $a += 1}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if $a, $b}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if $f(x => x)}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if $a >>= 1}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if $a ??= 1}a{/if}')).toBeNull();
+  });
+
+  it('accepts comparison, optional chaining and nullish operators', () => {
+    expect(conditionalExpression('{if $a?.b ?? $c >= 1}a{/if}')).toBe(`{$a?.b ?? $c >= 1 ? 'a' : ''}`);
+    expect(conditionalExpression('{if $d !== 2 && $e <= 3 || $f == 1}a{/if}'))
+      .toBe(`{$d !== 2 && $e <= 3 || $f == 1 ? 'a' : ''}`);
+  });
+
+  it('declines braces, backticks and line breaks', () => {
+    expect(conditionalExpression('{if $a}{$b}{/if}')).toBeNull();
+    expect(conditionalExpression('{if $a.includes(`x`)}a{/if}')).toBeNull();
+    expect(conditionalExpression('{if $a}x\ny{/if}')).toBeNull();
+  });
+
+  it('declines other shapes', () => {
+    expect(conditionalExpression('{if $a}x{elseif $b}y{/if}')).toBeNull();
+    expect(conditionalExpression('{.c if $a}x{/if}')).toBeNull();
+    expect(conditionalExpression('{for _i range 3}x{/for}')).toBeNull();
+    expect(conditionalExpression('{if $a}x{else}y{else}z{/if}')).toBeNull();
   });
 });

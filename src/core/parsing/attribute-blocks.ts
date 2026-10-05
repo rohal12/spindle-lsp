@@ -170,3 +170,47 @@ function usesVariable(inner: string): boolean {
   }
   return VARIABLE_REFERENCE.test(masked);
 }
+
+/** The `{if C}A{else}B{/if}` and `{if C}A{/if}` shapes conditionalExpression() rewrites. */
+const IF_ELSE = /^\{if\s+([^{}]*)\}([^{}]*?)(?:\{else\s*\}([^{}]*))?\{\/if\s*\}$/;
+
+/**
+ * Rewrite an `{if C}A{else}B{/if}` (or `{if C}A{/if}`) written in an HTML
+ * attribute as `{C ? 'A' : 'B'}`, which Spindle evaluates there. Returns
+ * null unless the result is certain to mean the same:
+ *  - C must start with a sigil and a word character, which is what makes
+ *    interpolate() evaluate the block (INTERP_TEST in interpolation.ts);
+ *    C cannot be wrapped in parentheses, since then it would not;
+ *  - so C must bind tighter than `?:`: no `?` other than `?.` and `??`,
+ *    no assignment or arrow (`=` other than in a comparison), no `,` or `;`;
+ *  - C, A and B hold no braces (Spindle 0.45.1 ends the block at the first
+ *    balancing `}`, even inside a string) and no line breaks; C holds no
+ *    template literal.
+ * A and B become single-quoted strings, with `\` and `'` escaped.
+ */
+export function conditionalExpression(source: string): string | null {
+  const match = IF_ELSE.exec(source);
+  if (!match) return null;
+  const condition = match[1].trim();
+  const [whenTrue, whenFalse = ''] = [match[2], match[3]];
+  if (!/^[$_@%]\w/.test(condition)) return null;
+  if (/[`\r\n]/.test(condition) || /[\r\n]/.test(whenTrue + whenFalse)) return null;
+
+  const code = createCodeScanner(condition);
+  let operators = '';
+  for (let i = 0; i < condition.length; ) {
+    const literal = code.literalEnd(i);
+    if (literal !== -1) {
+      i = literal;
+      continue;
+    }
+    operators += condition[i];
+    i++;
+  }
+  if (/(?:<<|>>)=/.test(operators)) return null;
+  const rest = operators.replace(/\?\?|\?\./g, '').replace(/[!=]==?|[<>]=/g, '');
+  if (/[?=,;]/.test(rest)) return null;
+
+  const quote = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+  return `{${condition} ? ${quote(whenTrue)} : ${quote(whenFalse)}}`;
+}

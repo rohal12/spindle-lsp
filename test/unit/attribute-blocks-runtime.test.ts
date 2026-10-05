@@ -1,12 +1,12 @@
 /**
- * Checks SP103 against Spindle's own tokenizer and interpolate(), imported
- * from the installed runtime's source. The store is stubbed: interpolate()
- * only reads it for visited() and similar functions.
+ * Checks SP103 and its quick fix against Spindle's own tokenizer and
+ * interpolate(), imported from the installed runtime's source. The store is
+ * stubbed: interpolate() only reads it for visited() and similar functions.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { hasInterpolation, interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
 import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
-import { findUnevaluatedBlocks } from '../../src/core/parsing/attribute-blocks.js';
+import { conditionalExpression, findUnevaluatedBlocks } from '../../src/core/parsing/attribute-blocks.js';
 import { scanHtmlTags } from '../../src/core/parsing/html-scanner.js';
 
 vi.mock('../../node_modules/@rohal12/spindle/src/store.ts', () => ({
@@ -104,6 +104,40 @@ describe('SP103 against Spindle', () => {
     for (const value of evaluated) {
       expect(findUnevaluatedBlocks(value, lookup)).toEqual([]);
       expect(renderAttributes(`<span class="${value}">t</span>`, scope).class).not.toBe(value);
+    }
+  });
+});
+
+describe('SP103 quick fix against Spindle', () => {
+  // [attribute value, scope where the condition holds, where it does not, expected when true, when false]
+  const cases: Array<[string, string, Scope, Scope, string, string]> = [
+    ['"', '{if @d.delta > 0}delta-positive{else}delta-negative{/if}',
+      { locals: { d: { delta: 1 } } }, { locals: { d: { delta: 0 } } }, 'delta-positive', 'delta-negative'],
+    ['"', 'card {if $x}active{/if}', { variables: { x: true } }, { variables: { x: false } }, 'card active', 'card '],
+    ["'", '{if $s == "a"} on{else}off {/if}', { variables: { s: 'a' } }, { variables: { s: 'b' } }, ' on', 'off '],
+    ['"', "{if _t}it's{else}a\\b{/if}", { temporary: { t: 1 } }, { temporary: { t: 0 } }, "it's", 'a\\b'],
+    ["'", '{if %tr}say "hi"{/if}', { transient: { tr: 1 } }, { transient: { tr: 0 } }, 'say "hi"', ''],
+    ['"', '{if $a?.b ?? $c >= 1}yes{else}no{/if}',
+      { variables: { a: { b: 1 }, c: 0 } }, { variables: { a: null, c: 0 } }, 'yes', 'no'],
+    ['"', '{if $n}cost $y and 50%{else}_t @l %tr{/if}',
+      { variables: { n: 1, y: 'Y' } }, { variables: { n: 0 }, temporary: { t: 'T' } }, 'cost $y and 50%', '_t @l %tr'],
+  ];
+
+  it('produces a block Spindle evaluates to the branch the macro meant', () => {
+    for (const [quote, value, whenTrue, whenFalse, expectTrue, expectFalse] of cases) {
+      const blocks = findUnevaluatedBlocks(value, lookup);
+      expect(blocks).toHaveLength(1);
+      const { start, end } = blocks[0];
+      const fix = conditionalExpression(value.slice(start, end));
+      expect(fix, value).not.toBeNull();
+      const fixed = value.slice(0, start) + fix + value.slice(end);
+      const markup = `<span class=${quote}${fixed}${quote}>t</span>`;
+      expect({ fixed, rendered: renderAttributes(markup, whenTrue).class })
+        .toEqual({ fixed, rendered: expectTrue });
+      expect({ fixed, rendered: renderAttributes(markup, whenFalse).class })
+        .toEqual({ fixed, rendered: expectFalse });
+      // The fixed value has nothing left to report
+      expect(findUnevaluatedBlocks(fixed, lookup)).toEqual([]);
     }
   });
 });
