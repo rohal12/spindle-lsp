@@ -24,6 +24,7 @@ import { isMacroSource } from '../core/workspace/macro-sources.js';
  *  - HTML element structure Spindle cannot render (SP102)
  *  - Argument/parameter validation (SP108, SP109, SP110, SP111, SP112)
  *  - Variable validation (SP200, SP201, SP202, SP203, SP204, SP206)
+ *  - StoryVariables / StoryTransients declarations Spindle rejects (SP207)
  *  - Temporaries assigned inside {for} (SP205)
  *  - Link/widget validation (SP300, SP301, SP302, SP303)
  */
@@ -678,7 +679,7 @@ function includeExpression(rawArgs: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Variable validation (SP200, SP201, SP202, SP203, SP204)
+// Variable validation (SP200, SP201, SP202, SP203, SP204, SP207)
 // ---------------------------------------------------------------------------
 
 function validateVariables(
@@ -738,8 +739,12 @@ function validateVariables(
         diagnostics.push(makeDiag(
           nd.range,
           DiagnosticCode.NullVariableValue,
-          `Variable '$${nd.name}' is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
+          `${nullSubject(nd)} is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
         ));
+      }
+      // SP207: lines Spindle cannot parse as declarations
+      for (const d of workspace.variables.getInvalidDeclarations()) {
+        diagnostics.push(makeDiag(d.range, DiagnosticCode.InvalidDeclaration, `${d.message} ${WILL_NOT_START}`));
       }
     }
   }
@@ -762,11 +767,24 @@ function validateVariables(
         diagnostics.push(makeDiag(
           nd.range,
           DiagnosticCode.NullVariableValue,
-          `Transient variable '%${nd.name}' is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
+          `${nullSubject(nd)} is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
         ));
+      }
+      // SP207: lines Spindle cannot parse, and names StoryVariables declares too
+      for (const d of workspace.variables.getInvalidTransientDeclarations()) {
+        diagnostics.push(makeDiag(d.range, DiagnosticCode.InvalidDeclaration, `${d.message} ${WILL_NOT_START}`));
       }
     }
   }
+}
+
+const WILL_NOT_START = 'Spindle will not start the story.';
+
+/** What an SP204 null is: a variable, or a field of its object default. */
+function nullSubject(nd: { name: string; sigil: '$' | '%'; field?: string[] }): string {
+  const variable = nd.sigil === '%' ? 'Transient variable' : 'Variable';
+  if (nd.field?.length) return `Field '${nd.sigil}${[nd.name, ...nd.field].join('.')}'`;
+  return `${variable} '${nd.sigil}${nd.name}'`;
 }
 
 // ---------------------------------------------------------------------------

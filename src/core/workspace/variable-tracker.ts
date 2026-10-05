@@ -2,6 +2,7 @@ import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } 
 import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
 import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
 import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
+import { checkDeclaration, declaredName } from './declaration-check.js';
 
 /**
  * Regex to match $variable references including dot notation. A name may
@@ -162,7 +163,70 @@ function blankLiteralText(literal: string): string {
 interface NullDeclaration {
   name: string;
   sigil: '$' | '%';
+  /** The object fields whose value is null, when it is not the whole default. */
+  field?: string[];
   range: Range;
+}
+
+/** A StoryVariables / StoryTransients line that stops Spindle from starting. */
+export interface InvalidDeclaration {
+  message: string;
+  range: Range;
+}
+
+/** What Spindle makes of the lines of a StoryVariables / StoryTransients passage. */
+interface DeclarationCheck {
+  problems: InvalidDeclaration[];
+  /** Nulls inside object defaults; a null default is found by the parse itself. */
+  nestedNulls: NullDeclaration[];
+  /** Names declared by lines Spindle accepts, with the range of sigil and name. */
+  names: Map<string, Range>;
+}
+
+const NO_DECLARATIONS: DeclarationCheck = { problems: [], nestedNulls: [], names: new Map() };
+
+/**
+ * Check the lines of a StoryVariables (`$`) or StoryTransients (`%`) passage
+ * as Spindle's parseStoryVariables() reads them. A line starting with `::`
+ * starts another passage for twee compilers (with or without a space), so
+ * the check stops there.
+ */
+function checkDeclarations(lines: string[], contentStartLine: number, sigil: '$' | '%'): DeclarationCheck {
+  const check: DeclarationCheck = { problems: [], nestedNulls: [], names: new Map() };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('::')) break;
+    const absLine = contentStartLine + i;
+    const problem = checkDeclaration(line, sigil);
+    if (!problem) {
+      const name = /[\r\u00a0]/.test(line.trim()) ? undefined : declaredName(line, sigil);
+      if (name !== undefined && !check.names.has(name)) {
+        check.names.set(name, declarationLocation(line, name, absLine, undefined).declarationRange!);
+      }
+    } else if (problem.kind === 'null') {
+      if (problem.field.length > 0) {
+        check.nestedNulls.push({
+          name: declaredName(line, sigil)!,
+          sigil,
+          field: problem.field,
+          range: {
+            start: { line: absLine, character: problem.start },
+            end: { line: absLine, character: problem.end },
+          },
+        });
+      }
+    } else {
+      const start = line.length - line.trimStart().length;
+      check.problems.push({
+        message: problem.message,
+        range: {
+          start: { line: absLine, character: start },
+          end: { line: absLine, character: line.trimEnd().length },
+        },
+      });
+    }
+  }
+  return check;
 }
 
 interface VariableUsage {
@@ -345,10 +409,12 @@ export class VariableTracker {
   private declared = new Map<string, DeclaredVariable>();
   private _hasStoryVariables = false;
   private _nullDeclarations: NullDeclaration[] = [];
+  private _variablesCheck: DeclarationCheck = NO_DECLARATIONS;
 
   private declaredTransient = new Map<string, DeclaredVariable>();
   private _hasStoryTransients = false;
   private _nullTransientDeclarations: NullDeclaration[] = [];
+  private _transientsCheck: DeclarationCheck = NO_DECLARATIONS;
 
   /** Per-URI list of variable usages. */
   private usagesByUri = new Map<string, VariableUsage[]>();
@@ -369,6 +435,7 @@ export class VariableTracker {
     this._nullDeclarations = [];
 
     const lines = content.split('\n');
+    this._variablesCheck = checkDeclarations(lines, contentStartLine, '$');
     for (let i = 0; i < lines.length; i++) {
       const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
@@ -425,6 +492,7 @@ export class VariableTracker {
     this.declared.clear();
     this._hasStoryVariables = false;
     this._nullDeclarations = [];
+    this._variablesCheck = NO_DECLARATIONS;
   }
 
   /** Forget StoryTransients declarations, e.g. after the passage was removed. */
@@ -432,6 +500,7 @@ export class VariableTracker {
     this.declaredTransient.clear();
     this._hasStoryTransients = false;
     this._nullTransientDeclarations = [];
+    this._transientsCheck = NO_DECLARATIONS;
   }
 
   /**
@@ -444,6 +513,7 @@ export class VariableTracker {
     this._nullTransientDeclarations = [];
 
     const lines = content.split('\n');
+    this._transientsCheck = checkDeclarations(lines, contentStartLine, '%');
     for (let i = 0; i < lines.length; i++) {
       const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
@@ -763,11 +833,36 @@ export class VariableTracker {
 
   /** Get variables declared with null values in StoryVariables. */
   getNullDeclarations(): NullDeclaration[] {
-    return this._nullDeclarations;
+    return [...this._nullDeclarations, ...this._variablesCheck.nestedNulls];
+  }
+
+  /** StoryVariables lines that stop Spindle from starting, apart from null values. */
+  getInvalidDeclarations(): InvalidDeclaration[] {
+    return this._variablesCheck.problems;
+  }
+
+  /**
+   * StoryTransients lines that stop Spindle from starting, apart from null
+   * values, and the names it declares that StoryVariables declares too.
+   */
+  getInvalidTransientDeclarations(): InvalidDeclaration[] {
+    const collisions: InvalidDeclaration[] = [];
+    if (this._hasStoryVariables) {
+      for (const [name, range] of this._transientsCheck.names) {
+        if (!this._variablesCheck.names.has(name)) continue;
+        collisions.push({
+          message: `StoryTransients: Variable "${name}" is already declared in StoryVariables. ` +
+            'Names must be unique across scopes.',
+          range,
+        });
+      }
+    }
+    return [...this._transientsCheck.problems, ...collisions]
+      .sort((a, b) => a.range.start.line - b.range.start.line);
   }
 
   /** Get transient variables declared with null values in StoryTransients. */
   getNullTransientDeclarations(): NullDeclaration[] {
-    return this._nullTransientDeclarations;
+    return [...this._nullTransientDeclarations, ...this._transientsCheck.nestedNulls];
   }
 }
