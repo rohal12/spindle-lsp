@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MacroRegistry, findRegistryPath } from '../../src/core/workspace/macro-registry.js';
+import supplements from '../../src/macro-supplements.json' with { type: 'json' };
 
 describe('MacroRegistry builtin resolution', () => {
   const dirs: string[] = [];
@@ -33,6 +34,20 @@ describe('MacroRegistry builtin resolution', () => {
     expect(registry.getMacro('projectonly')?.source).toBe('builtin');
     // The project's registry replaces, not extends, the fallback copy.
     expect(registry.getMacro('if')).toBeUndefined();
+  });
+
+  it('allows every builtin sub-macro inside the builtin that declares it', () => {
+    const registry = new MacroRegistry();
+    registry.loadBuiltins();
+    registry.loadSupplements(supplements as Record<string, any>);
+
+    const declared = registry.getAllMacros().filter(m => m.source === 'builtin' && m.subMacros.length > 0);
+    expect(declared.map(m => m.name)).toContain('timed');
+    for (const parent of declared) {
+      for (const sub of parent.subMacros) {
+        expect(registry.getMacro(sub)?.parents, `{${sub}} inside {${parent.name}}`).toContain(parent.name);
+      }
+    }
   });
 
   it("falls back to the LSP's own copy when the workspace has none", () => {

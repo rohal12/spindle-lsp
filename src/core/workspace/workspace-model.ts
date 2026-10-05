@@ -107,6 +107,15 @@ export class WorkspaceModel extends EventEmitter {
     this.scheduleModelReady();
   }
 
+  /**
+   * Whether `{name}` opens a container that needs a `{/name}` closing tag:
+   * a block macro, or a block widget (one whose body renders `{@children}`).
+   * Like Spindle's set of block macros, either source makes a name a block.
+   */
+  isContainer(name: string): boolean {
+    return this.macros.isBlock(name) || (this.widgets.getWidget(name)?.block ?? false);
+  }
+
   /** Clean up listeners and timers. */
   dispose(): void {
     this.documents.removeListener('documentChanged', this.onDocumentChanged);

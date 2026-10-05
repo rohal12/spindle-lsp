@@ -118,6 +118,16 @@ describe('getCompletions', () => {
     expect(labels).toEqual(['{/if}']);
   });
 
+  it('offers to close an unfinished block widget invocation, but not an inline one', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: Widgets [widget]\n{widget "box"}\n{@children}\n{/widget}\n{widget "greet"}\nHi\n{/widget}\n\n'
+        + ':: Start\n{if $x}\n{box}\n{greet}\nsome text\n{/',
+    });
+    const items = getCompletions('file:///test.tw', { line: 13, character: 2 }, '/', ws);
+    expect(items.map(i => i.label)).toEqual(['{/box}', '{/if}']);
+  });
+
   it('returns transient variable completions after %', () => {
     const ws = createWorkspace({
       name: 'test.tw',
