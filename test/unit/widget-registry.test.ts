@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WidgetRegistry } from '../../src/core/workspace/widget-registry.js';
-import type { Passage } from '../../src/core/types.js';
+import type { MacroNode, Passage } from '../../src/core/types.js';
+import { parseMacros } from '../../src/core/parsing/macro-parser.js';
 
 const widgetDoc = `:: MyWidgets [widget]
 {widget "greeting" @name}
@@ -110,5 +111,23 @@ describe('WidgetRegistry', () => {
     expect(greeting).toBeDefined();
     // The widget definition is on line 1 (0-indexed) of the document
     expect(greeting!.range.start.line).toBe(1);
+  });
+
+  it('tracks widget invocations case-insensitively per document', () => {
+    const registry = new WidgetRegistry();
+    registry.recordInvocations('file:///a.tw', parseMacros(':: A\n{Greeting "x"} {/Box}'));
+    registry.recordInvocations('file:///b.tw', parseMacros(':: B\n{counter 1 "n"}'));
+
+    expect(registry.isInvoked('greeting')).toBe(true);
+    expect(registry.isInvoked('COUNTER')).toBe(true);
+    // A closing tag alone is not an invocation
+    expect(registry.isInvoked('Box')).toBe(false);
+
+    registry.recordInvocations('file:///a.tw', [] as MacroNode[]);
+    expect(registry.isInvoked('greeting')).toBe(false);
+    expect(registry.isInvoked('counter')).toBe(true);
+
+    registry.clearInvocations();
+    expect(registry.isInvoked('counter')).toBe(false);
   });
 });

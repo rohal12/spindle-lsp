@@ -56,10 +56,18 @@ export interface Diagnostic {
   source: string;
 }
 
+/**
+ * Runtime type of a declared variable's default value, mirroring the
+ * `VarType` Spindle infers from StoryVariables/StoryTransients defaults.
+ */
+export type VariableValueType = 'array' | 'object' | 'string' | 'number' | 'boolean';
+
 export interface DeclaredVariable {
   name: string;
   sigil: '$' | '_' | '@' | '%';
   fields?: string[];
+  /** Type of the default value, set only when the default is a single literal. */
+  type?: VariableValueType;
   declarationUri?: string;
   declarationRange?: Range;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
+import { VariableTracker, inferLiteralType } from '../../src/core/workspace/variable-tracker.js';
 import type { MacroNode } from '../../src/core/types.js';
 
 describe('VariableTracker', () => {
@@ -130,5 +130,65 @@ describe('VariableTracker', () => {
 
     tracker.scanDocument('file:///a.tw', ':: Test\n{$name} and {$name}', []);
     expect(tracker.getUsages('name').length).toBe(2);
+  });
+});
+
+describe('inferLiteralType', () => {
+  it('recognises single literals', () => {
+    expect(inferLiteralType('[]')).toBe('array');
+    expect(inferLiteralType('[1, [2, 3], { a: "]" }]')).toBe('array');
+    expect(inferLiteralType('{ a: [], b: "}" }')).toBe('object');
+    expect(inferLiteralType('"text"')).toBe('string');
+    expect(inferLiteralType("'it\\'s'")).toBe('string');
+    expect(inferLiteralType('`plain`')).toBe('string');
+    expect(inferLiteralType('42')).toBe('number');
+    expect(inferLiteralType('-1.5e3')).toBe('number');
+    expect(inferLiteralType('true')).toBe('boolean');
+  });
+
+  it('returns undefined for anything that is not a single literal', () => {
+    expect(inferLiteralType('[1, 2].length')).toBeUndefined();
+    expect(inferLiteralType('["a"].join(",")')).toBeUndefined();
+    expect(inferLiteralType('{ a: 1 }.a')).toBeUndefined();
+    expect(inferLiteralType('`${x}`')).toBeUndefined();
+    expect(inferLiteralType('makeDefaults()')).toBeUndefined();
+    expect(inferLiteralType('[1, 2')).toBeUndefined();
+    expect(inferLiteralType('null')).toBeUndefined();
+    expect(inferLiteralType('')).toBeUndefined();
+  });
+
+  it('records the type on declarations', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables(`$flags = []\n$pc = { name: "x" }\n$n = [1].length`);
+    tracker.parseStoryTransients(`%queue = [1]`);
+    expect(tracker.getDeclared().get('flags')!.type).toBe('array');
+    expect(tracker.getDeclared().get('pc')!.type).toBe('object');
+    expect(tracker.getDeclared().get('n')!.type).toBeUndefined();
+    expect(tracker.getDeclaredTransient().get('queue')!.type).toBe('array');
+  });
+});
+
+describe('VariableTracker.getArrayMemberAccesses', () => {
+  it('returns non-array members accessed on array variables', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables(`$flags = []\n$pc = { name: "x" }`);
+    tracker.parseStoryTransients(`%queue = []`);
+    tracker.scanDocument(
+      'file:///a.tw',
+      ':: Test\n{$flags.seen} {$flags.length} {$flags.includes("a")} {$pc.other} {%queue.head}',
+      [],
+    );
+    const accesses = tracker.getArrayMemberAccesses('file:///a.tw');
+    expect(accesses.map(a => `${a.sigil}${a.name}.${a.member}`)).toEqual(['$flags.seen', '%queue.head']);
+    expect(accesses[0].range).toEqual({
+      start: { line: 1, character: 1 },
+      end: { line: 1, character: 12 },
+    });
+  });
+
+  it('returns nothing for documents without usages', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables(`$flags = []`);
+    expect(tracker.getArrayMemberAccesses('file:///none.tw')).toEqual([]);
   });
 });

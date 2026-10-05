@@ -180,12 +180,14 @@ export class WorkspaceModel extends EventEmitter {
       }
     }
 
-    // Rescan variable usages across all documents
+    // Rescan variable usages and macro invocations across all documents
+    this.widgets.clearInvocations();
     for (const uri of this.documents.getUris()) {
       const text = this.documents.getText(uri);
       if (text) {
         const macros = parseMacros(text);
         this.variables.scanDocument(uri, text, macros);
+        this.widgets.recordInvocations(uri, macros);
       }
     }
 

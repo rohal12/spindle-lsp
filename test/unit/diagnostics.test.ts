@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
+import { computeDiagnostics, resolveIncludeTarget } from '../../src/plugins/diagnostics.js';
 import { parseMacros } from '../../src/core/parsing/macro-parser.js';
 import { MacroRegistry } from '../../src/core/workspace/macro-registry.js';
 
@@ -323,5 +323,373 @@ describe('error handling', () => {
     expect(() => registry.loadBuiltins()).not.toThrow();
     // Should still be functional (empty or with builtins from the package if available)
     expect(registry.getAllMacros()).toBeDefined();
+  });
+});
+
+describe('SP205: temporary assigned inside {for}', () => {
+  function sp205(text: string) {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    return computeDiagnostics('file:///test.tw', workspace).filter(d => d.code === 'SP205');
+  }
+
+  it('flags {computed _x} inside {for} that is read in the loop body', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @i of [1, 2, 3]}',
+      '{computed _b = @i * 2}',
+      '{_b}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].severity).toBe('warning');
+    expect(diags[0].message).toContain("'_b'");
+    expect(diags[0].message).toContain("'@b'");
+    expect(diags[0].range).toEqual({
+      start: { line: 2, character: 10 },
+      end: { line: 2, character: 12 },
+    });
+  });
+
+  it('flags {set _x} inside {for} nested in a widget and an {if}', () => {
+    const diags = sp205([
+      ':: Widgets [widget]',
+      '{widget "ResourceCost" @costs @current}',
+      '{set _keys = Object.keys(@costs)}',
+      '{for @key of _keys}',
+      '{if @key}',
+      '{set _required = @costs[@key]}',
+      '{set _have = @current[@key] ?? 0}',
+      '<span class="{if _have < _required}insufficient{/if}">{_have}/{_required}</span>',
+      '{/if}',
+      '{/for}',
+      '{/widget}',
+    ].join('\n'));
+    expect(diags.map(d => d.message.match(/'_(\w+)'/)![1])).toEqual(['required', 'have']);
+    expect(diags[0].range.start).toEqual({ line: 5, character: 5 });
+  });
+
+  it('flags each temporary of a multi-assignment {set}', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @item of $list}',
+      '{set _a = @item.a, _b = @item.b}',
+      '{_a} {_b}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(2);
+    expect(diags[0].range.start.character).toBe(5);
+    expect(diags[1].range.start.character).toBe(19);
+  });
+
+  it('flags a temporary read before its assignment (previous-item pattern)', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @item of $list}',
+      '{if @item.group !== _prev}<h3>{@item.group}</h3>{/if}',
+      '{set _prev = @item.group}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(1);
+  });
+
+  it('does not flag @locals inside {for}', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @i of [1, 2, 3]}',
+      '{computed @b = @i * 2}',
+      '{set @c = @b + 1}',
+      '{@b} {@c}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+
+  it('does not flag temporaries assigned outside any loop', () => {
+    const diags = sp205([
+      ':: Start',
+      '{computed _total = $list.length}',
+      '{set _label = "Items"}',
+      '{for @item of $list}{_label}: {@item}{/for}',
+      '{_total}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+
+  it('does not flag a temporary that is only read after the loop', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @item of $list}',
+      '{if @item.broken}{set _anyBroken = true}{/if}',
+      '{/for}',
+      '{if _anyBroken}Something is broken.{/if}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+
+  it('does not flag accumulators', () => {
+    const diags = sp205([
+      ':: Start',
+      '{set _total = 0, _count = 0, _names = ""}',
+      '{for @item of $list}',
+      '{set _total = _total + @item.cost}',
+      '{set _count += 1}',
+      '{set _names = `${_names} ${@item.name}`}',
+      'Running: {_total} {_count} {_names}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+
+  it('does not flag assignments inside {link} or {button} bodies', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @item of $list}',
+      '{link "Pick"}{set _picked = @item}{/link}',
+      '{button "Choose"}{set _chosen = @item}{/button}',
+      '{if _picked === @item}picked{/if}{if _chosen === @item}chosen{/if}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+
+  it('ignores temporaries inside strings and comparisons', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @item of $list}',
+      '{set $msg = "_x = 1"}',
+      '{set $same = _y == @item}',
+      '{computed @range = Array.from({length: 3}, (_, i) => i)}',
+      '{_x} {_y}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+
+  it('flags a temporary assigned in a nested loop and read in that loop', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @row of $rows}',
+      '{for @cell of @row}',
+      '{computed _value = @cell * 2}{_value}',
+      '{/for}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].range.start.line).toBe(3);
+  });
+});
+
+describe('SP206: member access on an array variable', () => {
+  function sp206(text: string) {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    return computeDiagnostics('file:///test.tw', workspace).filter(d => d.code === 'SP206');
+  }
+
+  it('flags a non-array property on a variable declared as []', () => {
+    const diags = sp206([
+      ':: StoryVariables',
+      '$flags = []',
+      '',
+      ':: Start',
+      '{if $flags.discovered_corruption}Corrupted{/if}',
+    ].join('\n'));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].severity).toBe('warning');
+    expect(diags[0].message).toContain('$flags.discovered_corruption');
+    expect(diags[0].message).toContain('$flags.includes("discovered_corruption")');
+    expect(diags[0].range).toEqual({
+      start: { line: 4, character: 4 },
+      end: { line: 4, character: 32 },
+    });
+  });
+
+  it('flags assignments to a named property of an array', () => {
+    const diags = sp206([
+      ':: StoryVariables',
+      '$seen = ["intro"]',
+      '',
+      ':: Start',
+      '{set $seen.cave = true}',
+    ].join('\n'));
+    expect(diags).toHaveLength(1);
+  });
+
+  it('flags transient arrays declared in StoryTransients', () => {
+    const diags = sp206([
+      ':: StoryTransients',
+      '%queue = [1, 2]',
+      '',
+      ':: Start',
+      '{%queue.first}',
+    ].join('\n'));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain('StoryTransients');
+  });
+
+  it('does not flag array methods and properties', () => {
+    const diags = sp206([
+      ':: StoryVariables',
+      '$flags = []',
+      '',
+      ':: Start',
+      '{if $flags.includes("x")}x{/if}',
+      '{$flags.length}',
+      '{print $flags.map(f => f.toUpperCase()).join(", ")}',
+      '{print $flags.at(-1)}',
+      '{print $flags.toSorted()}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+
+  it('does not flag objects, strings or non-literal defaults', () => {
+    const diags = sp206([
+      ':: StoryVariables',
+      '$pc = { name: "Hero", tags: [] }',
+      '$label = "[x]"',
+      '$count = [1, 2].length',
+      '',
+      ':: Start',
+      '{$pc.name} {$pc.anything} {$label.foo} {$count.bar} {$pc.tags.foo}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+});
+
+describe('SP302: {include} of a [widget] passage', () => {
+  const widgets = [
+    ':: ActResist [widget nobr]',
+    '{widget "ActResist"}You resist.{/widget}',
+    '',
+    ':: Helpers [widget]',
+    '{widget "greet" @name}Hello {@name}{/widget}',
+    '{widget "bye"}Bye{/widget}',
+    '',
+    ':: Normal',
+    'Plain text.',
+    '',
+    ':: Effects [widget]',
+    '{do}applyEffects();{/do}',
+    '',
+    ':: Bare [widget]',
+    '{widget bareName}bare{/widget}',
+  ].join('\n');
+
+  function sp302(story: string) {
+    const workspace = createWorkspaceFrom(
+      { name: 'widgets.tw', content: widgets },
+      { name: 'story.tw', content: story },
+    );
+    return computeDiagnostics('file:///story.tw', workspace).filter(d => d.code === 'SP302');
+  }
+
+  it('flags a quoted include of a widget passage', () => {
+    const diags = sp302(':: Start\n{include "Helpers"}');
+    expect(diags).toHaveLength(1);
+    expect(diags[0].severity).toBe('warning');
+    expect(diags[0].message).toContain('"Helpers"');
+    expect(diags[0].message).toContain('{greet}, {bye}');
+  });
+
+  it('flags a bare-name include, which Spindle resolves by fallback', () => {
+    const diags = sp302(":: Start\n{include ActResist}\n{include 'ActResist' inline}");
+    expect(diags).toHaveLength(2);
+    expect(diags[0].message).toContain('{ActResist}');
+  });
+
+  it('flags widget passages whose definitions use a bare name', () => {
+    const diags = sp302(':: Start\n{include "Bare"}');
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain('{bareName}');
+  });
+
+  it('does not flag a [widget] passage that defines no widgets', () => {
+    // Its content renders like any other passage's when included.
+    const diags = sp302(':: Start\n{include "Effects"}');
+    expect(diags).toHaveLength(0);
+  });
+
+  it('does not flag includes of ordinary, missing or dynamic passages', () => {
+    const diags = sp302([
+      ':: Start',
+      '{include "Normal"}',
+      '{include "Missing"}',
+      '{include $encounter.prosePassage}',
+      '{include _name}',
+      '{include `${$prefix}Resist`}',
+    ].join('\n'));
+    expect(diags).toHaveLength(0);
+  });
+});
+
+describe('resolveIncludeTarget', () => {
+  it('resolves string literals and bare names', () => {
+    expect(resolveIncludeTarget('"Passage Name"')).toBe('Passage Name');
+    expect(resolveIncludeTarget("'Passage'")).toBe('Passage');
+    expect(resolveIncludeTarget('`Passage`')).toBe('Passage');
+    expect(resolveIncludeTarget('"Say \\"hi\\""')).toBe('Say "hi"');
+    expect(resolveIncludeTarget('ActResist')).toBe('ActResist');
+    expect(resolveIncludeTarget('My Passage')).toBe('My Passage');
+    expect(resolveIncludeTarget('"Passage" inline')).toBe('Passage');
+  });
+
+  it('returns null for dynamic targets', () => {
+    expect(resolveIncludeTarget('$name')).toBeNull();
+    expect(resolveIncludeTarget('_name')).toBeNull();
+    expect(resolveIncludeTarget('@name')).toBeNull();
+    expect(resolveIncludeTarget('%name')).toBeNull();
+    expect(resolveIncludeTarget('"Act" + $suffix')).toBeNull();
+    expect(resolveIncludeTarget('`${$prefix}Act`')).toBeNull();
+    expect(resolveIncludeTarget('pick()')).toBeNull();
+    expect(resolveIncludeTarget('visited')).toBeNull();
+    expect(resolveIncludeTarget('')).toBeNull();
+  });
+});
+
+describe('SP303: unused widget', () => {
+  it('reports a widget that is never invoked, as a hint on its definition', () => {
+    const workspace = createWorkspaceFrom(
+      { name: 'widgets.tw', content: ':: W [widget]\n{widget "used"}u{/widget}\n{widget "unused"}x{/widget}' },
+      { name: 'story.tw', content: ':: Start\n{used}' },
+    );
+    const diags = computeDiagnostics('file:///widgets.tw', workspace).filter(d => d.code === 'SP303');
+    expect(diags).toHaveLength(1);
+    expect(diags[0].severity).toBe('hint');
+    expect(diags[0].message).toContain('"unused"');
+    expect(diags[0].range.start).toEqual({ line: 2, character: 0 });
+
+    const storyDiags = computeDiagnostics('file:///story.tw', workspace).filter(d => d.code === 'SP303');
+    expect(storyDiags).toHaveLength(0);
+  });
+
+  it('counts case-insensitive, nested, prefixed and block invocations', () => {
+    const workspace = createWorkspaceFrom(
+      {
+        name: 'widgets.tw',
+        content: [
+          ':: W [widget]',
+          '{widget "Greet" @name}Hi {@name}{/widget}',
+          '{widget "inner"}in{/widget}',
+          '{widget "outer"}{inner}{/widget}',
+          '{widget "Box"}<div>{@children}</div>{/widget}',
+          '{widget "styled"}s{/widget}',
+        ].join('\n'),
+      },
+      { name: 'story.tw', content: ':: Start\n{greet "x"} {outer} {Box}content{/Box} {.red styled}' },
+    );
+    const diags = computeDiagnostics('file:///widgets.tw', workspace).filter(d => d.code === 'SP303');
+    expect(diags).toHaveLength(0);
+  });
+
+  it('does not count {include} of the widget passage as an invocation', () => {
+    const workspace = createWorkspaceFrom(
+      { name: 'widgets.tw', content: ':: ActKiss [widget]\n{widget "ActKiss"}kiss{/widget}' },
+      { name: 'story.tw', content: ':: Start\n{include "ActKiss"}' },
+    );
+    const codes = [
+      ...computeDiagnostics('file:///widgets.tw', workspace),
+      ...computeDiagnostics('file:///story.tw', workspace),
+    ].map(d => d.code);
+    expect(codes).toContain('SP303');
+    expect(codes).toContain('SP302');
   });
 });

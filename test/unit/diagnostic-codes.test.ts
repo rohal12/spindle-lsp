@@ -18,6 +18,16 @@ describe('diagnostic codes', () => {
     expect(getSeverity(DiagnosticCode.NoStoryVariables)).toBe('info');
   });
 
+  it('SP205, SP206 and SP302 are warning severity', () => {
+    expect(getSeverity(DiagnosticCode.TemporaryAssignedInLoop)).toBe('warning');
+    expect(getSeverity(DiagnosticCode.ArrayMemberAccess)).toBe('warning');
+    expect(getSeverity(DiagnosticCode.IncludeWidgetPassage)).toBe('warning');
+  });
+
+  it('SP303 is hint severity', () => {
+    expect(getSeverity(DiagnosticCode.UnusedWidget)).toBe('hint');
+  });
+
   it('all codes have SP prefix format', () => {
     for (const val of Object.values(DiagnosticCode)) {
       if (typeof val === 'string') {

@@ -1,0 +1,18 @@
+:: StoryVariables
+$flags = []
+$buildings = [{ name: "Smelter" }, { name: "Farm" }]
+
+:: Widgets [widget]
+{widget "BuildingRow" @building}<li>{@building.name}</li>{/widget}
+
+:: ActResist [widget nobr]
+{widget "ActResist"}You resist.{/widget}
+
+:: Start
+{for @i of [0, 1]}
+{computed _b = $buildings[@i]}
+{_b.name}
+{/for}
+{for @b of $buildings}{BuildingRow @b}{/for}
+{if $flags.discovered_corruption}Corrupted.{/if}
+{include ActResist}

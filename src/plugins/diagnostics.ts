@@ -1,9 +1,9 @@
-import type { Diagnostic, MacroNode } from '../core/types.js';
+import type { Diagnostic, MacroNode, Passage } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
-import { parseMacros, pairMacros } from '../core/parsing/macro-parser.js';
+import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
@@ -18,8 +18,9 @@ import { parseLinks } from '../core/parsing/link-parser.js';
  * Checks:
  *  - Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
  *  - Argument/parameter validation (SP108, SP109, SP110, SP111, SP112)
- *  - Variable validation (SP200, SP202, SP203)
- *  - Link/widget validation (SP300, SP301)
+ *  - Variable validation (SP200, SP202, SP203, SP204, SP206)
+ *  - Temporaries assigned inside {for} (SP205)
+ *  - Link/widget validation (SP300, SP301, SP302, SP303)
  */
 export interface DiagnosticOptions {
   maxLineLength?: number;
@@ -79,6 +80,30 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
       validateWidgetInvocations(macros, workspace, diagnostics);
     } catch {
       // Widget validation failed — continue
+    }
+
+    try {
+      validateArrayMemberAccess(uri, workspace, diagnostics);
+    } catch {
+      // Array member validation failed — continue
+    }
+
+    try {
+      validateLoopTemporaries(uri, text, macros, workspace, diagnostics);
+    } catch {
+      // Loop temporary validation failed — continue
+    }
+
+    try {
+      validateWidgetIncludes(text, macros, workspace, diagnostics);
+    } catch {
+      // Include validation failed — continue
+    }
+
+    try {
+      validateUnusedWidgets(uri, workspace, diagnostics);
+    } catch {
+      // Unused widget validation failed — continue
     }
 
     if (options?.maxLineLength) {
@@ -463,6 +488,421 @@ function validateWidgetInvocations(
         `Widget {${macro.name}} expects ${expectedCount} argument(s), got ${argCount}`,
       ));
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Array member access validation (SP206)
+// ---------------------------------------------------------------------------
+
+/**
+ * Flag `$var.name` where `$var` defaults to an array literal in StoryVariables
+ * (or `%var.name` in StoryTransients) and `name` is not an array property.
+ * Spindle evaluates `$var.name` as plain JavaScript property access, so the
+ * result is always `undefined`.
+ */
+function validateArrayMemberAccess(
+  uri: string,
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  for (const a of workspace.variables.getArrayMemberAccesses(uri)) {
+    const passage = a.sigil === '%' ? 'StoryTransients' : 'StoryVariables';
+    const ref = `${a.sigil}${a.name}`;
+    diagnostics.push(makeDiag(
+      a.range,
+      DiagnosticCode.ArrayMemberAccess,
+      `'${ref}' is declared as an array in ${passage}, and arrays have no '${a.member}' property: ` +
+        `'${ref}.${a.member}' is always undefined. ` +
+        `If you meant to test membership, use ${ref}.includes("${a.member}").`,
+    ));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Temporaries assigned inside {for} (SP205)
+// ---------------------------------------------------------------------------
+
+/**
+ * Containers whose body runs when the user clicks, not when the loop renders.
+ * Assigning a temporary there records the clicked iteration's value, which is
+ * the normal way to hand a value out of a loop.
+ */
+const DEFERRED_CONTAINERS = new Set(['link', 'button']);
+
+interface TemporaryTarget {
+  /** Name without the `_` sigil. */
+  name: string;
+  /** Offset of the `_` within the macro's raw arguments. */
+  offset: number;
+}
+
+/** Matches a `_name` temporary reference, using Spindle's own boundary rule. */
+function temporaryRefRegex(name?: string): RegExp {
+  const ident = name ? escapeRegex(name) : '[A-Za-z_$][\\w$]*';
+  return new RegExp(`(?<![.\\w$@%])_(${ident})(?![\\w$])`, 'g');
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Replace the contents of string literals with spaces (keeping the quotes and
+ * all offsets) so that sigils inside strings are not mistaken for code.
+ * Template-literal `${…}` interpolations stay visible, because Spindle
+ * transforms the sigils inside them like any other code.
+ */
+function maskStrings(code: string): string {
+  let out = '';
+  let i = 0;
+  while (i < code.length) {
+    const ch = code[i];
+    if (ch === '"' || ch === "'" || ch === '`') {
+      out += ch;
+      i++;
+      while (i < code.length && code[i] !== ch) {
+        if (code[i] === '\\' && i + 1 < code.length) {
+          out += '  ';
+          i += 2;
+        } else if (ch === '`' && code[i] === '$' && code[i + 1] === '{') {
+          const end = interpolationEnd(code, i + 2);
+          out += maskStrings(code.slice(i, end));
+          i = end;
+        } else {
+          out += code[i] === '\n' ? '\n' : ' ';
+          i++;
+        }
+      }
+      if (i < code.length) {
+        out += ch;
+        i++;
+      }
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/** Offset just past the `}` closing a `${` interpolation whose body starts at `from`. */
+function interpolationEnd(code: string, from: number): number {
+  let depth = 1;
+  for (let i = from; i < code.length; i++) {
+    if (code[i] === '{') depth++;
+    else if (code[i] === '}' && --depth === 0) return i + 1;
+  }
+  return code.length;
+}
+
+/**
+ * The `_name` target of `{computed _name = expr}`, located the same way
+ * Spindle's parseComputedArgs() does: the first `=` at bracket depth 0 that
+ * is not part of `==` or `!=`.
+ */
+function computedTemporaryTarget(rawArgs: string): TemporaryTarget[] {
+  const lead = rawArgs.length - rawArgs.trimStart().length;
+  const trimmed = rawArgs.trim();
+  let depth = 0;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (ch === '=' && depth === 0) {
+      if (trimmed[i + 1] === '=') {
+        i++;
+        continue;
+      }
+      if (i > 0 && trimmed[i - 1] === '!') continue;
+      const target = trimmed.slice(0, i).trim();
+      const m = /^_(\w+)$/.exec(target);
+      return m ? [{ name: m[1], offset: lead }] : [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Plain `_name = expr` assignments in a `{set}` expression. Accumulators are
+ * skipped: compound operators (`_n += 1`), `++`/`--`, and assignments whose
+ * right-hand side reads the same temporary (`_n = _n + @x`) all deliberately
+ * carry a value from one iteration to the next.
+ */
+function setTemporaryTargets(rawArgs: string): TemporaryTarget[] {
+  const code = maskStrings(rawArgs);
+  const targets: TemporaryTarget[] = [];
+  const assignRe = /(?<![.\w$@%])_([A-Za-z_$][\w$]*)\s*=(?![=>])/g;
+  let m: RegExpExecArray | null;
+  while ((m = assignRe.exec(code)) !== null) {
+    const name = m[1];
+    const rhs = code.slice(m.index + m[0].length, statementEnd(code, m.index + m[0].length));
+    if (temporaryRefRegex(name).test(rhs)) continue;
+    targets.push({ name, offset: m.index });
+  }
+  return targets;
+}
+
+/** Offset of the `;` or `,` that ends the expression starting at `from`. */
+function statementEnd(code: string, from: number): number {
+  let depth = 0;
+  for (let i = from; i < code.length; i++) {
+    const ch = code[i];
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if ((ch === ';' || ch === ',') && depth <= 0) return i;
+  }
+  return code.length;
+}
+
+/**
+ * Index of the innermost `{for}` whose body contains `macros[index]` in the
+ * same passage, or -1. Returns -1 as well when a `{link}`/`{button}` sits
+ * between the two: that body runs on click, not once per iteration.
+ */
+function enclosingLoop(
+  macros: MacroNode[],
+  index: number,
+  uri: string,
+  workspace: WorkspaceModel,
+): number {
+  for (let j = index - 1; j >= 0; j--) {
+    const candidate = macros[j];
+    if (!candidate.open || candidate.pair === -1 || candidate.pair < index) continue;
+    const name = candidate.name.toLowerCase();
+    if (DEFERRED_CONTAINERS.has(name)) return -1;
+    if (name !== 'for') continue;
+    const loopPassage = workspace.passages.getPassageAt(uri, candidate.range.start.line);
+    const macroPassage = workspace.passages.getPassageAt(uri, macros[index].range.start.line);
+    return loopPassage === macroPassage ? j : -1;
+  }
+  return -1;
+}
+
+function positionToOffset(pos: { line: number; character: number }, lineStarts: number[]): number {
+  return (lineStarts[pos.line] ?? 0) + pos.character;
+}
+
+/**
+ * A macro's raw arguments as written in the document, with their start
+ * offset. `MacroNode.rawArgs` comes from text in which `{$var}`-style
+ * interpolations were blanked out, which also blanks `${_x}` inside template
+ * literals, so it cannot be used to analyse expressions.
+ */
+function sourceArgs(
+  macro: MacroNode,
+  text: string,
+  lineStarts: number[],
+): { args: string; start: number } {
+  const end = positionToOffset(macro.range.end, lineStarts) - 1; // closing brace
+  const start = end - (macro.rawArgs?.length ?? 0);
+  return { args: text.slice(start, end), start };
+}
+
+/**
+ * SP205: a `_temporary` assigned by `{computed}` or `{set}` inside a `{for}`
+ * body and read elsewhere in that body.
+ *
+ * Spindle keeps temporaries in one store-wide map (`setTemporary`), while
+ * `@locals` set inside a loop live in that iteration's own scope. Every
+ * iteration therefore writes the same `_name`, and once the passage
+ * re-renders all iterations read whichever value was written last.
+ * Assignments whose temporary is not read inside the loop (a flag or value
+ * handed out to code after the loop) are not reported.
+ */
+function validateLoopTemporaries(
+  uri: string,
+  text: string,
+  macros: MacroNode[],
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  const lineStarts = buildLineStarts(text);
+
+  for (let k = 0; k < macros.length; k++) {
+    const macro = macros[k];
+    if (!macro.open || !macro.rawArgs) continue;
+    const name = macro.name.toLowerCase();
+    if (name !== 'computed' && name !== 'set') continue;
+
+    const { args, start: argsStart } = sourceArgs(macro, text, lineStarts);
+    const targets = name === 'computed'
+      ? computedTemporaryTarget(args)
+      : setTemporaryTargets(args);
+    if (targets.length === 0) continue;
+
+    const loopIndex = enclosingLoop(macros, k, uri, workspace);
+    if (loopIndex === -1) continue;
+    const loop = macros[loopIndex];
+
+    const bodyStart = positionToOffset(loop.range.end, lineStarts);
+    const bodyEnd = positionToOffset(macros[loop.pair].range.start, lineStarts);
+    const macroStart = positionToOffset(macro.range.start, lineStarts);
+    const macroEnd = positionToOffset(macro.range.end, lineStarts);
+    const body = text.slice(bodyStart, bodyEnd);
+
+    for (const target of targets) {
+      if (!isReadInBody(body, bodyStart, target.name, macroStart, macroEnd)) continue;
+
+      const start = argsStart + target.offset;
+      diagnostics.push(makeDiag(
+        {
+          start: offsetToPosition(start, lineStarts),
+          end: offsetToPosition(start + 1 + target.name.length, lineStarts),
+        },
+        DiagnosticCode.TemporaryAssignedInLoop,
+        `Temporary '_${target.name}' is assigned inside {${loop.name}} and read in the loop body. ` +
+          'Temporaries are shared by every iteration, so all iterations end up seeing the value ' +
+          `assigned by the last one. Use the iteration-local '@${target.name}' instead, ` +
+          'or assign it once before the loop if the value does not depend on the iteration.',
+      ));
+    }
+  }
+}
+
+/**
+ * Whether `_name` is read somewhere in the loop body outside the assigning
+ * macro. Occurrences that are themselves plain assignment targets
+ * (`_name = …`) do not count as reads.
+ */
+function isReadInBody(
+  body: string,
+  bodyOffset: number,
+  name: string,
+  macroStart: number,
+  macroEnd: number,
+): boolean {
+  const re = temporaryRefRegex(name);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const offset = bodyOffset + m.index;
+    if (offset >= macroStart && offset < macroEnd) continue;
+    const after = body.slice(m.index + m[0].length);
+    if (/^\s*=(?![=>])/.test(after)) continue;
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// {include} of a [widget] passage (SP302)
+// ---------------------------------------------------------------------------
+
+/** Names Spindle's expression preamble binds; a bare one is not a passage name. */
+const EXPRESSION_BUILTINS = new Set([
+  'currentPassage', 'previousPassage', 'visited', 'hasVisited', 'hasVisitedAny',
+  'hasVisitedAll', 'rendered', 'hasRendered', 'hasRenderedAny', 'hasRenderedAll',
+  'random', 'randomInt',
+]);
+
+/**
+ * Statically resolve the passage name an `{include}` renders, following
+ * Spindle's Include macro: the arguments (minus an `inline` keyword) are
+ * evaluated as an expression, and when evaluation throws the raw text with
+ * surrounding quotes stripped is used instead. Returns null for dynamic
+ * targets (variables, calls) that cannot be resolved without running the
+ * story.
+ */
+export function resolveIncludeTarget(rawArgs: string): string | null {
+  const expr = rawArgs.replace(/\binline\b/, '').trim();
+  if (expr === '') return null;
+
+  // A single string literal evaluates to its contents.
+  const literal = /^(["'`])((?:\\.|(?!\1)[^\\])*)\1$/s.exec(expr);
+  if (literal) {
+    if (literal[1] === '`' && literal[2].includes('${')) return null;
+    return literal[2].replace(/\\(.)/g, '$1');
+  }
+
+  // Anything that reads state or calls code is dynamic.
+  if (/[$@%"'`(]/.test(expr) || temporaryRefRegex().test(expr)) return null;
+  if (EXPRESSION_BUILTINS.has(expr)) return null;
+
+  // A bare name such as `{include ActResist}` throws a ReferenceError (or a
+  // SyntaxError for names with spaces), so Spindle falls back to the text.
+  return expr;
+}
+
+/**
+ * Names of the `{widget}` definitions in a passage's content, matched the way
+ * Spindle's startup scan finds them (quoted or bare names).
+ */
+function widgetDefinitionNames(content: string): string[] {
+  const names: string[] = [];
+  const re = /\{widget\s+(["']?)([^\s"'}]+)\1/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) names.push(m[2]);
+  return names;
+}
+
+function passageContent(passage: Passage, workspace: WorkspaceModel): string {
+  const text = workspace.documents.getText(passage.uri) ?? '';
+  return text.split('\n').slice(passage.range.start.line + 1, passage.range.end.line + 1).join('\n');
+}
+
+/**
+ * SP302: `{include}` whose target is a `widget`-tagged passage that defines
+ * widgets. Spindle registers those `{widget}` definitions at startup; when
+ * the passage is included, each `{widget}` macro renders nothing, so none of
+ * the widgets' output appears. (A `widget`-tagged passage without
+ * definitions renders its content like any other passage and is not
+ * reported.)
+ */
+function validateWidgetIncludes(
+  text: string,
+  macros: MacroNode[],
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  let lineStarts: number[] | null = null;
+
+  for (const macro of macros) {
+    if (!macro.open || !macro.rawArgs || macro.name.toLowerCase() !== 'include') continue;
+
+    lineStarts ??= buildLineStarts(text);
+    const target = resolveIncludeTarget(sourceArgs(macro, text, lineStarts).args);
+    if (target === null) continue;
+
+    const passage = workspace.passages.getPassage(target);
+    if (!passage?.tags?.includes('widget')) continue;
+
+    const widgets = widgetDefinitionNames(passageContent(passage, workspace));
+    if (widgets.length === 0) continue;
+
+    const list = widgets.map(w => `{${w}}`).join(', ');
+    diagnostics.push(makeDiag(
+      macro.range,
+      DiagnosticCode.IncludeWidgetPassage,
+      `{include}: passage "${target}" is tagged [widget] and defines ${list}. ` +
+        `Including it does not invoke ${widgets.length === 1 ? 'it' : 'them'}: {widget} definitions render nothing. ` +
+        `Invoke the widget instead, e.g. {${widgets[0]}}.`,
+    ));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Unused widgets (SP303)
+// ---------------------------------------------------------------------------
+
+/**
+ * SP303: a widget defined in this document that no document in the workspace
+ * invokes as `{name}`. Matching is case-insensitive, like Spindle's widget
+ * lookup. Invocations from JavaScript-generated markup cannot be seen, hence
+ * hint severity.
+ */
+function validateUnusedWidgets(
+  uri: string,
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  for (const widget of workspace.widgets.getAllWidgets()) {
+    if (widget.uri !== uri) continue;
+    if (workspace.widgets.isInvoked(widget.name)) continue;
+    diagnostics.push(makeDiag(
+      widget.range,
+      DiagnosticCode.UnusedWidget,
+      `Widget "${widget.name}" is defined but never invoked in the workspace`,
+    ));
   }
 }
 
