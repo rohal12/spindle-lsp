@@ -24,6 +24,10 @@ describe('diagnostic codes', () => {
     expect(getSeverity(DiagnosticCode.IncludeWidgetPassage)).toBe('warning');
   });
 
+  it('SP201 is error severity, like the startup failure it predicts', () => {
+    expect(getSeverity(DiagnosticCode.PrimitiveFieldAccess)).toBe('error');
+  });
+
   it('SP303 is hint severity', () => {
     expect(getSeverity(DiagnosticCode.UnusedWidget)).toBe('hint');
   });

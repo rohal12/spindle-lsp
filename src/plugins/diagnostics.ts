@@ -21,7 +21,7 @@ import { isMacroSource } from '../core/workspace/macro-sources.js';
  * Checks:
  *  - Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
  *  - Argument/parameter validation (SP108, SP109, SP110, SP111, SP112)
- *  - Variable validation (SP200, SP202, SP203, SP204, SP206)
+ *  - Variable validation (SP200, SP201, SP202, SP203, SP204, SP206)
  *  - Temporaries assigned inside {for} (SP205)
  *  - Link/widget validation (SP300, SP301, SP302, SP303)
  */
@@ -456,7 +456,7 @@ function includeExpression(rawArgs: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Variable validation (SP200, SP202, SP203, SP204)
+// Variable validation (SP200, SP201, SP202, SP203, SP204)
 // ---------------------------------------------------------------------------
 
 function validateVariables(
@@ -494,6 +494,17 @@ function validateVariables(
         u.range,
         DiagnosticCode.UndeclaredVariable,
         `Variable '$${u.name}' is not declared in StoryVariables`,
+      ));
+    }
+
+    // SP201: field access on a primitive default (Spindle's validateRef).
+    // Disjoint from SP206: Spindle allows any field of an array.
+    for (const a of workspace.variables.getPrimitiveFieldAccesses(uri)) {
+      diagnostics.push(makeDiag(
+        a.range,
+        DiagnosticCode.PrimitiveFieldAccess,
+        `Cannot access field "${a.field}" on ${a.path} (type: ${a.type}). ` +
+          'Spindle checks field access against the StoryVariables defaults and will not start the story.',
       ));
     }
 

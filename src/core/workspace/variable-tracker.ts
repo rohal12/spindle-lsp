@@ -1,6 +1,7 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
 import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
 import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
+import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
 
 /** Regex to match $variable references including dot notation. */
 const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
@@ -153,6 +154,21 @@ interface VariableUsage {
 /** A `$name` reference Spindle validates against StoryVariables at startup. */
 interface ValidatedReference {
   baseName: string;
+  /** The dotted path after the `$`, e.g. `player.stats.hp`. */
+  path: string;
+  /** Range of the `$` and the path. */
+  range: Range;
+}
+
+/**
+ * A `$var.a.b` path Spindle rejects at startup: `field` is accessed on
+ * `path` (e.g. `$var.a`), whose StoryVariables default is a primitive.
+ */
+export interface PrimitiveFieldAccess {
+  path: string;
+  field: string;
+  type: VariableValueType;
+  /** Range of the rejected field name. */
   range: Range;
 }
 
@@ -289,6 +305,7 @@ function validatedReferences(
         const line = contentStartLine + i;
         refs.push({
           baseName,
+          path: m[1],
           range: {
             start: { line, character: m.index },
             end: { line, character: m.index + m[0].length },
@@ -362,6 +379,8 @@ export class VariableTracker {
       const decl: DeclaredVariable = { name, sigil: '$', ...location };
       const type = inferLiteralType(expr);
       if (type) decl.type = type;
+      const schema = inferDefaultSchema(expr);
+      if (schema) decl.schema = schema;
 
       // Extract top-level object fields for dot-notation validation
       if (expr.startsWith('{')) {
@@ -610,6 +629,37 @@ export class VariableTracker {
         seen.add(u.baseName);
         results.push({ name: u.baseName, range: u.range });
       }
+    }
+    return results;
+  }
+
+  /**
+   * Get the `$var.a.b` paths in a document that Spindle rejects at startup
+   * because they access a field of a number, string or boolean, judged by
+   * the StoryVariables defaults as Spindle's validateRef() does. Every
+   * occurrence is reported; defaults that are not literals are not checked.
+   */
+  getPrimitiveFieldAccesses(uri: string): PrimitiveFieldAccess[] {
+    const results: PrimitiveFieldAccess[] = [];
+    for (const ref of this.validatedRefsByUri.get(uri) ?? []) {
+      const schema = this.declared.get(ref.baseName)?.schema;
+      if (!schema) continue;
+      const parts = ref.path.split('.');
+      const found = findPrimitiveFieldAccess(schema, parts.slice(1));
+      if (!found) continue;
+
+      const owner = parts.slice(0, found.index + 1).join('.');
+      const field = parts[found.index + 1];
+      const start = ref.range.start.character + 1 + owner.length + 1;
+      results.push({
+        path: `$${owner}`,
+        field,
+        type: found.type,
+        range: {
+          start: { line: ref.range.start.line, character: start },
+          end: { line: ref.range.start.line, character: start + field.length },
+        },
+      });
     }
     return results;
   }

@@ -514,3 +514,94 @@ describe('VariableTracker CSS-prefixed variable displays (#58)', () => {
     expect(tracker.getUsages('player')).toEqual([]);
   });
 });
+
+describe('VariableTracker field access on primitives (Spindle validateRef)', () => {
+  const uri = 'file:///story.tw';
+  const vars = [
+    '$name = "Bob"',
+    '$hp = 5',
+    '$on = true',
+    '$list = []',
+    '$p = { hp: 1, s: { label: "x" }, inv: [] }',
+    '$calc = 2 * 3',
+    '$nil = null',
+  ].join('\n');
+
+  function scan(text: string): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables(vars);
+    tracker.scanDocument(uri, text, []);
+    return tracker;
+  }
+
+  function accesses(text: string): string[] {
+    return scan(text).getPrimitiveFieldAccesses(uri)
+      .map(a => `Cannot access field "${a.field}" on ${a.path} (type: ${a.type})`);
+  }
+
+  it('reports a field of a string, number or boolean default (issue example)', () => {
+    const tracker = scan(':: Start\n{print $name.length} {$hp.toFixed} $on.x');
+    expect(tracker.getPrimitiveFieldAccesses(uri)).toEqual([
+      {
+        path: '$name', field: 'length', type: 'string',
+        range: { start: { line: 1, character: 13 }, end: { line: 1, character: 19 } },
+      },
+      {
+        path: '$hp', field: 'toFixed', type: 'number',
+        range: { start: { line: 1, character: 26 }, end: { line: 1, character: 33 } },
+      },
+      {
+        path: '$on', field: 'x', type: 'boolean',
+        range: { start: { line: 1, character: 39 }, end: { line: 1, character: 40 } },
+      },
+    ]);
+  });
+
+  it('walks nested object fields and reports the first field past a primitive', () => {
+    expect(accesses(':: Start\n{$p.hp.max.y} {$p.s.label.length} {$p.s} {$p.hp}')).toEqual([
+      'Cannot access field "max" on $p.hp (type: number)',
+      'Cannot access field "length" on $p.s.label (type: string)',
+    ]);
+  });
+
+  it('allows unknown object fields and any field of an array, as Spindle does', () => {
+    expect(accesses(':: Start\n{$p.missing.deep} {$p.inv.foo.bar} {$list.length} {$list.nope}')).toEqual([]);
+  });
+
+  it('does not guess the type of a default that is not a literal', () => {
+    expect(accesses(':: Start\n{$calc.x} {$nil.x}')).toEqual([]);
+  });
+
+  it('reports every occurrence, in prose, strings and comments too', () => {
+    expect(accesses([
+      ':: Start',
+      'Hi $name.first! {print "$name.length"} <!-- $name.length -->',
+      '{$name.length}',
+    ].join('\n'))).toHaveLength(4);
+  });
+
+  it('skips {for} locals, undeclared roots and passages Spindle does not validate', () => {
+    expect(accesses([
+      ':: Loop',
+      '{for @name of $list}{@name.length} $name.length{/for}',
+      ':: Other',
+      '$ghost.length',
+      ':: StoryTitle',
+      '$name.length',
+      ':: Code [script]',
+      'window.$name.length = 1;',
+    ].join('\n'))).toEqual([]);
+  });
+
+  it('checks StoryInit and widget passages', () => {
+    expect(accesses([
+      ':: StoryInit',
+      '{set $hp.max = 3}',
+      ':: W [widget]',
+      '{widget "w"}{$on.no}{/widget}',
+    ].join('\n'))).toEqual([
+      'Cannot access field "max" on $hp (type: number)',
+      'Cannot access field "no" on $on (type: boolean)',
+    ]);
+  });
+});
