@@ -282,10 +282,11 @@ export class VariableTracker {
       const contentLines = lines.slice(contentStartLine, contentEndLine);
       const content = contentLines.join('\n');
 
-      // Clean the content to avoid scanning inside strings/comments
+      // Clean the content to avoid scanning inside strings/comments.
+      // Line terminators are kept so offsets still map to the right lines.
       let cleaned = content;
       for (const pattern of CLEAN_PATTERNS) {
-        cleaned = cleaned.replace(pattern, (m) => ' '.repeat(m.length));
+        cleaned = cleaned.replace(pattern, (m) => m.replace(/[^\r\n]/g, ' '));
       }
 
       // Build line offsets for this content block

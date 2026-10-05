@@ -192,3 +192,42 @@ describe('VariableTracker.getArrayMemberAccesses', () => {
     expect(tracker.getArrayMemberAccesses('file:///none.tw')).toEqual([]);
   });
 });
+
+describe('VariableTracker usage ranges after masked exclusions', () => {
+  function usageAt(text: string, name: string) {
+    const tracker = new VariableTracker();
+    tracker.scanDocument('file:///story.tw', text, []);
+    const usages = tracker.getUsages(name);
+    expect(usages.length).toBe(1);
+    return usages[0].range;
+  }
+
+  it('keeps line numbers after a multi-line HTML comment', () => {
+    const text = ':: StoryVariables\n$x = 0\n:: Start\n<!-- comment\nmore -->\n{$missing}';
+    expect(usageAt(text, 'missing')).toEqual({
+      start: { line: 5, character: 1 },
+      end: { line: 5, character: 9 },
+    });
+  });
+
+  it('keeps line numbers after a multi-line script block', () => {
+    const text = ':: Start\n<script>\nlet a = 1;\nlet b = 2;\n</script>\n{$x}';
+    expect(usageAt(text, 'x').start).toEqual({ line: 5, character: 1 });
+  });
+
+  it('keeps line numbers after a multi-line style block', () => {
+    const text = ':: Start\n<style>\n.a { color: red; }\n</style>\nText {$x}';
+    expect(usageAt(text, 'x').start).toEqual({ line: 4, character: 6 });
+  });
+
+  it('keeps line numbers after a multi-line template literal', () => {
+    const text = ':: Start\n{do `line one\nline two`}\n{$x}';
+    expect(usageAt(text, 'x').start).toEqual({ line: 3, character: 1 });
+  });
+
+  it('keeps transient line numbers after a multi-line comment', () => {
+    const tracker = new VariableTracker();
+    tracker.scanDocument('file:///story.tw', ':: Start\n<!--\n\n-->\n{%t}', []);
+    expect(tracker.getTransientUsages('t')[0].range.start).toEqual({ line: 4, character: 1 });
+  });
+});
