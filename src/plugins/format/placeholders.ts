@@ -129,7 +129,24 @@ export function restoreSvgBlocks(text: string, tokens: string[]): string {
  */
 export function replaceSpindleTokens(html: string): PlaceholderResult {
   const tokens: string[] = [];
-  const lines = html.split('\n');
+  // A token may span lines (e.g. a template literal with a newline). The
+  // per-line scan below cannot see it whole, so protect complete multiline
+  // tokens first as single-line stand-ins and expand them again at the end.
+  const multiline: string[] = [];
+  let tag = 'SPML';
+  while (html.includes(`{${tag}`)) tag += 'X';
+  let source = '';
+  let last = 0;
+  for (const m of scanSpindleTokens(html)) {
+    if (!m.token.includes('\n')) continue;
+    source += html.slice(last, m.start) + `{${tag}${multiline.length}}`;
+    multiline.push(m.token);
+    last = m.end;
+  }
+  source += html.slice(last);
+  const standIn = new RegExp(`\\{${tag}(\\d+)\\}`, 'g');
+  const expand = (t: string) => t.replace(standIn, (_, n) => multiline[Number(n)]);
+  const lines = source.split('\n');
   const resultLines: string[] = [];
 
   for (const line of lines) {
@@ -182,7 +199,7 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
     }
   }
 
-  return { text: resultLines.join('\n'), tokens };
+  return { text: resultLines.join('\n'), tokens: tokens.map(expand) };
 }
 
 /**
