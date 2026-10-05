@@ -43,6 +43,8 @@ export interface Passage {
   name: string;
   range: Range;
   headerEnd: Range;
+  /** Range of the passage name within its header line. */
+  nameRange: Range;
   uri: string;
   tags?: string[];
   meta?: Record<string, unknown>;
@@ -74,7 +76,13 @@ export interface DeclaredVariable {
 
 export interface WidgetDef {
   name: string;
+  /** Declared parameters including their sigil, e.g. `@name`, `$x`, `_y`. */
   params: string[];
   uri: string;
+  /** Range of the whole `{widget ...}` opening tag. */
   range: Range;
+  /** Range of the widget name inside the definition tag. */
+  nameRange: Range;
+  /** Block (container) widget: its body contains `{@children}`, so it takes a `{/name}` closing tag. */
+  block: boolean;
 }

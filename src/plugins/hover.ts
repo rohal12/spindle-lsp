@@ -221,7 +221,7 @@ function buildWidgetHover(
   nameEnd: number,
 ): HoverResult {
   const sig = widget.params.length > 0
-    ? widget.params.map(p => `@${p}`).join(', ')
+    ? widget.params.join(', ')
     : 'no parameters';
   return {
     contents: `**Widget** \`${widget.name}\`\n\nParameters: ${sig}\n\nDefined in: \`${widget.uri}\``,

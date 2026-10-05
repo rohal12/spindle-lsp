@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { prepareRename, computeRename } from '../../src/plugins/rename.js';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { prepareRename, computeRename, type RenameEdit } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -10,6 +11,21 @@ function createWorkspace(...files: Array<{ name: string; content: string }>): Wo
   }
   ws.initialize(contents);
   return ws;
+}
+
+/** Apply a rename and return the resulting text of every edited document. */
+function applyRename(
+  ws: WorkspaceModel,
+  uri: string,
+  position: { line: number; character: number },
+  newName: string,
+): Map<string, string> {
+  const results = new Map<string, string>();
+  for (const [editUri, edits] of computeRename(uri, position, newName, ws)) {
+    const doc = TextDocument.create(editUri, 'twee', 0, ws.documents.getText(editUri)!);
+    results.set(editUri, TextDocument.applyEdits(doc, edits));
+  }
+  return results;
 }
 
 describe('prepareRename', () => {
@@ -133,4 +149,144 @@ describe('computeRename', () => {
     expect(allEdits.length).toBeGreaterThanOrEqual(2);
     expect(allEdits.every(e => e.newText === 'hello')).toBe(true);
   });
+
+  it('keeps the $ sigil and property path of story variables', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$player = {health: 10}\n:: Start\n{$player.health}',
+    });
+    const result = applyRename(ws, 'file:///test.tw', { line: 3, character: 3 }, 'hero');
+    expect(result.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$hero = {health: 10}\n:: Start\n{$hero.health}',
+    );
+  });
+
+  it('accepts a new name that includes the sigil', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$x = 0\n:: Start\n{set $x = $x + 1} {$x.toFixed}',
+    });
+    const result = applyRename(ws, 'file:///test.tw', { line: 3, character: 6 }, '$y');
+    expect(result.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$y = 0\n:: Start\n{set $y = $y + 1} {$y.toFixed}',
+    );
+  });
+
+  it('keeps the % sigil and property path of transient variables', () => {
+    const ws = createWorkspace(
+      { name: 'transients.tw', content: ':: StoryTransients\n%npc = {name: "Bo"}' },
+      { name: 'start.tw', content: ':: Start\n{%npc.name} {set %npc = {}}' },
+    );
+    const result = applyRename(ws, 'file:///start.tw', { line: 1, character: 2 }, 'guide');
+    expect(result.get('file:///transients.tw')).toBe(':: StoryTransients\n%guide = {name: "Bo"}');
+    expect(result.get('file:///start.tw')).toBe(':: Start\n{%guide.name} {set %guide = {}}');
+  });
+
+  it('renames the right text after a multi-line comment', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$x = 0\n:: Start\n<!-- comment\nmore -->\n{$x}',
+    });
+    const result = applyRename(ws, 'file:///test.tw', { line: 5, character: 2 }, 'y');
+    expect(result.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$y = 0\n:: Start\n<!-- comment\nmore -->\n{$y}',
+    );
+  });
+
+  it('renames only the namespace of the symbol sigil', () => {
+    const content = ':: StoryVariables\n$count = 0\n:: StoryTransients\n%count = 0\n:: Start\n{$count} {%count}';
+    const ws = createWorkspace({ name: 'test.tw', content });
+
+    const story = applyRename(ws, 'file:///test.tw', { line: 5, character: 3 }, 'total');
+    expect(story.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$total = 0\n:: StoryTransients\n%count = 0\n:: Start\n{$total} {%count}',
+    );
+
+    const transient = applyRename(ws, 'file:///test.tw', { line: 5, character: 12 }, 'total');
+    expect(transient.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$count = 0\n:: StoryTransients\n%total = 0\n:: Start\n{$count} {%total}',
+    );
+  });
+
+  it('renames widgets defined with single-quoted and bare names', () => {
+    const files = {
+      'widgets.tw': ":: W [widget]\n{widget 'hello' @name}Hi{/widget}\n{widget bye $who}Bye{/widget}",
+      'test.tw': ':: Start\n{hello "Sam"} {bye "Sam"}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+
+    let out = applyRenameToFiles(files, computeRename('file:///test.tw', { line: 1, character: 2 }, 'greet', ws));
+    expect(out['widgets.tw']).toBe(":: W [widget]\n{widget 'greet' @name}Hi{/widget}\n{widget bye $who}Bye{/widget}");
+    expect(out['test.tw']).toBe(':: Start\n{greet "Sam"} {bye "Sam"}');
+
+    // Starting from the bare-name definition itself
+    out = applyRenameToFiles(files, computeRename('file:///widgets.tw', { line: 2, character: 9 }, 'farewell', ws));
+    expect(out['widgets.tw']).toBe(":: W [widget]\n{widget 'hello' @name}Hi{/widget}\n{widget farewell $who}Bye{/widget}");
+    expect(out['test.tw']).toBe(':: Start\n{hello "Sam"} {farewell "Sam"}');
+  });
+
+  it('renames closing tags of block widgets, including nested ones', () => {
+    const files = {
+      'widgets.tw': [
+        ':: Widgets [widget]',
+        '{widget "wrap"}<div>{@children}</div>{/widget}',
+        '{widget "outer"}{wrap}{@children}{/wrap}{/widget}',
+      ].join('\n'),
+      'test.tw': ':: Start\n{wrap}hello {Wrap}inner{/Wrap}{/wrap}\n{outer}x{/outer}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+    const expected = {
+      'widgets.tw': [
+        ':: Widgets [widget]',
+        '{widget "newWrap"}<div>{@children}</div>{/widget}',
+        '{widget "outer"}{newWrap}{@children}{/newWrap}{/widget}',
+      ].join('\n'),
+      'test.tw': ':: Start\n{newWrap}hello {newWrap}inner{/newWrap}{/newWrap}\n{outer}x{/outer}',
+    };
+
+    // From an opening tag, a closing tag and the definition
+    for (const [uri, pos] of [
+      ['file:///test.tw', { line: 1, character: 2 }],
+      ['file:///test.tw', { line: 1, character: 32 }],
+      ['file:///widgets.tw', { line: 1, character: 10 }],
+    ] as const) {
+      expect(applyRenameToFiles(files, computeRename(uri, pos, 'newWrap', ws))).toEqual(expected);
+    }
+  });
+
+  it('renames widget invocations spelled with a different case', () => {
+    const files = {
+      'widgets.tw': ':: W [widget]\n{widget "Hello" @name}Hi{/widget}',
+      'test.tw': ':: Start\n{hello "Sam"} {HELLO "Al"}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+    const expected = {
+      'widgets.tw': ':: W [widget]\n{widget "Greet" @name}Hi{/widget}',
+      'test.tw': ':: Start\n{Greet "Sam"} {Greet "Al"}',
+    };
+
+    expect(prepareRename('file:///test.tw', { line: 1, character: 2 }, ws)!.placeholder).toBe('hello');
+    expect(applyRenameToFiles(files, computeRename('file:///test.tw', { line: 1, character: 2 }, 'Greet', ws)))
+      .toEqual(expected);
+    expect(applyRenameToFiles(files, computeRename('file:///widgets.tw', { line: 1, character: 10 }, 'Greet', ws)))
+      .toEqual(expected);
+  });
 });
+
+function applyRenameToFiles(
+  files: Record<string, string>,
+  edits: Map<string, RenameEdit[]>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, content] of Object.entries(files)) {
+    const doc = TextDocument.create(`file:///${name}`, 'twee', 1, content);
+    out[name] = TextDocument.applyEdits(doc, edits.get(`file:///${name}`) ?? []);
+  }
+  return out;
+}

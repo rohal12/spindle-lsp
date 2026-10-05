@@ -20,7 +20,7 @@ export interface WorkspaceSymbolItem {
  * Returns:
  *  - All passages as Namespace symbols
  *  - All widgets as Function symbols
- *  - All declared variables as Variable symbols
+ *  - All declared story and transient variables as Variable symbols
  *
  * Results are filtered by the query string (case-insensitive substring match).
  */
@@ -50,15 +50,20 @@ export function searchWorkspaceSymbols(query: string, workspace: WorkspaceModel)
     });
   }
 
-  // Declared variables
-  for (const [name, decl] of workspace.variables.getDeclared()) {
-    const displayName = '$' + name;
+  // Declared story and transient variables
+  const declarations = [
+    ...workspace.variables.getDeclared().values(),
+    ...workspace.variables.getDeclaredTransient().values(),
+  ];
+  for (const decl of declarations) {
+    const displayName = decl.sigil + decl.name;
     if (lowerQuery && !displayName.toLowerCase().includes(lowerQuery)) continue;
+    if (!decl.declarationUri || !decl.declarationRange) continue;
     results.push({
       name: displayName,
       kind: SymbolKind.Variable,
-      uri: decl.declarationUri ?? '',
-      range: decl.declarationRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      uri: decl.declarationUri,
+      range: decl.declarationRange,
     });
   }
 

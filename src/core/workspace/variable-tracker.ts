@@ -1,5 +1,5 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
-import { parsePassageHeader } from '../parsing/passage-parser.js';
+import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
 
 /** Regex to match $variable references including dot notation. */
 const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
@@ -115,6 +115,27 @@ export function inferLiteralType(expr: string): VariableValueType | undefined {
 }
 
 /**
+ * Location of a `$name = ...` / `%name = ...` declaration line: the range
+ * covers the sigil and name, matching the ranges recorded for usages.
+ */
+function declarationLocation(
+  line: string,
+  name: string,
+  absLine: number,
+  uri: string | undefined,
+): Pick<DeclaredVariable, 'declarationUri' | 'declarationRange'> {
+  const start = line.length - line.trimStart().length;
+  const location: Pick<DeclaredVariable, 'declarationUri' | 'declarationRange'> = {
+    declarationRange: {
+      start: { line: absLine, character: start },
+      end: { line: absLine, character: start + 1 + name.length },
+    },
+  };
+  if (uri !== undefined) location.declarationUri = uri;
+  return location;
+}
+
+/**
  * Tracks declared variables (from StoryVariables) and variable usages across documents.
  */
 export class VariableTracker {
@@ -136,7 +157,7 @@ export class VariableTracker {
    * Parse the StoryVariables passage content for declarations.
    * Each line like `$name = value` becomes a declaration.
    */
-  parseStoryVariables(content: string, contentStartLine = 0): void {
+  parseStoryVariables(content: string, contentStartLine = 0, uri?: string): void {
     this.declared.clear();
     this._hasStoryVariables = true;
     this._nullDeclarations = [];
@@ -151,11 +172,12 @@ export class VariableTracker {
 
       const name = match[1];
       const expr = match[2].trim();
+      const absLine = contentStartLine + i;
+      const location = declarationLocation(lines[i], name, absLine, uri);
 
       // Detect null values — Spindle doesn't support null
       if (expr === 'null') {
         const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
-        const absLine = contentStartLine + i;
         this._nullDeclarations.push({
           name,
           sigil: '$',
@@ -165,11 +187,11 @@ export class VariableTracker {
           },
         });
         // Still register as declared so we don't also emit SP200
-        this.declared.set(name, { name, sigil: '$' });
+        this.declared.set(name, { name, sigil: '$', ...location });
         continue;
       }
 
-      const decl: DeclaredVariable = { name, sigil: '$' };
+      const decl: DeclaredVariable = { name, sigil: '$', ...location };
       const type = inferLiteralType(expr);
       if (type) decl.type = type;
 
@@ -190,11 +212,25 @@ export class VariableTracker {
     }
   }
 
+  /** Forget StoryVariables declarations, e.g. after the passage was removed. */
+  clearStoryVariables(): void {
+    this.declared.clear();
+    this._hasStoryVariables = false;
+    this._nullDeclarations = [];
+  }
+
+  /** Forget StoryTransients declarations, e.g. after the passage was removed. */
+  clearStoryTransients(): void {
+    this.declaredTransient.clear();
+    this._hasStoryTransients = false;
+    this._nullTransientDeclarations = [];
+  }
+
   /**
    * Parse the StoryTransients passage content for declarations.
    * Each line like `%name = value` becomes a declaration.
    */
-  parseStoryTransients(content: string, contentStartLine = 0): void {
+  parseStoryTransients(content: string, contentStartLine = 0, uri?: string): void {
     this.declaredTransient.clear();
     this._hasStoryTransients = true;
     this._nullTransientDeclarations = [];
@@ -209,11 +245,12 @@ export class VariableTracker {
 
       const name = match[1];
       const expr = match[2].trim();
+      const absLine = contentStartLine + i;
+      const location = declarationLocation(lines[i], name, absLine, uri);
 
       // Detect null values — Spindle doesn't support null
       if (expr === 'null') {
         const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
-        const absLine = contentStartLine + i;
         this._nullTransientDeclarations.push({
           name,
           sigil: '%',
@@ -222,11 +259,11 @@ export class VariableTracker {
             end: { line: absLine, character: charIdx + 4 },
           },
         });
-        this.declaredTransient.set(name, { name, sigil: '%' });
+        this.declaredTransient.set(name, { name, sigil: '%', ...location });
         continue;
       }
 
-      const decl: DeclaredVariable = { name, sigil: '%' };
+      const decl: DeclaredVariable = { name, sigil: '%', ...location };
       const type = inferLiteralType(expr);
       if (type) decl.type = type;
 
@@ -261,11 +298,11 @@ export class VariableTracker {
     const transientUsages: VariableUsage[] = [];
 
     // Find all passage boundaries in the document
-    const passageBoundaries: Array<{ name: string; startLine: number }> = [];
+    const passageBoundaries: Array<{ name: string; tags: string[]; startLine: number }> = [];
     for (let i = 0; i < lines.length; i++) {
       const header = parsePassageHeader(lines[i], i);
       if (header) {
-        passageBoundaries.push({ name: header.name, startLine: i });
+        passageBoundaries.push({ name: header.name, tags: header.tags, startLine: i });
       }
     }
 
@@ -273,6 +310,7 @@ export class VariableTracker {
     for (let pi = 0; pi < passageBoundaries.length; pi++) {
       const passage = passageBoundaries[pi];
       if (EXCLUDED_PASSAGES.has(passage.name)) continue;
+      if (isScriptOrStylesheetPassage(passage)) continue;
 
       const contentStartLine = passage.startLine + 1;
       const contentEndLine = pi + 1 < passageBoundaries.length
@@ -282,10 +320,11 @@ export class VariableTracker {
       const contentLines = lines.slice(contentStartLine, contentEndLine);
       const content = contentLines.join('\n');
 
-      // Clean the content to avoid scanning inside strings/comments
+      // Clean the content to avoid scanning inside strings/comments.
+      // Line terminators are kept so offsets still map to the right lines.
       let cleaned = content;
       for (const pattern of CLEAN_PATTERNS) {
-        cleaned = cleaned.replace(pattern, (m) => ' '.repeat(m.length));
+        cleaned = cleaned.replace(pattern, (m) => m.replace(/[^\r\n]/g, ' '));
       }
 
       // Build line offsets for this content block

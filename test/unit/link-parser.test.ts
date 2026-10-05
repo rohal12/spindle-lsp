@@ -37,4 +37,49 @@ describe('parseLinks', () => {
     expect(refs[0].range.start.line).toBe(1);
     expect(refs[1].range.start.line).toBe(3);
   });
+
+  it('locates the target, not display text equal to it', () => {
+    const refs = parseLinks('[[Target|Target]]');
+    expect(refs).toHaveLength(1);
+    expect(refs[0].range.start.character).toBe(9);
+    expect(refs[0].range.end.character).toBe(15);
+  });
+
+  it('locates the target when the display text contains it', () => {
+    const refs = parseLinks('[[Go to Target now| Target ]]');
+    expect(refs[0].name).toBe('Target');
+    expect(refs[0].range.start.character).toBe(20);
+    expect(refs[0].range.end.character).toBe(26);
+  });
+
+  it('extracts [[Display->Target]] with the target range', () => {
+    const refs = parseLinks('[[go -> Target]]');
+    expect(refs).toHaveLength(1);
+    expect(refs[0].name).toBe('Target');
+    expect(refs[0].range.start.character).toBe(8);
+    expect(refs[0].range.end.character).toBe(14);
+  });
+
+  it('extracts [[Target<-Display]] with the target range', () => {
+    const refs = parseLinks('[[Target<-go]]');
+    expect(refs).toHaveLength(1);
+    expect(refs[0].name).toBe('Target');
+    expect(refs[0].range.start.character).toBe(2);
+    expect(refs[0].range.end.character).toBe(8);
+  });
+
+  it('gives the pipe precedence over arrows, like Spindle', () => {
+    expect(parseLinks('[[a->b|Target]]')[0].name).toBe('Target');
+    expect(parseLinks('[[x<-a->Target]]')[0].name).toBe('Target');
+  });
+
+  it('skips a .class#id prefix', () => {
+    const refs = parseLinks('[[.fancy#door Enter->Hall]]');
+    expect(refs[0].name).toBe('Hall');
+    expect(refs[0].range.start.character).toBe(21);
+  });
+
+  it('ignores links with an empty target', () => {
+    expect(parseLinks('[[go->]] [[ ]]')).toHaveLength(0);
+  });
 });

@@ -54,6 +54,23 @@ describe('getDefinition', () => {
     expect(result!.uri).toBe('file:///widgets.tw');
   });
 
+  it('jumps to a widget definition whose name differs in case', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "Greeting" @name}\nHello {@name}!\n{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{greeting "World"}',
+      },
+    );
+    const result = getDefinition('file:///test.tw', { line: 1, character: 2 }, ws);
+    expect(result).not.toBeNull();
+    expect(result!.uri).toBe('file:///widgets.tw');
+    expect(result!.range.start.line).toBe(1);
+  });
+
   it('returns null for known macros (not widgets)', () => {
     const ws = createWorkspace({
       name: 'test.tw',

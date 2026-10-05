@@ -5,6 +5,8 @@ import { MacroRegistry } from './macro-registry.js';
 import { VariableTracker } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
 import { parseMacros } from '../parsing/macro-parser.js';
+import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
+import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
 
 export interface WorkspaceModelConfig {
@@ -90,6 +92,15 @@ export class WorkspaceModel extends EventEmitter {
     this.scheduleModelReady();
   }
 
+  /**
+   * Re-run cross-document analysis and schedule 'modelReady', e.g. after
+   * the macro configuration changed without any document changing.
+   */
+  refresh(): void {
+    this.cascade();
+    this.scheduleModelReady();
+  }
+
   /** Clean up listeners and timers. */
   dispose(): void {
     this.documents.removeListener('documentChanged', this.onDocumentChanged);
@@ -110,6 +121,7 @@ export class WorkspaceModel extends EventEmitter {
     if (text !== undefined) {
       this.passages.rebuild(uri, text);
     }
+    this.refreshDiscoveredMacros();
     this.cascade();
     this.emit('documentChanged', uri);
     this.emit('passagesUpdated', uri);
@@ -119,6 +131,7 @@ export class WorkspaceModel extends EventEmitter {
   /** Handle a document close: remove its passages and cascade. */
   private handleDocumentClose(uri: string): void {
     this.passages.remove(uri);
+    this.refreshDiscoveredMacros();
     this.cascade();
     this.emit('documentClosed', uri);
     this.emit('passagesUpdated', uri);
@@ -133,7 +146,48 @@ export class WorkspaceModel extends EventEmitter {
         this.passages.rebuild(uri, text);
       }
     }
+    this.refreshDiscoveredMacros();
     this.cascade();
+  }
+
+  /**
+   * Re-run static macro discovery over the workspace and replace the
+   * registry's discovered tier (dropping definitions whose source is gone).
+   *
+   * Sources scanned for Story.defineMacro({...}) calls:
+   *  - `{do}` blocks in StoryInit passages
+   *  - passages tagged `script` (Story JavaScript)
+   *  - JavaScript/TypeScript documents in the workspace
+   */
+  private refreshDiscoveredMacros(): void {
+    const found: DiscoveredMacro[] = [];
+
+    for (const uri of this.documents.getUris()) {
+      const text = this.documents.getText(uri);
+      if (!text) continue;
+
+      if (/\.[cm]?[jt]s$/i.test(uri)) {
+        found.push(...discoverMacrosFromSource(text));
+        continue;
+      }
+
+      let lines: string[] | undefined;
+      for (const passage of this.passages.getPassagesInDocument(uri)) {
+        const isStoryInit = passage.name === 'StoryInit';
+        const isScript = passage.tags?.includes('script') ?? false;
+        if (!isStoryInit && !isScript) continue;
+
+        lines ??= text.split('\n');
+        const content = lines
+          .slice(passage.headerEnd.end.line + 1, passage.range.end.line + 1)
+          .join('\n');
+        found.push(...(isScript
+          ? discoverMacrosFromSource(content)
+          : discoverMacrosFromStoryInit(content)));
+      }
+    }
+
+    this.macros.setDiscoveredMacros(found);
   }
 
   /**
@@ -157,8 +211,10 @@ export class WorkspaceModel extends EventEmitter {
           }
         }
         const content = lines.slice(contentStart, contentEnd).join('\n');
-        this.variables.parseStoryVariables(content, contentStart);
+        this.variables.parseStoryVariables(content, contentStart, storyVars.uri);
       }
+    } else {
+      this.variables.clearStoryVariables();
     }
 
     // Rescan StoryTransients
@@ -176,8 +232,10 @@ export class WorkspaceModel extends EventEmitter {
           }
         }
         const content = lines.slice(contentStart, contentEnd).join('\n');
-        this.variables.parseStoryTransients(content, contentStart);
+        this.variables.parseStoryTransients(content, contentStart, storyTransients.uri);
       }
+    } else {
+      this.variables.clearStoryTransients();
     }
 
     // Rescan variable usages and macro invocations across all documents

@@ -53,13 +53,13 @@ describe('WidgetRegistry', () => {
     const greeting = registry.getWidget('greeting');
     expect(greeting).toBeDefined();
     expect(greeting!.name).toBe('greeting');
-    expect(greeting!.params).toEqual(['name']);
+    expect(greeting!.params).toEqual(['@name']);
     expect(greeting!.uri).toBe('file:///widgets.tw');
 
     const counter = registry.getWidget('counter');
     expect(counter).toBeDefined();
     expect(counter!.name).toBe('counter');
-    expect(counter!.params).toEqual(['count', 'label']);
+    expect(counter!.params).toEqual(['@count', '@label']);
   });
 
   it('ignores passages without widget tag', () => {
@@ -130,4 +130,69 @@ describe('WidgetRegistry', () => {
     registry.clearInvocations();
     expect(registry.isInvoked('counter')).toBe(false);
   });
+
+  function scanWidgets(content: string): WidgetRegistry {
+    const registry = new WidgetRegistry();
+    const passages = [makePassage('W', 'file:///w.tw', ['widget'])];
+    registry.scan(passages, () => content);
+    return registry;
+  }
+
+  it('recognizes single-quoted and bare widget names', () => {
+    const registry = scanWidgets(
+      ":: W [widget]\n{widget 'hello' @name}Hello{/widget}\n{widget bye $who}Bye{/widget}\n",
+    );
+    expect(registry.getWidget('hello')?.params).toEqual(['@name']);
+    expect(registry.getWidget('bye')?.params).toEqual(['$who']);
+  });
+
+  it('recognizes $, _ and @ parameters and ignores other tokens like the runtime', () => {
+    const registry = scanWidgets(
+      ':: W [widget]\n{widget "mix" $a _b @c junk @children}{@c}{/widget}\n{widget "temp" _name}x{/widget}\n',
+    );
+    expect(registry.getWidget('mix')?.params).toEqual(['$a', '_b', '@c']);
+    expect(registry.getWidget('temp')?.params).toEqual(['_name']);
+  });
+
+  it('records the precise range of the widget name', () => {
+    const registry = scanWidgets(
+      ":: W [widget]\n  {widget 'hello' @x}a{/widget} {widget bare}b{/widget}\n",
+    );
+    expect(registry.getWidget('hello')!.nameRange).toEqual({
+      start: { line: 1, character: 11 },
+      end: { line: 1, character: 16 },
+    });
+    expect(registry.getWidget('bare')!.nameRange).toEqual({
+      start: { line: 1, character: 40 },
+      end: { line: 1, character: 44 },
+    });
+    expect(registry.getWidget('hello')!.range).toEqual({
+      start: { line: 1, character: 2 },
+      end: { line: 1, character: 21 },
+    });
+  });
+
+  it('looks up widgets case-insensitively, keeping the original spelling', () => {
+    const registry = scanWidgets(':: W [widget]\n{widget "Hello" @name}Hi{/widget}\n');
+    for (const name of ['Hello', 'hello', 'HELLO']) {
+      expect(registry.getWidget(name)?.name).toBe('Hello');
+    }
+    expect(registry.getAllWidgets().map(w => w.name)).toEqual(['Hello']);
+  });
+
+  it('marks widgets whose body contains {@children} as block widgets', () => {
+    const registry = scanWidgets([
+      ':: W [widget]',
+      '{widget "wrap"}<div>{@children}</div>{/widget}',
+      '{widget "panel" @title}',
+      '<h2>{@title}</h2>',
+      '{@children}',
+      '{/widget}',
+      '{widget "plain" @x}{@x}{/widget}',
+    ].join('\n'));
+    expect(registry.getWidget('wrap')!.block).toBe(true);
+    expect(registry.getWidget('panel')!.block).toBe(true);
+    expect(registry.getWidget('plain')!.block).toBe(false);
+  });
+
 });

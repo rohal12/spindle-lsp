@@ -36,6 +36,52 @@ describe('computeInlayHints', () => {
     expect(labels).toContain('@count:');
   });
 
+  it('provides parameter hints for invocations differing in case', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "Counter" @count}{@count}{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{counter 5}',
+      },
+    );
+    const fullRange = {
+      start: { line: 0, character: 0 },
+      end: { line: 10, character: 0 },
+    };
+    const hints = computeInlayHints('file:///test.tw', fullRange, ws);
+    expect(hints).toEqual([
+      { position: { line: 1, character: 9 }, label: '@count:', kind: 'parameter' },
+    ]);
+  });
+
+  it('places each widget argument hint at its own argument', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget "hello" @first @second}Hi{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{hello 1 1}\n{hello "ab" "ab"}\n{hello "abc" "b"}\n{hello\n  $x  $x}',
+      },
+    );
+    const fullRange = {
+      start: { line: 0, character: 0 },
+      end: { line: 10, character: 0 },
+    };
+    const hints = computeInlayHints('file:///test.tw', fullRange, ws)
+      .map(h => [h.position.line, h.position.character, h.label]);
+    expect(hints).toEqual([
+      [1, 7, '@first:'], [1, 9, '@second:'],
+      [2, 7, '@first:'], [2, 12, '@second:'],
+      [3, 7, '@first:'], [3, 13, '@second:'],
+      [5, 2, '@first:'], [5, 6, '@second:'],
+    ]);
+  });
+
   it('provides type hints for StoryVariables', () => {
     const ws = createWorkspace({
       name: 'test.tw',

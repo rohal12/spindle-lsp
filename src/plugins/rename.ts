@@ -68,12 +68,17 @@ export function computeRename(
     case 'variable': {
       const bareName = newName.startsWith('$') ? newName.slice(1) :
                        newName.startsWith('%') ? newName.slice(1) : newName;
-      const isTransient = workspace.variables.getDeclaredTransient().has(symbol.name);
-      const refs = isTransient
+      const refs = symbol.sigil === '%'
         ? findTransientReferences(symbol.name, workspace, true)
         : findVariableReferences(symbol.name, workspace, true);
+      // Reference ranges start with the sigil and may continue with a
+      // property path (`$player.health`): replace only the base identifier.
       for (const ref of refs) {
-        addEdit(ref.uri, ref.range, bareName);
+        const start = ref.range.start.character + 1;
+        addEdit(ref.uri, {
+          start: { line: ref.range.start.line, character: start },
+          end: { line: ref.range.start.line, character: start + symbol.name.length },
+        }, bareName);
       }
       break;
     }
@@ -85,28 +90,10 @@ export function computeRename(
         addEdit(ref.uri, ref.range, newName);
       }
 
-      // Rename definition
+      // Rename definition (just the name, keeping any quotes)
       const widget = workspace.widgets.getWidget(symbol.name);
       if (widget) {
-        // The widget definition is {widget "name" ...}
-        // We need to find and replace just the name inside the quotes
-        const docText = workspace.documents.getText(widget.uri);
-        if (docText) {
-          const lines = docText.split('\n');
-          const defLine = lines[widget.range.start.line];
-          if (defLine) {
-            const defSlice = defLine.slice(widget.range.start.character);
-            const nameMatch = /\{widget\s+"([^"]+)"/.exec(defSlice);
-            if (nameMatch) {
-              const nameOffsetInSlice = defSlice.indexOf(nameMatch[1]);
-              const nameStart = widget.range.start.character + nameOffsetInSlice;
-              addEdit(widget.uri, {
-                start: { line: widget.range.start.line, character: nameStart },
-                end: { line: widget.range.start.line, character: nameStart + symbol.name.length },
-              }, newName);
-            }
-          }
-        }
+        addEdit(widget.uri, widget.nameRange, newName);
       }
       break;
     }
@@ -123,6 +110,8 @@ interface SymbolInfo {
   kind: 'passage' | 'variable' | 'widget';
   name: string;
   range: Range;
+  /** Variable namespace: `$` story variable or `%` transient. */
+  sigil?: '$' | '%';
 }
 
 function resolveSymbolAtCursor(
@@ -169,6 +158,7 @@ function resolveSymbolAtCursor(
         return {
           kind: 'variable',
           name: match[1],
+          sigil: '$',
           range: {
             start: { line: position.line, character: start },
             end: { line: position.line, character: end },
@@ -189,6 +179,7 @@ function resolveSymbolAtCursor(
         return {
           kind: 'variable',
           name: match[1],
+          sigil: '%',
           range: {
             start: { line: position.line, character: start },
             end: { line: position.line, character: end },
@@ -199,36 +190,30 @@ function resolveSymbolAtCursor(
   }
 
   // --- Widget definition: {widget "name" ...} ---
-  {
-    const widgetDefRegex = /\{widget\s+"([^"]+)"/gi;
-    let match: RegExpExecArray | null;
-    while ((match = widgetDefRegex.exec(line)) !== null) {
-      const name = match[1];
-      const nameStart = match.index + match[0].indexOf(name);
-      const nameEnd = nameStart + name.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        return {
-          kind: 'widget',
-          name,
-          range: {
-            start: { line: position.line, character: nameStart },
-            end: { line: position.line, character: nameEnd },
-          },
-        };
-      }
+  for (const widget of workspace.widgets.getAllWidgets()) {
+    const { start, end } = widget.nameRange;
+    if (
+      widget.uri === uri &&
+      position.line === start.line &&
+      position.character >= start.character &&
+      position.character <= end.character
+    ) {
+      return { kind: 'widget', name: widget.name, range: widget.nameRange };
     }
   }
 
-  // --- Widget invocation: {widgetName ...} ---
+  // --- Widget invocation: {widgetName ...} or block widget closing tag {/widgetName} ---
   {
-    const re = /\{([A-Za-z_$][\w$]*)/g;
+    const re = /\{\/?([A-Za-z_$][\w$]*)/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(line)) !== null) {
       const name = match[1];
-      const nameStart = match.index + 1;
+      const nameStart = match.index + match[0].length - name.length;
       const nameEnd = nameStart + name.length;
       if (position.character >= nameStart && position.character <= nameEnd) {
-        if (!workspace.macros.getMacro(name) && workspace.widgets.getWidget(name)) {
+        const widget = workspace.widgets.getWidget(name);
+        const isClosing = match[0][1] === '/';
+        if (!workspace.macros.getMacro(name) && widget && (!isClosing || widget.block)) {
           return {
             kind: 'widget',
             name,

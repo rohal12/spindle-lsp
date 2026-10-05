@@ -56,6 +56,15 @@ describe('computeDocumentSymbols', () => {
     expect(widgetChild!.kind).toBe(SymbolKind.Function);
   });
 
+  it('nests widgets defined with single-quoted and bare names', () => {
+    const ws = createWorkspace({
+      name: 'widgets.tw',
+      content: ":: MyWidgets [widget]\n{widget 'hello' @name}Hi{/widget}\n{widget bye $who}Bye{/widget}",
+    });
+    const symbols = computeDocumentSymbols('file:///widgets.tw', ws);
+    expect(symbols[0].children!.map(c => c.name)).toEqual(['hello', 'bye']);
+  });
+
   it('nests variable declarations under StoryVariables', () => {
     const ws = createWorkspace({
       name: 'test.tw',

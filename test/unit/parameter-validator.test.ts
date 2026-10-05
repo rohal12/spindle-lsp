@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Parameters } from '../../src/core/parsing/parameter-validator.js';
-import { ArgType, type Arg } from '../../src/core/parsing/argument-lexer.js';
+import { ArgType, lexArguments, type Arg } from '../../src/core/parsing/argument-lexer.js';
+import supplements from '../../src/macro-supplements.json';
 
 function makeArg(type: ArgType, text: string, start: number, end: number, extra?: Partial<Arg>): Arg {
   return { type, text, start, end, ...extra };
@@ -221,5 +222,35 @@ describe('Parameters', () => {
     const params = new Parameters(['']);
     const r = params.validate([makeArg(ArgType.String, '"a"', 0, 3)]);
     expect(r.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('receiver parameter type', () => {
+  const params = new Parameters(['receiver |+ text']);
+
+  it('accepts quoted and unquoted story variables', () => {
+    for (const raw of ['"$name"', "'$name'", '$name', '"$player.name" "Your name"', '"name"']) {
+      expect(params.validate(lexArguments(raw)).errors, raw).toEqual([]);
+    }
+  });
+
+  it('rejects values that cannot name a variable', () => {
+    for (const raw of ['42', 'true', '"$"', '"not a var"']) {
+      expect(params.validate(lexArguments(raw)).errors.length, raw).toBeGreaterThan(0);
+    }
+  });
+
+  it('rejects quoted temporaries, locals and transients', () => {
+    const r = params.validate(lexArguments('"_tmp"'));
+    expect(r.errors[0].message).toContain('story variable');
+  });
+});
+
+describe('shipped macro parameter schemas', () => {
+  const entries = Object.entries(supplements as Record<string, { parameters?: string[] }>)
+    .filter(([, entry]) => entry.parameters !== undefined);
+
+  it.each(entries)('compiles the parameters of {%s}', (_name, entry) => {
+    expect(() => new Parameters(entry.parameters!)).not.toThrow();
   });
 });

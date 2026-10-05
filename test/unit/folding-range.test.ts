@@ -41,6 +41,15 @@ describe('computeFoldingRanges', () => {
     expect(ifRange!.endLine).toBe(3);
   });
 
+  it('does not fold a container pair that spans two passages', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: Start\n{if true}\ntext\n:: Other\n{/if}',
+    });
+    const ranges = computeFoldingRanges('file:///test.tw', ws);
+    expect(ranges.filter(r => r.kind === undefined)).toEqual([]);
+  });
+
   it('returns empty array for unknown document', () => {
     const ws = createWorkspace({
       name: 'test.tw',

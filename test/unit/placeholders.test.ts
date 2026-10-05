@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { replaceSpindleTokens, restoreSpindleTokens, scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
+import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks, scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
+
+/** Sequences String.prototype.replace interprets in a replacement string. */
+const REPLACEMENT_PATTERNS = ['$&', "$'", '$`', '$$', '$1', '$<name>'];
 
 describe('replaceSpindleTokens', () => {
   it('replaces macro calls with comment placeholders', () => {
@@ -113,6 +116,42 @@ describe('restoreSpindleTokens', () => {
     const { text, tokens } = replaceSpindleTokens(original);
     const restored = restoreSpindleTokens(text, tokens);
     expect(restored).toBe(original);
+  });
+
+  it('restores whole-line macro tokens containing replacement patterns literally', () => {
+    for (const seq of REPLACEMENT_PATTERNS) {
+      const original = `<div>\n{print "${seq}"}\n</div>`;
+      const { text, tokens } = replaceSpindleTokens(original);
+      expect(restoreSpindleTokens(text, tokens)).toBe(original);
+    }
+  });
+
+  it('restores inline tokens containing replacement patterns literally', () => {
+    for (const seq of REPLACEMENT_PATTERNS) {
+      const original = `<div><span>{print "${seq}"}</span></div>`;
+      const { text, tokens } = replaceSpindleTokens(original);
+      expect(restoreSpindleTokens(text, tokens)).toBe(original);
+    }
+  });
+
+  it('restores attribute tokens containing replacement patterns literally', () => {
+    for (const seq of REPLACEMENT_PATTERNS) {
+      const original = `<div class="{print '${seq}'}">text</div>`;
+      const { text, tokens } = replaceSpindleTokens(original);
+      expect(text).toContain('__SP0__');
+      expect(restoreSpindleTokens(text, tokens)).toBe(original);
+    }
+  });
+});
+
+describe('restoreSvgBlocks', () => {
+  it('restores SVG blocks containing replacement patterns literally', () => {
+    for (const seq of REPLACEMENT_PATTERNS) {
+      const original = `<div>\n<svg><text>${seq}</text></svg>\n</div>`;
+      const { text, tokens } = replaceSvgBlocks(original);
+      expect(text).toContain('<!--SVG:0-->');
+      expect(restoreSvgBlocks(text, tokens)).toBe(original);
+    }
   });
 });
 

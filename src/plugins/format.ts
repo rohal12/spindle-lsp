@@ -78,7 +78,8 @@ function buildDefaultIsBlock(text: string): (name: string) => boolean {
  * Rules:
  *  1. Indent content inside block macros by 2 spaces per nesting level
  *  2. Dedenting sub-macros (else, elseif, next, case, default) snap to parent indent level
- *  3. Remove trailing whitespace from each line
+ *  3. Remove trailing whitespace from each line, keeping Markdown hard breaks
+ *     (two trailing spaces) and list/code-fence indentation in prose
  *  4. Ensure file ends with a single newline
  *  5. Normalize passage headers: `::  Name  [tag]` -> `:: Name [tag]`
  */
@@ -89,6 +90,8 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
 
   const passages = splitPassages(text);
   const resultLines: string[] = [];
+  /** Indices in resultLines whose trailing two spaces are a hard line break. */
+  const hardBreakLines = new Set<number>();
 
   for (let pi = 0; pi < passages.length; pi++) {
     const passage = passages[pi];
@@ -131,6 +134,11 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
 
     for (const region of regions) {
       if (region.type === 'script') {
+        // Same-line <script>…</script> — leave as written
+        if (region.lines.length === 1) {
+          resultLines.push(region.lines[0]);
+          continue;
+        }
         // Inline <script> — format JS content between tags
         const firstLine = region.lines[0];
         const lastLine = region.lines[region.lines.length - 1];
@@ -172,55 +180,109 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
       if (options?.maxLineLength) {
         indented = wrapLines(indented, options.maxLineLength);
       }
-      resultLines.push(...indented);
+      for (const line of indented) {
+        if (line.endsWith('  ')) hardBreakLines.add(resultLines.length);
+        resultLines.push(line);
+      }
     }
   }
 
-  // Strip trailing whitespace from all lines and ensure single trailing newline
-  let output = resultLines.map(l => l.replace(/\s+$/, '')).join('\n');
+  // Strip trailing whitespace (except Markdown hard breaks, already
+  // normalized by indentMacros) and ensure single trailing newline
+  let output = resultLines
+    .map((l, i) => (hardBreakLines.has(i) ? l : l.replace(/\s+$/, '')))
+    .join('\n');
   output = output.replace(/\n*$/, '\n');
 
   return output;
 }
 
+/** A Markdown list item line (`- a`, `* a`, `+ a`, `1. a`, `1) a`). */
+const LIST_ITEM_REGEX = /^(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
+
+/** A fenced code block delimiter. */
+const CODE_FENCE_REGEX = /^(?:`{3,}|~{3,})/;
+
+/**
+ * A block macro body. Spindle renders each body's children as a separate
+ * Markdown document, so shifting all of a body's lines by the same amount
+ * never changes how it renders.
+ */
+interface MacroBody {
+  /** Index of the line that opened this body; -1 for the region root. */
+  openLine: number;
+  /** Smallest original indentation column among the body's lines. */
+  minCol: number;
+  /** True if leading indentation may be Markdown syntax (lists, code fences). */
+  keepRelative: boolean;
+}
+
+/**
+ * Re-indent macro bodies by nesting depth.
+ *
+ * Each body is re-based so its least-indented line sits 2 spaces inside the
+ * line that opened it. When the body contains Markdown whose meaning depends
+ * on indentation (list items and their continuations, fenced code), every
+ * line keeps its indentation relative to that base (top-level lines keep
+ * their original indentation); otherwise all lines snap to the base, since
+ * leading whitespace in Spindle's Markdown (indented code blocks are
+ * disabled) is insignificant. Closing tags and dedenting sub-macros align
+ * with their opening tag.
+ *
+ * Trailing whitespace is stripped, except that two or more trailing spaces
+ * before a non-blank line (a Markdown hard line break) become exactly two.
+ */
 function indentMacros(
   lines: string[],
   isBlock: (name: string) => boolean,
   isDedenting: (name: string) => boolean,
 ): string[] {
-  const result: string[] = [];
-  let indentLevel = 0;
+  // Pass 1: assign each line to the body (Markdown document) it belongs to.
+  const bodies: MacroBody[] = [{ openLine: -1, minCol: Infinity, keepRelative: false }];
+  const stack: number[] = [0];
+  /** Per line: owning body, or the body it closes (`closes`), and its column. */
+  const info: ({ body: number; closes?: number; col: number; text: string } | null)[] = [];
 
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\s+$/, '');
-    const trimmed = line.trim();
+  const openBody = (line: number) => {
+    bodies.push({ openLine: line, minCol: Infinity, keepRelative: false });
+    stack.push(bodies.length - 1);
+  };
+  const closeBody = (): number | undefined => (stack.length > 1 ? stack.pop() : undefined);
+  const addLine = (col: number, text: string) => {
+    const body = bodies[stack[stack.length - 1]];
+    body.minCol = Math.min(body.minCol, col);
+    if (LIST_ITEM_REGEX.test(text) || CODE_FENCE_REGEX.test(text)) body.keepRelative = true;
+    info.push({ body: stack[stack.length - 1], col, text });
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
 
     if (trimmed === '') {
-      result.push('');
+      info.push(null);
       continue;
     }
+    const col = indentColumn(lines[i]);
 
-    // Check for dedenting sub-macro
+    // Dedenting sub-macro: closes the previous branch, opens the next one
     const dedentMatch = trimmed.match(MACRO_OPEN_REGEX);
     if (dedentMatch && isDedenting(dedentMatch[1])) {
-      indentLevel = Math.max(0, indentLevel - 1);
-      result.push(indentLevel > 0 ? '  '.repeat(indentLevel) + trimmed : trimmed);
-      indentLevel++;
+      const closed = closeBody();
+      if (closed === undefined) addLine(col, trimmed);
+      else info.push({ body: stack[stack.length - 1], closes: closed, col, text: trimmed });
+      openBody(i);
       continue;
     }
 
     // Closing tag
-    const closeMatch = trimmed.match(MACRO_CLOSE_REGEX);
-    if (closeMatch) {
-      indentLevel = Math.max(0, indentLevel - 1);
-    }
-
-    result.push(indentLevel > 0 ? '  '.repeat(indentLevel) + trimmed : trimmed);
+    const closed = MACRO_CLOSE_REGEX.test(trimmed) ? closeBody() : undefined;
+    if (closed === undefined) addLine(col, trimmed);
+    else info.push({ body: stack[stack.length - 1], closes: closed, col, text: trimmed });
 
     // Opening container tag
     const openMatch = trimmed.match(MACRO_OPEN_REGEX);
     if (openMatch && isBlock(openMatch[1])) {
-      indentLevel++;
+      openBody(i);
     }
 
     // Closing tags that appear later on the same line (not at position 0,
@@ -228,13 +290,47 @@ function indentMacros(
     const closeGlobal = /\{\/[A-Za-z][\w-]*\s*\}/g;
     let cm: RegExpExecArray | null;
     while ((cm = closeGlobal.exec(trimmed)) !== null) {
-      if (cm.index > 0) {
-        indentLevel = Math.max(0, indentLevel - 1);
-      }
+      if (cm.index > 0) closeBody();
     }
   }
 
+  // Pass 2: compute output indentation.
+  const outCol: number[] = [];
+  const result: string[] = [];
+  for (let i = 0; i < info.length; i++) {
+    const line = info[i];
+    if (!line) {
+      outCol.push(0);
+      result.push('');
+      continue;
+    }
+    let col: number;
+    if (line.closes !== undefined) {
+      col = outCol[bodies[line.closes].openLine];
+    } else {
+      // The region root keeps its original indentation when it matters
+      const body = bodies[line.body];
+      const isRoot = body.openLine === -1;
+      const base = isRoot ? 0 : outCol[body.openLine] + 2;
+      col = base + (body.keepRelative ? line.col - (isRoot ? 0 : body.minCol) : 0);
+    }
+    outCol.push(col);
+    const hardBreak = / {2,}$/.test(lines[i]) && info[i + 1] ? '  ' : '';
+    result.push(' '.repeat(col) + line.text + hardBreak);
+  }
+
   return result;
+}
+
+/** Column of the first non-whitespace character, expanding tabs to 4-column stops. */
+function indentColumn(line: string): number {
+  let col = 0;
+  for (const ch of line) {
+    if (ch === ' ') col++;
+    else if (ch === '\t') col += 4 - (col % 4);
+    else break;
+  }
+  return col;
 }
 
 /**
@@ -286,6 +382,8 @@ function wrapLines(lines: string[], maxLen: number): string[] {
     const indent = indentMatch ? indentMatch[1] : '';
 
     const wrapped = wordWrap(trimmed, maxLen, indent);
+    // Keep a Markdown hard break on the last wrapped line
+    if (line.endsWith('  ')) wrapped[wrapped.length - 1] += '  ';
     result.push(...wrapped);
   }
 

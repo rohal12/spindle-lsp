@@ -126,6 +126,46 @@ describe('MacroRegistry', () => {
     expect(macro!.parameters).toEqual(['...text']);
   });
 
+  it('loadConfig replaces the previous config, reverting removed entries', () => {
+    const registry = new MacroRegistry();
+    registry.loadBuiltins();
+    registry.loadSupplements({
+      set: { description: 'Supplement description', parameters: ['...text'] },
+    });
+    registry.loadConfig({
+      set: { description: 'User config description', parameters: [] },
+      newmacro: { parameters: [] },
+    });
+    expect(registry.getMacro('newmacro')).toBeDefined();
+    expect(registry.getMacro('set')!.description).toBe('User config description');
+
+    // Reload with newmacro removed and set no longer overridden
+    registry.loadConfig({ other: { container: true } });
+    expect(registry.getMacro('newmacro')).toBeUndefined();
+    expect(registry.getMacro('set')!.description).toBe('Supplement description');
+    expect(registry.getMacro('set')!.parameters).toEqual(['...text']);
+    expect(registry.isBlock('other')).toBe(true);
+
+    // Empty config removes everything the config contributed
+    registry.loadConfig({});
+    expect(registry.getMacro('other')).toBeUndefined();
+    expect(registry.getMacro('set')!.source).toBe('builtin');
+  });
+
+  it('reloading config keeps discovered macros and drops removed config overrides', () => {
+    const registry = new MacroRegistry();
+    registry.loadBuiltins();
+    registry.setDiscoveredMacros([{ name: 'hello', block: true, description: 'Discovered' }]);
+    registry.loadConfig({ hello: { container: false, description: 'Configured' } });
+    expect(registry.isBlock('hello')).toBe(false);
+    expect(registry.getMacro('hello')!.description).toBe('Configured');
+
+    // Removing the override falls back to the discovered definition
+    registry.loadConfig({});
+    expect(registry.isBlock('hello')).toBe(true);
+    expect(registry.getMacro('hello')!.description).toBe('Discovered');
+  });
+
   it('supplement skipArgs is preserved', () => {
     const registry = new MacroRegistry();
     registry.loadBuiltins();

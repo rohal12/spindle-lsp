@@ -65,7 +65,7 @@ export function getSignatureHelp(
   // Check widgets
   const widget = workspace.widgets.getWidget(macroName);
   if (widget && widget.params.length > 0) {
-    const paramLabels = widget.params.map(p => `@${p}`);
+    const paramLabels = widget.params;
     return {
       signatures: [{
         label: `{${macroName} ${paramLabels.join(', ')}}`,

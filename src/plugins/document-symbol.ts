@@ -53,7 +53,7 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
     if (passage.tags?.includes('widget')) {
       const contentStart = passage.range.start.line + 1;
       const contentEnd = passage.range.end.line + 1;
-      const widgetDefRegex = /\{widget\s+"([^"]+)"[^}]*\}/gi;
+      const widgetDefRegex = /\{widget\s+["']?([^\s"'}]+)["']?[^}]*\}/gi;
 
       for (let i = contentStart; i < contentEnd && i < lines.length; i++) {
         widgetDefRegex.lastIndex = 0;

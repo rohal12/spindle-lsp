@@ -81,6 +81,35 @@ export function findConfigFile(workspaceRoot: string): string | null {
 }
 
 /**
+ * Load and parse exactly the given config file (e.g. from `check --config`).
+ * The format is inferred from the extension: `.json` is parsed as JSON,
+ * anything else as YAML.
+ *
+ * Unlike {@link loadConfigFromDisk}, this does not fall back to an empty
+ * config: it throws an Error naming the path if the file cannot be read or
+ * parsed.
+ */
+export function loadConfigFile(configPath: string): SpindleProjectConfig {
+  let content: string;
+  try {
+    content = readFileSync(configPath, 'utf-8');
+  } catch (err: unknown) {
+    const reason = (err as NodeJS.ErrnoException)?.code === 'ENOENT'
+      ? 'file not found'
+      : err instanceof Error ? err.message : String(err);
+    throw new Error(`Cannot read config file '${configPath}': ${reason}`);
+  }
+
+  const format = configPath.toLowerCase().endsWith('.json') ? 'json' : 'yaml';
+  try {
+    return parseConfig(content, format);
+  } catch (err: unknown) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid ${format.toUpperCase()} in config file '${configPath}': ${reason}`);
+  }
+}
+
+/**
  * Load and parse the project config from the workspace root.
  * Returns a default empty config if no config file is found.
  */

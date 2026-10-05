@@ -4,9 +4,10 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
 import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
-import { lexArguments } from '../core/parsing/argument-lexer.js';
+import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
+import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core diagnostic function (no LSP dependency)
@@ -41,9 +42,17 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 
     const diagnostics: Diagnostic[] = [];
 
+    // Script and stylesheet passages hold JS/CSS, not story markup: blank
+    // their bodies (keeping offsets) before parsing macros and links.
+    const markupText = maskScriptAndStylesheetPassages(text, passages);
+
     // Parse macros for the whole document
-    const macros = parseMacros(text);
-    pairMacros(macros, (name) => workspace.macros.isBlock(name));
+    const macros = parseMacros(markupText);
+    pairMacros(
+      macros,
+      (name) => workspace.macros.isBlock(name),
+      passages.map(p => p.range.start.line),
+    );
 
     // Collect all passage names across workspace for link validation
     const allPassages = workspace.passages.getAllPassages();
@@ -71,7 +80,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     }
 
     try {
-      validateLinks(text, passages, passageNames, diagnostics);
+      validateLinks(markupText, passages, passageNames, diagnostics);
     } catch {
       // Link validation failed — continue
     }
@@ -119,6 +128,24 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // Catastrophic failure — return empty diagnostics rather than crashing
     return [];
   }
+}
+
+/**
+ * Replace the body of every script/stylesheet passage with spaces, keeping
+ * line breaks so that offsets and positions are unchanged.
+ */
+function maskScriptAndStylesheetPassages(text: string, passages: Passage[]): string {
+  const excluded = passages.filter(isScriptOrStylesheetPassage);
+  if (excluded.length === 0) return text;
+
+  const lines = text.split('\n');
+  for (const passage of excluded) {
+    const last = Math.min(passage.range.end.line, lines.length - 1);
+    for (let i = passage.range.start.line + 1; i <= last; i++) {
+      lines[i] = lines[i].replace(/[^\r]/g, ' ');
+    }
+  }
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -301,9 +328,18 @@ function validateArguments(
     if (!info.parameters) continue;
 
     const rawArgs = macro.rawArgs ?? '';
-    const args = lexArguments(rawArgs);
+    const args = macro.name.toLowerCase() === 'include'
+      ? includeArguments(rawArgs)
+      : lexArguments(rawArgs);
 
-    const params = new Parameters(info.parameters);
+    // A malformed parameter schema (e.g. from a project config) only
+    // disables argument checks for its own macro.
+    let params: Parameters;
+    try {
+      params = new Parameters(info.parameters);
+    } catch {
+      continue;
+    }
 
     // SP108: empty parameters but received args
     if (params.isEmpty()) {
@@ -352,6 +388,24 @@ function validateArguments(
       ));
     }
   }
+}
+
+/**
+ * The arguments of `{include}` as Spindle reads them: an `inline` keyword is
+ * removed and the rest is evaluated as a single expression, so a target such
+ * as `"Chapter " + $n` counts as one argument, not several lexer tokens.
+ */
+function includeArguments(rawArgs: string): Arg[] {
+  const expr = includeExpression(rawArgs);
+  if (expr === '') return [];
+  const args = lexArguments(expr);
+  if (args.length === 1) return args;
+  return [{ type: ArgType.Expression, text: expr, start: 0, end: expr.length }];
+}
+
+/** The target expression of `{include}`: its arguments minus the `inline` keyword. */
+function includeExpression(rawArgs: string): string {
+  return rawArgs.replace(/\binline\b/, '').trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -804,7 +858,7 @@ const EXPRESSION_BUILTINS = new Set([
  * story.
  */
 export function resolveIncludeTarget(rawArgs: string): string | null {
-  const expr = rawArgs.replace(/\binline\b/, '').trim();
+  const expr = includeExpression(rawArgs);
   if (expr === '') return null;
 
   // A single string literal evaluates to its contents.
@@ -912,18 +966,21 @@ function validateUnusedWidgets(
 
 function validateLineLength(
   text: string,
-  passages: Array<{ name: string; range: import('../core/types.js').Range; tags?: string[] }>,
+  passages: Passage[],
   maxLength: number,
   diagnostics: Diagnostic[],
 ): void {
   // Skip script/stylesheet passages — those have their own formatting rules
-  const excludedTags = new Set(['script', 'stylesheet']);
-  const excludedPassages = new Set(passages
-    .filter(p => p.tags?.some(t => excludedTags.has(t)))
-    .map(p => p.name));
+  const excludedLines = new Set<number>();
+  for (const passage of passages.filter(isScriptOrStylesheetPassage)) {
+    for (let i = passage.range.start.line; i <= passage.range.end.line; i++) {
+      excludedLines.add(i);
+    }
+  }
 
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
+    if (excludedLines.has(i)) continue;
     const line = lines[i];
     // Skip passage headers
     if (/^::\s+/.test(line)) continue;
@@ -989,23 +1046,27 @@ export const diagnosticsPlugin: SpindlePlugin = {
   id: 'diagnostics',
   capabilities: {},
   initialize(ctx: PluginContext) {
-    const publishDiagnostics = () => {
-      for (const uri of ctx.workspace.documents.getUris()) {
-        const diags = computeDiagnostics(uri, ctx.workspace);
-        ctx.connection.sendDiagnostics({
-          uri,
-          diagnostics: diags.map(d => toLspDiagnostic(d)),
-        });
-      }
-    };
+    // Per-code enable/disable map, e.g. { SP100: false }
+    const isEnabled = (d: Diagnostic) => ctx.config.diagnostics?.[d.code] !== false;
 
-    ctx.workspace.on('modelReady', publishDiagnostics);
-    ctx.workspace.on('documentChanged', (uri: string) => {
+    const publishFor = (uri: string) => {
       const diags = computeDiagnostics(uri, ctx.workspace);
       ctx.connection.sendDiagnostics({
         uri,
-        diagnostics: diags.map(d => toLspDiagnostic(d)),
+        diagnostics: diags.filter(isEnabled).map(d => toLspDiagnostic(d)),
       });
+    };
+
+    ctx.workspace.on('modelReady', () => {
+      for (const uri of ctx.workspace.documents.getUris()) {
+        publishFor(uri);
+      }
+    });
+    ctx.workspace.on('documentChanged', publishFor);
+    // A document that left the store won't be republished — clear its
+    // diagnostics so the editor drops stale problems.
+    ctx.workspace.on('documentClosed', (uri: string) => {
+      ctx.connection.sendDiagnostics({ uri, diagnostics: [] });
     });
   },
 };

@@ -37,7 +37,7 @@ export function getCompletions(
 
   // --- Context: closing macro `{/` ---
   if (/\{\/[A-Za-z\w-]*$/.test(lineText)) {
-    return getClosingMacroCompletions(text, position, workspace);
+    return getClosingMacroCompletions(uri, text, position, workspace);
   }
 
   // --- Context: dot-path field `%var.` ---
@@ -90,15 +90,25 @@ export function getCompletions(
 // ---------------------------------------------------------------------------
 
 function getClosingMacroCompletions(
+  uri: string,
   text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): CompletionItem[] {
+  const passages = workspace.passages.getPassagesInDocument(uri);
   const macros = parseMacros(text);
-  pairMacros(macros, (name) => workspace.macros.isBlock(name));
+  pairMacros(
+    macros,
+    (name) => workspace.macros.isBlock(name),
+    passages.map(p => p.range.start.line),
+  );
+
+  // Only containers opened in the cursor's passage can be closed here
+  const passageStart = workspace.passages.getPassageAt(uri, position.line)?.range.start.line ?? 0;
 
   const openStack: string[] = [];
   for (const macro of macros) {
+    if (macro.range.start.line < passageStart) continue;
     if (macro.range.start.line > position.line ||
       (macro.range.start.line === position.line && macro.range.start.character >= position.character)) {
       break;
@@ -156,7 +166,7 @@ function getMacroCompletions(workspace: WorkspaceModel): CompletionItem[] {
       kind: 3, // CompletionItemKind.Function
       detail: `(widget) ${widget.name}`,
       documentation: widget.params.length > 0
-        ? `Parameters: ${widget.params.map(p => `@${p}`).join(', ')}`
+        ? `Parameters: ${widget.params.join(', ')}`
         : undefined,
     });
   }

@@ -51,6 +51,22 @@ describe('computeCodeLenses', () => {
     expect(widgetLens!.command.title).toContain('2 usages');
   });
 
+  it('shows usage count for bare-name widget definitions', () => {
+    const ws = createWorkspace(
+      {
+        name: 'widgets.tw',
+        content: ':: MyWidgets [widget]\n{widget bye $who}Bye{/widget}',
+      },
+      {
+        name: 'test.tw',
+        content: ':: Start\n{bye "World"}',
+      },
+    );
+    const lenses = computeCodeLenses('file:///widgets.tw', ws);
+    const widgetLens = lenses.find(l => l.range.start.line === 1);
+    expect(widgetLens?.command.title).toBe('1 usage');
+  });
+
   it('shows usage count for StoryVariables declarations', () => {
     const ws = createWorkspace({
       name: 'test.tw',
