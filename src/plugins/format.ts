@@ -484,7 +484,8 @@ export const formatPlugin: SpindlePlugin = {
   },
   initialize(ctx: PluginContext) {
     const formatOpts: FormatOptions = {
-      isBlock: (name) => ctx.workspace.macros.isBlock(name),
+      // Block widgets (whose body renders {@children}) are containers too
+      isBlock: (name) => ctx.workspace.isContainer(name),
       isDedentingSubMacro: (name) => DEFAULT_DEDENTING.has(name.toLowerCase()),
     };
 
