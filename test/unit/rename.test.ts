@@ -192,4 +192,19 @@ describe('computeRename', () => {
       ':: StoryVariables\n$y = 0\n:: Start\n<!-- comment\nmore -->\n{$y}',
     );
   });
+
+  it('renames only the namespace of the symbol sigil', () => {
+    const content = ':: StoryVariables\n$count = 0\n:: StoryTransients\n%count = 0\n:: Start\n{$count} {%count}';
+    const ws = createWorkspace({ name: 'test.tw', content });
+
+    const story = applyRename(ws, 'file:///test.tw', { line: 5, character: 3 }, 'total');
+    expect(story.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$total = 0\n:: StoryTransients\n%count = 0\n:: Start\n{$total} {%count}',
+    );
+
+    const transient = applyRename(ws, 'file:///test.tw', { line: 5, character: 12 }, 'total');
+    expect(transient.get('file:///test.tw')).toBe(
+      ':: StoryVariables\n$count = 0\n:: StoryTransients\n%total = 0\n:: Start\n{$count} {%total}',
+    );
+  });
 });
