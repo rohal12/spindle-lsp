@@ -44,6 +44,18 @@ describe('classifyPassage', () => {
     expect(classifyPassage(':: Start [scripted extra]')).toBe('normal');
   });
 
+  it('does not read escaped brackets in the passage name as tags', () => {
+    expect(classifyPassage(':: A\\[script]')).toBe('normal');
+    expect(classifyPassage(':: A\\[script\\]')).toBe('normal');
+    expect(classifyPassage(':: A\\[B\\] [script]')).toBe('script');
+    expect(classifyPassage(':: A\\{x\\} [stylesheet] {"a": 1}')).toBe('stylesheet');
+  });
+
+  it('does not read brackets in metadata as tags', () => {
+    expect(classifyPassage(':: Start {"note": "[script]"}')).toBe('normal');
+    expect(classifyPassage(':: Init [script] {"note": "[stylesheet]"}')).toBe('script');
+  });
+
   it('handles case-insensitive tags', () => {
     expect(classifyPassage(':: Init [Script]')).toBe('script');
     expect(classifyPassage(':: Styles [Stylesheet]')).toBe('stylesheet');

@@ -1,6 +1,7 @@
 import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
+import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageReferences,
   findVariableReferences,
@@ -40,9 +41,9 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     const line = lines[lineNum];
 
     // --- Passage headers ---
-    const passageMatch = line.match(/^::\s*(\S.*?)(?:\s*\[|\s*\{|\s*$)/);
-    if (passageMatch) {
-      const passageName = passageMatch[1].trim();
+    const header = parsePassageHeader(line, lineNum);
+    if (header) {
+      const passageName = header.name;
       if (passageName === 'StoryData') continue;
 
       const refs = findPassageReferences(passageName, workspace, true);

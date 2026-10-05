@@ -81,7 +81,6 @@ export function computeSemanticTokensAbsolute(
     headerLines.add(headerLine);
 
     // Emit passage header tokens
-    const rawLine = lines[headerLine] ?? '';
     // :: token
     tokens.push({
       line: headerLine,
@@ -91,19 +90,15 @@ export function computeSemanticTokensAbsolute(
       tokenModifiers: 0,
     });
 
-    // passage name
-    const nameMatch = rawLine.match(/^::\s*(\S.*?)(?:\s*\[|\s*\{|\s*$)/);
-    if (nameMatch) {
-      const name = nameMatch[1].trim();
-      const nameStart = rawLine.indexOf(name);
-      tokens.push({
-        line: headerLine,
-        startChar: nameStart,
-        length: name.length,
-        tokenType: encodeType('namespace'),
-        tokenModifiers: encodeModifiers(['declaration']),
-      });
-    }
+    // passage name, as the passage parser delimits it (escapes included)
+    const { start, end } = passage.nameRange;
+    tokens.push({
+      line: headerLine,
+      startChar: start.character,
+      length: end.character - start.character,
+      tokenType: encodeType('namespace'),
+      tokenModifiers: encodeModifiers(['declaration']),
+    });
   }
 
   // Macro name tokens

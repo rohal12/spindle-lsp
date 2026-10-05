@@ -1111,6 +1111,42 @@ describe('Integration: LSP server over stdio', () => {
     expect(after.filter(d => d.code === 'SP100').map(d => d.message)).toEqual(expected);
   });
 
+  // -----------------------------------------------------------------------
+  // #60: format requests indent block widget bodies like other containers
+  // -----------------------------------------------------------------------
+
+  it('indents block widget bodies in formatting and range formatting requests (#60)', async () => {
+    const story = ':: Widgets [widget]\n{widget "box"}\n{@children}\n{/widget}\n'
+      + '{widget "greet"}\nHi\n{/widget}\n\n'
+      + ':: Start\n{box}\nHello\n{/box}\n{greet}\nAfter\n{if true}\nYes\n{/if}\n';
+    const dir = makeTempWorkspace({ 'story.twee': story });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    await didOpen(session, uri, story);
+    await session.waitForDiagnostics(uri, () => true);
+
+    // {box} renders {@children}, so it is a container; {greet} is inline.
+    const expected = ':: Widgets [widget]\n{widget "box"}\n  {@children}\n{/widget}\n'
+      + '{widget "greet"}\n  Hi\n{/widget}\n\n'
+      + ':: Start\n{box}\n  Hello\n{/box}\n{greet}\nAfter\n{if true}\n  Yes\n{/if}\n';
+    const options = { tabSize: 2, insertSpaces: true };
+
+    const edits = await session.conn.sendRequest('textDocument/formatting', {
+      textDocument: { uri },
+      options,
+    }) as Array<{ newText: string }>;
+    expect(edits).toHaveLength(1);
+    expect(edits[0].newText).toBe(expected);
+
+    const rangeEdits = await session.conn.sendRequest('textDocument/rangeFormatting', {
+      textDocument: { uri },
+      range: { start: { line: 8, character: 0 }, end: { line: 11, character: 0 } },
+      options,
+    }) as Array<{ newText: string }>;
+    expect(rangeEdits).toHaveLength(1);
+    expect(rangeEdits[0].newText).toBe(expected);
+  });
+
   it('reloads macros from a legacy t3lt.twee-config.yaml change (#29)', async () => {
     const story = ':: Start\n{legacymacro}\n';
     const dir = makeTempWorkspace({
