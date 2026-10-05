@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { formatDocument, formatRange } from '../../src/plugins/format.js';
+import { parsePassageHeader } from '../../src/core/parsing/passage-parser.js';
 
 describe('formatDocument', () => {
   // -- Existing behavior -------------------------------------------------
@@ -54,6 +55,33 @@ describe('formatDocument', () => {
     const result = await formatDocument(input);
     const lines = result.split('\n');
     expect(lines[0]).toBe(':: MyPassage {"position": "100,200"}');
+  });
+
+  it('keeps an escaped bracket in a passage name', async () => {
+    const input = ':: A\\[B\ntext\n';
+    const result = await formatDocument(input);
+    const header = result.split('\n')[0];
+    expect(header).toBe(':: A\\[B');
+    expect(parsePassageHeader(header, 0)?.name).toBe('A[B');
+  });
+
+  it('keeps escaped braces in a passage name', async () => {
+    const input = ':: A\\{B\\}\ntext\n';
+    const result = await formatDocument(input);
+    const header = result.split('\n')[0];
+    expect(header).toBe(':: A\\{B\\}');
+    expect(parsePassageHeader(header, 0)?.name).toBe('A{B}');
+  });
+
+  it('normalizes tags and metadata after a name with escaped brackets and braces', async () => {
+    const input = '::  A\\[1\\] \\{x\\}  [tag]  {"position": "100,200"}\ntext\n';
+    const result = await formatDocument(input);
+    const header = result.split('\n')[0];
+    expect(header).toBe(':: A\\[1\\] \\{x\\} [tag]  {"position": "100,200"}');
+    const parsed = parsePassageHeader(header, 0);
+    expect(parsed?.name).toBe('A[1] {x}');
+    expect(parsed?.tags).toEqual(['tag']);
+    expect(parsed?.meta).toEqual({ position: '100,200' });
   });
 
   it('returns already-formatted document unchanged', async () => {
