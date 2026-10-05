@@ -137,6 +137,124 @@ describe('branch macros sit directly inside their parent', () => {
   });
 });
 
+describe('HTML elements on Spindle\'s AST stack', () => {
+  // Spindle's buildAST keeps HTML elements on the same stack as block
+  // macros, so a branch inside an element is not directly inside its block:
+  // "{else} without matching {if}". An {option} inside an element is not a
+  // direct child of its {listbox}, and extractOptions() drops it.
+  const vars = ':: StoryVariables\n$x = 1\n';
+
+  it('flags {else} inside an element within {if}, naming the element', () => {
+    const diags = diagnose(`${vars}:: Start\n{if $x}<span>a{else}b</span>{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toBe('Invalid: {else} can only be directly inside {if}, not inside <span>');
+    expect(diags[0].range.start).toEqual({ line: 3, character: 14 });
+  });
+
+  it('names the innermost element as written', () => {
+    const diags = diagnose(`${vars}:: Start\n{if $x}\n<div class="a">\n<B>{elseif $x}</B>\n</div>\n{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('not inside <B>');
+  });
+
+  it('flags {case}, {default} and {next} inside elements', () => {
+    const sw = diagnose(`${vars}:: Start\n{switch $x}\n{case 1}\n<p>{case 2}</p>\n<p>{default}</p>\n{/switch}\n`);
+    expect(codes(sw)).toEqual(['SP107', 'SP107']);
+    expect(sw.every(d => d.message.includes('not inside <p>'))).toBe(true);
+    const timed = diagnose(':: Start\n{timed 1s}\n<em>A{next 1s}B</em>\n{/timed}\n');
+    expect(codes(timed)).toEqual(['SP107']);
+    expect(timed[0].message).toContain('not inside <em>');
+  });
+
+  it('flags {option} inside an element within {listbox} and does not count it', () => {
+    const diags = diagnose(`${vars}:: Start\n{listbox "$x"}<b>{option "a"}</b>{/listbox}\n`);
+    expect(codes(diags).sort()).toEqual(['SP107', 'SP115']);
+    expect(diags.find(d => d.code === 'SP107')!.message).toContain('not inside <b>');
+  });
+
+  it('does not count branches inside an element towards the maximum', () => {
+    const diags = diagnose(`${vars}:: Start\n{if $x}a{else}b<i>{else}</i>{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    const nested = diagnose(`${vars}:: Start\n{if $x}<b>{for @i of [1]}{else}{/for}</b>{else}{/if}\n`);
+    expect(codes(nested)).toEqual(['SP107']);
+    expect(nested[0].message).toContain('not inside {for}');
+  });
+
+  it('accepts branches directly inside their block within an element', () => {
+    expect(diagnose(`${vars}:: Start\n<div>{if $x}a{else}b{/if}</div>\n`)).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n<ul>\n{for @i of [1]}<li>{if $x}a{else}b{/if}</li>{/for}\n</ul>\n`)).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n{listbox "$x"}\n{option "a"}\n{/listbox}\n<b>x</b>\n`)).toEqual([]);
+  });
+
+  it('accepts branches after an element has closed', () => {
+    expect(diagnose(`${vars}:: Start\n{if $x}<span>a</span>{else}<b>b</b>{/if}\n`)).toEqual([]);
+  });
+
+  it('ignores void elements and self-closing tags', () => {
+    expect(diagnose(`${vars}:: Start\n{if $x}a<br>{else}<img src="x.png">b<hr/><input type="text">{elseif $x}<div/>{/if}\n`)).toEqual([]);
+  });
+
+  it('matches closing tags case-insensitively', () => {
+    expect(diagnose(`${vars}:: Start\n{if $x}<SPAN>a</span>{else}b{/if}\n`)).toEqual([]);
+  });
+
+  it('ignores tags inside macro arguments, displays and links', () => {
+    expect(diagnose(`${vars}:: Start\n{if $x}{print "<b>"}{else}b{/if}\n`)).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n{if $x}{$x + "<b>"}{else}b{/if}\n`)).toEqual([]);
+    expect(diagnose(':: Next\nx\n:: Start\n{if true}[[<b>Go|Next]]{else}b{/if}\n')).toEqual([]);
+  });
+
+  it('ignores macros written inside a tag', () => {
+    // Spindle reads the attribute value as part of the tag, not as a macro.
+    expect(diagnose(`${vars}:: Start\n{if $x}<a title="{else}">a</a>{/if}\n`)).toEqual([]);
+  });
+
+  it('does not track elements across passages', () => {
+    expect(diagnose(`${vars}:: Other\n<div>\n:: Start\n{if $x}a{else}b{/if}\n`)).toEqual([]);
+  });
+
+  it('ignores markup in script and stylesheet passages', () => {
+    const story = `${vars}:: Script [script]\nvar s = "<div>";\n:: Start\n{if $x}a{else}b{/if}\n`;
+    expect(diagnose(story)).toEqual([]);
+  });
+
+  it('stops tracking elements after a closing tag that does not match', () => {
+    // Spindle throws at </i>; what follows is never reached.
+    expect(diagnose(`${vars}:: Start\n<b></i>{if $x}a<i>{else}</i>{/if}\n`)).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n</i><b>{if $x}<i>{else}</i>{/if}</b>\n`)).toEqual([]);
+  });
+
+  it('stops tracking elements after a block closes over an open element', () => {
+    // {if}<span>{/if}</span> crosses: Spindle throws "Expected </span> but found {/if}".
+    expect(diagnose(`${vars}:: Start\n{if $x}<span>{/if}</span>{if $x}<i>{else}</i>{/if}\n`)).toEqual([]);
+  });
+
+  it('stops tracking elements where Spindle versions disagree', () => {
+    expect(diagnose(`${vars}:: Start\n<a title="{">{if $x}<i>{else}</i>{/if}</a>\n`)).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n<a href = "x">{if $x}<i>{else}</i>{/if}</a>\n`)).toEqual([]);
+  });
+
+  it('still reports nested macro containers after giving up on elements', () => {
+    const diags = diagnose(`${vars}:: Start\n<a href = "x">{if $x}{for @i of [1]}{else}{/for}{/if}</a>\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('not inside {for}');
+  });
+
+  it('flags a branch in an element that is never closed', () => {
+    // Spindle throws at {else}, whose block is not on top of the stack.
+    const diags = diagnose(`${vars}:: Start\n{if $x}<p>a{else}b{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('not inside <p>');
+  });
+
+  it('flags a branch inside an element after a block widget', () => {
+    const widgets = ':: Widgets [widget]\n{widget "box"}\n<div>{@children}</div>\n{/widget}\n';
+    const diags = diagnose(`${vars}${widgets}:: Start\n{if $x}{box}<b>x</b>{/box}<b>{else}</b>{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('not inside <b>');
+  });
+});
+
 describe('{stop} only works inside {repeat}', () => {
   // Spindle's Stop.tsx calls stop() from RepeatContext, which only
   // {repeat} provides; elsewhere it is a no-op.

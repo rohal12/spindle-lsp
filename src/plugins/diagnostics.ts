@@ -5,6 +5,7 @@ import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
 import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
+import { scanHtmlTags, type HtmlScan } from '../core/parsing/html-scanner.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
@@ -63,8 +64,15 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // Each validation step is wrapped individually so that a failure
     // in one category still allows the others to produce diagnostics.
 
+    let elements = new Map<number, string>();
     try {
-      validateMacros(macros, workspace, diagnostics);
+      elements = enclosingElements(markupText, macros, passages, workspace);
+    } catch {
+      // Without element information, containers are judged by macros alone
+    }
+
+    try {
+      validateMacros(macros, elements, workspace, diagnostics);
     } catch {
       // Macro validation failed — continue with other checks
     }
@@ -154,8 +162,14 @@ function maskScriptAndStylesheetPassages(text: string, passages: Passage[]): str
 // Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
 // ---------------------------------------------------------------------------
 
+/**
+ * `elements` maps the index of each macro whose innermost enclosing node on
+ * Spindle's AST stack is an HTML element to that element's tag name; see
+ * enclosingElements().
+ */
 function validateMacros(
   macros: MacroNode[],
+  elements: Map<number, string>,
   workspace: WorkspaceModel,
   diagnostics: Diagnostic[],
 ): void {
@@ -194,7 +208,7 @@ function validateMacros(
 
       // SP114/SP115: children constraints
       if (info?.children && info.children.length > 0 && macro.open && macro.pair !== -1) {
-        validateChildren(macros, curIndex, macro, info.children, workspace, diagnostics);
+        validateChildren(macros, curIndex, macro, info.children, elements, workspace, diagnostics);
       }
     } else if (!macro.open) {
       // SP104: closing tag on non-container
@@ -209,10 +223,13 @@ function validateMacros(
     if (info?.parents && info.parents.length > 0 && macro.open) {
       const parentList = info.parents.join(', ');
       if (DIRECT_CHILD_MACROS.has(macro.name.toLowerCase())) {
-        const enclosing = innermostContainer(macros, curIndex, workspace);
+        const element = elements.get(curIndex);
+        const enclosing = element === undefined ? innermostContainer(macros, curIndex, workspace) : undefined;
         const parentSet = new Set(info.parents.map(p => p.toLowerCase()));
-        if (!enclosing || !parentSet.has(enclosing.name.toLowerCase())) {
-          const where = enclosing ? `, not inside {${enclosing.name}}` : '';
+        if (element !== undefined || !enclosing || !parentSet.has(enclosing.name.toLowerCase())) {
+          const where = element !== undefined
+            ? `, not inside <${element}>`
+            : enclosing ? `, not inside {${enclosing.name}}` : '';
           diagnostics.push(makeDiag(
             macro.range,
             DiagnosticCode.InvalidChildren,
@@ -235,9 +252,10 @@ function validateMacros(
  *
  * Spindle's AST builder attaches a branch ({elseif}/{else}, {case}/{default},
  * {next}) to the block on top of its stack and throws when that block is
- * not the branch's parent, so a branch nested in another container inside
- * its parent is an error. {listbox} and {cycle} read their {option}s from
- * their direct children only, so a nested {option} is silently dropped.
+ * not the branch's parent, so a branch nested in another container or in an
+ * HTML element inside its parent is an error. {listbox} and {cycle} read
+ * their {option}s from their direct children only, so a nested {option} is
+ * silently dropped.
  *
  * Other children, such as {stop}, reach their parent through React context
  * and may sit anywhere inside it.
@@ -247,7 +265,8 @@ const DIRECT_CHILD_MACROS = new Set(['elseif', 'else', 'case', 'default', 'next'
 /**
  * The innermost container enclosing the macro at `index`, as on Spindle's
  * AST stack: built-in and custom block macros as well as block widgets.
- * Containers without a closing tag are skipped; SP101 reports them.
+ * Containers without a closing tag are skipped; SP101 reports them. HTML
+ * elements share that stack; enclosingElements() finds those.
  */
 function innermostContainer(
   macros: MacroNode[],
@@ -262,6 +281,125 @@ function innermostContainer(
     if (workspace.isContainer(candidate.name)) return candidate;
   }
   return undefined;
+}
+
+/** An entry of Spindle's AST stack: a paired container macro or an HTML element. */
+type StackEntry = { macro: number } | { element: string };
+
+/**
+ * The HTML element directly enclosing each macro, keyed by macro index:
+ * macros whose innermost enclosing node on Spindle's AST stack is an
+ * element rather than a block macro (or nothing).
+ *
+ * Spindle's buildAST pushes HTML elements onto the same stack as block
+ * macros, so `{if $x}<span>{else}</span>{/if}` attaches `{else}` to the
+ * `<span>` and throws "{else} without matching {if}". Each passage is
+ * replayed on its own: paired containers and the tags from scanHtmlTags()
+ * in document order, an opening tag taking effect at its `>` so that a
+ * macro written inside a tag is not taken to be inside its element.
+ *
+ * Where Spindle would throw on the HTML (a closing tag that does not match
+ * the top of the stack, a block closing over an open element), what follows
+ * is never rendered, so the replay stops for that passage. It also stops at
+ * an unpaired container, which Spindle's stack keeps open or throws at;
+ * where the scanner gave up; and where the scanner and the macro parser
+ * disagree about which text is a macro (such as `{else}` inside an
+ * attribute value, which Spindle reads as part of the tag). Macros after
+ * that are judged by macros alone, as if there were no HTML.
+ */
+function enclosingElements(
+  text: string,
+  macros: MacroNode[],
+  passages: Passage[],
+  workspace: WorkspaceModel,
+): Map<number, string> {
+  const elements = new Map<number, string>();
+  if (macros.length === 0 || !text.includes('<')) return elements;
+
+  const lineStarts = buildLineStarts(text);
+  const lineOffset = (line: number) => lineStarts[line] ?? text.length;
+  const ordered = [...passages].sort((a, b) => a.range.start.line - b.range.start.line);
+  let m = 0;
+
+  for (const passage of ordered) {
+    const contentStart = lineOffset(passage.range.start.line + 1);
+    const contentEnd = lineOffset(passage.range.end.line + 1);
+    while (m < macros.length && positionToOffset(macros[m].range.start, lineStarts) < contentStart) m++;
+    const first = m;
+    while (m < macros.length && positionToOffset(macros[m].range.start, lineStarts) < contentEnd) m++;
+    if (first === m) continue;
+
+    const content = text.slice(contentStart, contentEnd);
+    if (!content.includes('<')) continue;
+    replayPassage(macros, first, m, scanHtmlTags(content), contentStart, lineStarts, workspace, elements);
+  }
+  return elements;
+}
+
+/**
+ * Replay one passage's stack for enclosingElements(). Macros [from, to) lie
+ * in the passage, whose content starts at offset `base`; `scan` is the
+ * scanHtmlTags() result for that content.
+ */
+function replayPassage(
+  macros: MacroNode[],
+  from: number,
+  to: number,
+  scan: HtmlScan,
+  base: number,
+  lineStarts: number[],
+  workspace: WorkspaceModel,
+  elements: Map<number, string>,
+): void {
+  const { tags } = scan;
+  const stoppedAt = scan.stoppedAt === -1 ? Infinity : scan.stoppedAt;
+  const stack: StackEntry[] = [];
+  let t = 0;
+  let s = 0;
+  let lastMacroEnd = -1;
+
+  for (let k = from; k < to; k++) {
+    const macro = macros[k];
+    // Offsets from here on are relative to the passage content
+    const start = positionToOffset(macro.range.start, lineStarts) - base;
+
+    // Apply the tags that take effect before this macro
+    for (; t < tags.length; t++) {
+      const tag = tags[t];
+      const at = tag.kind === 'close' ? tag.start : tag.end;
+      if (at > start) break;
+      // A tag inside a macro: the scanner read text the parser took as a macro
+      if (tag.start < lastMacroEnd) return;
+      if (tag.kind === 'open') {
+        stack.push({ element: tag.name });
+      } else if (tag.kind === 'close') {
+        const top = stack[stack.length - 1];
+        if (!top || !('element' in top) || top.element.toLowerCase() !== tag.name.toLowerCase()) return;
+        stack.pop();
+      }
+    }
+
+    if (start >= stoppedAt) return;
+    // A macro Spindle does not read, e.g. one inside an attribute value
+    while (s < scan.macros.length && scan.macros[s] < start) s++;
+    if (scan.macros[s] !== start) return;
+    lastMacroEnd = positionToOffset(macro.range.end, lineStarts) - base;
+
+    const top = stack[stack.length - 1];
+    if (top && 'element' in top) elements.set(k, top.element);
+
+    if (!workspace.isContainer(macro.name)) continue;
+    // Spindle keeps an unclosed block on its stack and throws at a stray
+    // closing tag, so the stack from here on is not the one replayed.
+    if (macro.pair === -1) return;
+    if (macro.open) {
+      stack.push({ macro: k });
+      continue;
+    }
+    // A closing tag pops its block, which must be on top
+    const opener = stack.pop();
+    if (!opener || !('macro' in opener) || opener.macro !== macro.pair) return;
+  }
 }
 
 /**
@@ -304,6 +442,7 @@ function validateChildren(
   curIndex: number,
   parentMacro: MacroNode,
   childConstraints: Array<{ name: string; min?: number; max?: number }>,
+  elements: Map<number, string>,
   workspace: WorkspaceModel,
   diagnostics: Diagnostic[],
 ): void {
@@ -319,6 +458,9 @@ function validateChildren(
       i = child.pair;
       continue;
     }
+
+    // Skip macros inside HTML elements, which are children of the element
+    if (elements.has(i)) continue;
 
     if (!workspace.macros.getMacro(child.name)) continue;
 
