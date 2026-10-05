@@ -78,3 +78,28 @@ describe('argument validation with receiver parameters', () => {
     expect(diags.filter(d => d.code === 'SP109' && d.message.includes('{goto}'))).toHaveLength(1);
   });
 });
+
+describe('{include} arguments', () => {
+  const target = '\n:: Target\nText';
+
+  it('accepts a trailing inline modifier', () => {
+    const diags = diagnose(`:: Start\n{include "Target" inline}${target}`);
+    expect(diags.filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
+  });
+
+  it('accepts a leading inline modifier', () => {
+    const diags = diagnose(`:: Start\n{include inline "Target"}${target}`);
+    expect(diags.filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
+  });
+
+  it('accepts a dynamic expression target containing whitespace', () => {
+    const text = `:: StoryVariables\n$suffix = "get"\n\n:: Start\n{include "Tar" + $suffix}${target}`;
+    const diags = diagnose(text);
+    expect(diags.filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
+  });
+
+  it('still reports a missing target', () => {
+    expect(codes(':: Start\n{include}', 'SP109')).toHaveLength(1);
+    expect(codes(':: Start\n{include inline}', 'SP109')).toHaveLength(1);
+  });
+});

@@ -4,7 +4,7 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
 import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
-import { lexArguments } from '../core/parsing/argument-lexer.js';
+import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
 
@@ -305,7 +305,9 @@ function validateArguments(
     if (!info.parameters) continue;
 
     const rawArgs = macro.rawArgs ?? '';
-    const args = lexArguments(rawArgs);
+    const args = macro.name.toLowerCase() === 'include'
+      ? includeArguments(rawArgs)
+      : lexArguments(rawArgs);
 
     // A malformed parameter schema (e.g. from a project config) only
     // disables argument checks for its own macro.
@@ -363,6 +365,24 @@ function validateArguments(
       ));
     }
   }
+}
+
+/**
+ * The arguments of `{include}` as Spindle reads them: an `inline` keyword is
+ * removed and the rest is evaluated as a single expression, so a target such
+ * as `"Chapter " + $n` counts as one argument, not several lexer tokens.
+ */
+function includeArguments(rawArgs: string): Arg[] {
+  const expr = includeExpression(rawArgs);
+  if (expr === '') return [];
+  const args = lexArguments(expr);
+  if (args.length === 1) return args;
+  return [{ type: ArgType.Expression, text: expr, start: 0, end: expr.length }];
+}
+
+/** The target expression of `{include}`: its arguments minus the `inline` keyword. */
+function includeExpression(rawArgs: string): string {
+  return rawArgs.replace(/\binline\b/, '').trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -815,7 +835,7 @@ const EXPRESSION_BUILTINS = new Set([
  * story.
  */
 export function resolveIncludeTarget(rawArgs: string): string | null {
-  const expr = rawArgs.replace(/\binline\b/, '').trim();
+  const expr = includeExpression(rawArgs);
   if (expr === '') return null;
 
   // A single string literal evaluates to its contents.

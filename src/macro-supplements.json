@@ -184,7 +184,7 @@
   },
   "include": {
     "name": "include",
-    "description": "Outputs the contents of the specified passage.\n\nUsage: `{include \"passage\"}`",
+    "description": "Outputs the contents of the specified passage. The argument is a passage name or an expression that evaluates to one; add `inline` to render the passage as inline content without markdown processing.\n\nUsage: `{include \"passage\"}`, `{include $passageName}` or `{include \"passage\" inline}`",
     "parameters": ["text"]
   },
   "passage": {
