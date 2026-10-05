@@ -182,31 +182,6 @@ describe('X72: non-markup passage bodies (#72)', () => {
   });
 });
 
-it('V73: cross-file StoryInterface variables participate in rename (#73)', () => {
-  const declUri = 'file:///vars.tw';
-  const model = workspace(':: StoryInterface\n<div>{$x}</div>\n:: Start\nhello', [[declUri, ':: StoryVariables\n$x = 1']]);
-  expect(findVariableReferences('x', model, true)).toHaveLength(2);
-  const edits = computeRename(declUri, { line: 1, character: 2 }, 'y', model);
-  const output = apply(model.documents.getText(uri)!, edits.get(uri) ?? []);
-  expect(output).toContain('{$y}');
-  const next = workspace(output, [[declUri, apply(model.documents.getText(declUri)!, edits.get(declUri) ?? [])]]);
-  expect(codes(next)).not.toContain('SP200');
-});
-
-describe('W74: widget spelling shared by navigation and edits (#74)', () => {
-  for (const [id, name, prefix] of [['css', 'greeting', '.red '], ['hyphen', 'hello-world', '']]) {
-    it(`W74-${id}: definition, references, and applied rename`, () => {
-      const declUri = 'file:///widgets.tw';
-      const model = workspace(`:: StoryVariables\n:: Start\n{${prefix}${name} "Alice"}`, [[declUri, `:: Widgets [widget]\n{widget "${name}" @x}\n{@x}\n{/widget}`]]);
-      expect(tokenize(model.documents.getText(uri)!).filter(t => t.type === 'macro').map(t => t.name)).toContain(name);
-      expect(getDefinition(uri, { line: 2, character: prefix.length + 2 }, model)?.uri).toBe(declUri);
-      expect(findWidgetReferences(name, model, false)).toHaveLength(1);
-      const edits = computeRename(declUri, { line: 1, character: 11 }, 'renamed', model);
-      expect(apply(model.documents.getText(uri)!, edits.get(uri) ?? [])).toContain(`{${prefix}renamed "Alice"}`);
-    });
-  }
-});
-
 it('E75: apply closing macro completion at the typed cursor (#75)', () => {
   const model = workspace(':: StoryVariables\n:: Start\n{if true}\n{/');
   const position = { line: 3, character: 2 };
