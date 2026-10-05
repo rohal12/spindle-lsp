@@ -118,6 +118,27 @@ export function inferLiteralType(expr: string): VariableValueType | undefined {
 }
 
 /**
+ * Location of a `$name = ...` / `%name = ...` declaration line: the range
+ * covers the sigil and name, matching the ranges recorded for usages.
+ */
+function declarationLocation(
+  line: string,
+  name: string,
+  absLine: number,
+  uri: string | undefined,
+): Pick<DeclaredVariable, 'declarationUri' | 'declarationRange'> {
+  const start = line.length - line.trimStart().length;
+  const location: Pick<DeclaredVariable, 'declarationUri' | 'declarationRange'> = {
+    declarationRange: {
+      start: { line: absLine, character: start },
+      end: { line: absLine, character: start + 1 + name.length },
+    },
+  };
+  if (uri !== undefined) location.declarationUri = uri;
+  return location;
+}
+
+/**
  * Tracks declared variables (from StoryVariables) and variable usages across documents.
  */
 export class VariableTracker {
@@ -139,7 +160,7 @@ export class VariableTracker {
    * Parse the StoryVariables passage content for declarations.
    * Each line like `$name = value` becomes a declaration.
    */
-  parseStoryVariables(content: string, contentStartLine = 0): void {
+  parseStoryVariables(content: string, contentStartLine = 0, uri?: string): void {
     this.declared.clear();
     this._hasStoryVariables = true;
     this._nullDeclarations = [];
@@ -154,11 +175,12 @@ export class VariableTracker {
 
       const name = match[1];
       const expr = match[2].trim();
+      const absLine = contentStartLine + i;
+      const location = declarationLocation(lines[i], name, absLine, uri);
 
       // Detect null values — Spindle doesn't support null
       if (expr === 'null') {
         const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
-        const absLine = contentStartLine + i;
         this._nullDeclarations.push({
           name,
           sigil: '$',
@@ -168,11 +190,11 @@ export class VariableTracker {
           },
         });
         // Still register as declared so we don't also emit SP200
-        this.declared.set(name, { name, sigil: '$' });
+        this.declared.set(name, { name, sigil: '$', ...location });
         continue;
       }
 
-      const decl: DeclaredVariable = { name, sigil: '$' };
+      const decl: DeclaredVariable = { name, sigil: '$', ...location };
       const type = inferLiteralType(expr);
       if (type) decl.type = type;
 
@@ -197,7 +219,7 @@ export class VariableTracker {
    * Parse the StoryTransients passage content for declarations.
    * Each line like `%name = value` becomes a declaration.
    */
-  parseStoryTransients(content: string, contentStartLine = 0): void {
+  parseStoryTransients(content: string, contentStartLine = 0, uri?: string): void {
     this.declaredTransient.clear();
     this._hasStoryTransients = true;
     this._nullTransientDeclarations = [];
@@ -212,11 +234,12 @@ export class VariableTracker {
 
       const name = match[1];
       const expr = match[2].trim();
+      const absLine = contentStartLine + i;
+      const location = declarationLocation(lines[i], name, absLine, uri);
 
       // Detect null values — Spindle doesn't support null
       if (expr === 'null') {
         const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
-        const absLine = contentStartLine + i;
         this._nullTransientDeclarations.push({
           name,
           sigil: '%',
@@ -225,11 +248,11 @@ export class VariableTracker {
             end: { line: absLine, character: charIdx + 4 },
           },
         });
-        this.declaredTransient.set(name, { name, sigil: '%' });
+        this.declaredTransient.set(name, { name, sigil: '%', ...location });
         continue;
       }
 
-      const decl: DeclaredVariable = { name, sigil: '%' };
+      const decl: DeclaredVariable = { name, sigil: '%', ...location };
       const type = inferLiteralType(expr);
       if (type) decl.type = type;
 
