@@ -1,4 +1,4 @@
-import { createCodeScanner } from './macro-parser.js';
+import { createCodeScanner } from './code-scanner.js';
 
 /**
  * An HTML tag as Spindle's tokenizer reads it from passage markup.
@@ -15,6 +15,12 @@ export interface HtmlTag {
   kind: 'open' | 'close' | 'void';
   start: number;
   end: number;
+  /**
+   * The attribute values of an opening or void tag as [start, end) offsets,
+   * without their quotes. Spindle passes each value through interpolate()
+   * when it renders the element.
+   */
+  values?: Array<[number, number]>;
 }
 
 export interface HtmlScan {
@@ -213,15 +219,19 @@ export function scanHtmlTags(text: string): HtmlScan {
       j++;
     }
     if (text[j] === '>') {
-      tags.push({ name, kind: selfClosing ? 'void' : 'open', start: i, end: j + 1 });
+      tags.push({ name, kind: selfClosing ? 'void' : 'open', start: i, end: j + 1, values: attrs.values });
       return j + 1;
     }
     return attrs.count > 0 ? GIVE_UP : i + 1;
   };
 
-  /** Spindle's parseHtmlAttributes() from j: where the attributes end and how many there are. */
-  const readAttributes = (j: number): { end: number; count: number } => {
+  /**
+   * Spindle's parseHtmlAttributes() from j: where the attributes end, how
+   * many there are and where their values lie.
+   */
+  const readAttributes = (j: number): { end: number; count: number; values: Array<[number, number]> } => {
     let count = 0;
+    const values: Array<[number, number]> = [];
     while (j < n) {
       while (j < n && WHITESPACE.test(text[j])) j++;
       if (j >= n || text[j] === '>' || (text[j] === '/' && text[j + 1] === '>')) break;
@@ -234,13 +244,16 @@ export function scanHtmlTags(text: string): HtmlScan {
       const quote = text[j];
       if (quote === '"' || quote === "'") {
         const close = quotedValueEnd(j + 1, quote);
-        if (close === GIVE_UP) return { end: GIVE_UP, count };
+        if (close === GIVE_UP) return { end: GIVE_UP, count, values };
+        values.push([j + 1, close]);
         j = close < n ? close + 1 : close;
       } else {
+        const start = j;
         while (j < n && !WHITESPACE.test(text[j]) && text[j] !== '>') j++;
+        values.push([start, j]);
       }
     }
-    return { end: j, count };
+    return { end: j, count, values };
   };
 
   /**
@@ -367,4 +380,35 @@ function linkEnd(text: string, i: number): number {
     }
   }
   return GIVE_UP;
+}
+
+/**
+ * The attribute values of the tags Spindle reads in a Twee document, as
+ * sorted [start, end) offsets: scanHtmlTags() run on each passage on its own
+ * (a line starting with `::` starts the next one). Where a scan stops, the
+ * values from there on are unknown and left out.
+ */
+export function attributeValueSpans(text: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  if (!text.includes('<')) return spans;
+  const headers = [...text.matchAll(/^::.*$/gm)];
+  const scan = (from: number, to: number) => {
+    const content = text.slice(from, to);
+    if (!content.includes('<')) return;
+    for (const tag of scanHtmlTags(content).tags) {
+      for (const [start, end] of tag.values ?? []) spans.push([from + start, from + end]);
+    }
+  };
+  let from = 0;
+  for (const header of headers) {
+    scan(from, header.index);
+    from = header.index + header[0].length;
+  }
+  scan(from, text.length);
+  return spans;
+}
+
+/** Whether the character at `offset` lies in an attribute value; see attributeValueSpans(). */
+export function inAttributeValue(text: string, offset: number): boolean {
+  return attributeValueSpans(text).some(([start, end]) => start <= offset && offset < end);
 }

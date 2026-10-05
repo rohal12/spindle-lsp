@@ -205,8 +205,9 @@ describe('HTML elements on Spindle\'s AST stack', () => {
   });
 
   it('ignores macros written inside a tag', () => {
-    // Spindle reads the attribute value as part of the tag, not as a macro.
-    expect(diagnose(`${vars}:: Start\n{if $x}<a title="{else}">a</a>{/if}\n`)).toEqual([]);
+    // Spindle reads the attribute value as part of the tag, not as a macro,
+    // and outputs the {else} as text (SP103).
+    expect(codes(diagnose(`${vars}:: Start\n{if $x}<a title="{else}">a</a>{/if}\n`))).toEqual(['SP103']);
   });
 
   it('does not track elements across passages', () => {

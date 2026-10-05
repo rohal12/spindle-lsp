@@ -14,6 +14,11 @@ describe('diagnostic codes', () => {
     expect(getSeverity(DiagnosticCode.MalformedElement)).toBe('error');
   });
 
+  it('SP103 is warning severity: the passage renders, with the code as text', () => {
+    expect(DiagnosticCode.UnevaluatedAttributeBlock).toBe('SP103');
+    expect(getSeverity(DiagnosticCode.UnevaluatedAttributeBlock)).toBe('warning');
+  });
+
   it('SP400 is hint severity', () => {
     expect(getSeverity(DiagnosticCode.DeadEndPassage)).toBe('hint');
   });

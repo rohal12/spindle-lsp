@@ -438,3 +438,39 @@ describe('pairMacros nesting and passage boundaries', () => {
     expect(macros[2].pair).toBe(macros[3].id);
   });
 });
+
+// Spindle's tokenizer reads a quoted attribute value as part of the tag, and
+// interpolate() outputs a macro there as text (rohal12/spindle#225).
+describe('parseMacros inside HTML attribute values', () => {
+  const isBlock = (name: string) => name === 'if' || name === 'for';
+
+  it('does not read macros inside an attribute value', () => {
+    expect(parseMacros('<span class="{if $x}on{else}off{/if}">t</span>')).toEqual([]);
+    expect(parseMacros(`<span class='a {for _i range 3}{_i}{/for}'>t</span>`)).toEqual([]);
+  });
+
+  it('keeps the macros around the tag and numbers them in order', () => {
+    const text = '{if $n}<span class="{if $x}on">t</span>{/if}';
+    const macros = parseMacros(text);
+    expect(macros.map(m => [m.id, m.open ? m.name : `/${m.name}`])).toEqual([[0, 'if'], [1, '/if']]);
+    pairMacros(macros, isBlock);
+    expect(macros[0].pair).toBe(1);
+  });
+
+  it('reads macros in a tag Spindle reads as text', () => {
+    // The unquoted value ends at the space, and the tag never reaches its >.
+    expect(parseMacros('<span class={if $x}a{/if}>t</span>').map(m => m.name)).toEqual(['if', 'if']);
+    // No closing >
+    expect(parseMacros('<span class="{if $x}a{/if}"').map(m => m.name)).toEqual(['if', 'if']);
+  });
+
+  it('reads macros between tags and in element content', () => {
+    const text = '<b title="{$x}">{if $x}y{/if}</b>';
+    expect(parseMacros(text).map(m => m.name)).toEqual(['if', 'if']);
+  });
+
+  it('reads each passage on its own', () => {
+    const text = ':: A\n<b title="x\n:: B\n{if $x}">y{/if}\n';
+    expect(parseMacros(text).map(m => m.name)).toEqual(['if', 'if']);
+  });
+});

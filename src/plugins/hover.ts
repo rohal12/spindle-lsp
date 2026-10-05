@@ -2,8 +2,9 @@ import type { Hover, Range as LspRange } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
+import { SELECTOR_PATTERN, buildLineStarts } from '../core/parsing/macro-parser.js';
 import { isTransientAt } from './references.js';
+import { inAttributeValue } from '../core/parsing/html-scanner.js';
 
 // ---------------------------------------------------------------------------
 // Core hover function (no LSP dependency)
@@ -21,6 +22,9 @@ export interface HoverResult {
  *  - Macro names -> description, parameters, block/inline
  *  - Variables -> "Story variable" / "Temp variable" / "Local variable" + type info
  *  - Widget names -> widget info with params
+ *
+ * Macros and widgets written inside an HTML attribute value get no hover:
+ * Spindle outputs them there as text (SP103).
  */
 export function getHoverInfo(
   uri: string,
@@ -34,9 +38,13 @@ export function getHoverInfo(
   if (position.line >= lines.length) return null;
   const line = lines[position.line];
 
+  // Spindle outputs macros and widgets inside an attribute value as text
+  const offset = (buildLineStarts(text)[position.line] ?? 0) + position.character;
+  const inAttribute = inAttributeValue(text, offset);
+
   // --- Macro name hover ---
   // Check if cursor is on a macro name inside {macroName ...} or {/macroName}
-  const macroResult = getMacroHover(line, position, workspace);
+  const macroResult = inAttribute ? null : getMacroHover(line, position, workspace);
   if (macroResult) return macroResult;
 
   // --- Variable hover ---
@@ -44,7 +52,7 @@ export function getHoverInfo(
   if (varResult) return varResult;
 
   // --- Widget invocation hover ---
-  const widgetResult = getWidgetHover(line, position, workspace);
+  const widgetResult = inAttribute ? null : getWidgetHover(line, position, workspace);
   if (widgetResult) return widgetResult;
 
   return null;
