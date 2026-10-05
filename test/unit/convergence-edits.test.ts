@@ -72,9 +72,13 @@ describe('Q68: create StoryVariables in a story file (#68)', () => {
   it('Q68-other-doc: diagnostic in another story file targets that file', () => {
     const other = 'file:///other.twee';
     const model = workspace(':: Start\n{$missing}', [[other, ':: Other\nhi\n']]);
-    const diag = computeDiagnostics(uri, model).filter(d => d.code === 'SP202');
-    const action = computeCodeActions(uri, diag, model)[0];
-    expect(action.edits.every(e => e.uri === uri)).toBe(true);
+    // SP202 is reported once (#78), on whichever story document owns it.
+    const owner = [uri, other].find(u => computeDiagnostics(u, model).some(d => d.code === 'SP202'))!;
+    expect(owner).toBeDefined();
+    const diag = computeDiagnostics(owner, model).filter(d => d.code === 'SP202');
+    const action = computeCodeActions(owner, diag, model)[0];
+    expect(action.edits.length).toBeGreaterThan(0);
+    expect(action.edits.every(e => e.uri === owner)).toBe(true);
   });
 });
 
