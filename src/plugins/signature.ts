@@ -7,6 +7,7 @@ import { lexArguments, type Arg } from '../core/parsing/argument-lexer.js';
 import { Parameters, type ParameterSlot } from '../core/parsing/parameter-validator.js';
 import { activeWidgetArgument } from '../core/parsing/widget-arguments.js';
 import { buildLineStarts, createCodeScanner, SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
+import type { BraceReading } from '../core/parsing/code-scanner.js';
 
 // ---------------------------------------------------------------------------
 // Core signature help function (no LSP dependency)
@@ -31,8 +32,8 @@ const macroHeadRegex = new RegExp(String.raw`(?<!\\)\{(?:${SELECTOR_PATTERN} )?(
  * the text. Braces inside the arguments (objects, strings) are skipped the
  * way Spindle's tokenizer skips them.
  */
-function findEnclosingMacro(textBefore: string): { macroName: string; argsBefore: string } | null {
-  const scanner = createCodeScanner(textBefore);
+function findEnclosingMacro(textBefore: string, reading: BraceReading): { macroName: string; argsBefore: string } | null {
+  const scanner = createCodeScanner(textBefore, reading);
   let enclosing: { macroName: string; argsBefore: string } | null = null;
   for (const match of textBefore.matchAll(macroHeadRegex)) {
     if (scanner.closeBrace(match.index + 1) !== -1) continue;
@@ -157,7 +158,7 @@ export function getSignatureHelp(
   const cursor = Math.min(lineStarts[position.line] + position.character, lineEnd);
   const textBefore = text.slice(lineStarts[passageLine], cursor);
 
-  const enclosing = findEnclosingMacro(textBefore);
+  const enclosing = findEnclosingMacro(textBefore, workspace.capabilities);
   if (!enclosing) return null;
   const { macroName, argsBefore } = enclosing;
 

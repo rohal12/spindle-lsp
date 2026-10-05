@@ -72,7 +72,7 @@ export function computeRename(
       const refEdits: Array<{ uri: string; range: Range; text: string }> = [];
       for (const { uri: refUri, ref } of findPassageRefs(symbol.name, workspace)) {
         try {
-          refEdits.push({ uri: refUri, range: ref.range, text: encodePassageRefName(ref, newName, { linkQuoteEscapes: workspace.capabilities.linkQuoteEscapes }) });
+          refEdits.push({ uri: refUri, range: ref.range, text: encodePassageRefName(ref, newName, workspace.capabilities) });
         } catch (error) {
           if (error instanceof RenameError) throw error.at(refUri, ref.range);
           throw error;
@@ -203,7 +203,7 @@ export function encodePassageRefName(ref: PassageRef, newName: string, options: 
       return body;
     }
     case 'bracket': {
-      const probe = parseLinks(`[[${newName}]]`);
+      const probe = parseLinks(`[[${newName}]]`, 0, options);
       if (probe.length !== 1 || probe[0].name !== newName) {
         throw unrepresentable('a [[link]] (it cannot contain |, ->, <-, [[, ]], or leading/trailing whitespace)');
       }
@@ -323,7 +323,7 @@ function resolveSymbolAtCursor(
   }
 
   // --- Passage reference in [[link]] or macro arguments (goto, include, link) ---
-  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), { linkQuoteEscapes: workspace.capabilities.linkQuoteEscapes });
+  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
   if (passageRef && workspace.passages.getPassage(passageRef.name)) {
     return { kind: 'passage', name: passageRef.name, range: passageRef.range };
   }

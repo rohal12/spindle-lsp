@@ -8,26 +8,38 @@ export interface TokenMatch {
 }
 
 /**
- * Scan text for Spindle tokens the way the Spindle 0.45.1 runtime tokenizer
+ * Scan text for Spindle tokens the way the Spindle runtime tokenizer
  * (`src/markup/tokenizer.ts` in @rohal12/spindle) does, so the formatter
  * protects exactly the spans the runtime executes. Finds closing tags, macro
  * calls, CSS-prefixed macros, variable/expression interpolations and
  * [[links]] (the runtime's token kinds).
  *
- * Like the runtime, this counts braces and does not look at string contents:
- * a stray `{` in a string extends the macro to the next balanced `}`, and an
- * unbalanced `{` is plain text. Differs from the runtime in one way, on
+ * Like the runtime before 0.50.1, by default this counts braces and does not
+ * look at string contents: a stray `{` in a string extends the macro to the
+ * next balanced `}`, and an unbalanced `{` is plain text. From 0.50.1
+ * (`options.stringAwareBraces`) the runtime skips string and template
+ * literals, so a brace inside one is not counted. Differs from the runtime in one way, on
  * purpose: tokens inside the attribute values of an HTML tag are reported
  * too (the runtime keeps them inside its HTML token) because they must not
  * be reformatted either. `test/unit/placeholders-oracle.test.ts` checks the
  * two against each other.
  */
-export function scanSpindleTokens(text: string): TokenMatch[] {
-  return scan(text, true);
+export function scanSpindleTokens(text: string, options: ScanOptions = {}): TokenMatch[] {
+  return scan(text, true, options.stringAwareBraces === true);
+}
+
+/** Version-dependent behavior of the runtime tokenizer the scan follows. */
+export interface ScanOptions {
+  /**
+   * Spindle >= 0.50.1 (`SpindleCapabilities.stringAwareBraces`): braces inside
+   * string and template literals do not count, in a token and in an HTML
+   * attribute value. Default: the 0.43.0-0.50.0 behavior, which counts every brace.
+   */
+  stringAwareBraces?: boolean;
 }
 
 /** Scan once; `html` enables HTML tag recognition (off inside a tag's own text). */
-function scan(input: string, html: boolean): TokenMatch[] {
+function scan(input: string, html: boolean, strings: boolean): TokenMatch[] {
   const matches: TokenMatch[] = [];
   const push = (start: number, end: number) =>
     matches.push({ start, end, token: input.slice(start, end) });
@@ -73,7 +85,7 @@ function scan(input: string, html: boolean): TokenMatch[] {
     if (input[i] === '{') {
       const start = i;
       if (isTokenStart(input, i)) {
-        const close = scanBalancedBrace(input, i + 1);
+        const close = strings ? scanBalancedBraceStrings(input, i + 1) : scanBalancedBrace(input, i + 1);
         if (close !== -1) {
           i = close + 1;
           push(start, i);
@@ -85,10 +97,10 @@ function scan(input: string, html: boolean): TokenMatch[] {
     }
 
     if (html && input[i] === '<') {
-      const end = htmlTagEnd(input, i);
+      const end = htmlTagEnd(input, i, strings);
       if (end !== -1) {
         // Attribute values hold tokens that must stay intact as well
-        for (const m of scan(input.slice(i, end), false)) push(i + m.start, i + m.end);
+        for (const m of scan(input.slice(i, end), false, strings)) push(i + m.start, i + m.end);
         i = end;
         continue;
       }
@@ -109,6 +121,73 @@ function scanBalancedBrace(input: string, i: number): number {
     if (depth > 0) i++;
   }
   return depth === 0 ? i : -1;
+}
+
+/**
+ * Spindle >= 0.50.1 `scanBalancedBrace`: as above, but a quoted string
+ * ('...' or "...", closed on the same line, not an apostrophe after a
+ * letter, digit, `_` or backslash) and a template literal (with `${...}`
+ * parts) are skipped whole, so braces inside them do not count.
+ */
+function scanBalancedBraceStrings(input: string, start: number): number {
+  let depth = 1;
+  let i = start;
+  while (i < input.length) {
+    const c = input[i];
+    if (c === '{') {
+      depth++;
+    } else if (c === '}') {
+      if (--depth === 0) return i;
+    } else if ((c === '"' || c === "'") && !(i > 0 && /[\p{L}\p{N}_\\]/u.test(input[i - 1]))) {
+      const end = skipQuoted(input, i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    } else if (c === '`') {
+      const end = skipTemplate(input, i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+/** Index past the closing quote of the string opening at `i`, or -1 (unclosed on its line). */
+function skipQuoted(input: string, i: number): number {
+  const quote = input[i];
+  let j = i + 1;
+  while (j < input.length) {
+    const c = input[j];
+    if (c === '\\') j += 2;
+    else if (c === quote) return j + 1;
+    else if (c === '\n') return -1;
+    else j++;
+  }
+  return -1;
+}
+
+/** Index past the closing backtick of the template literal opening at `i`, or -1. */
+function skipTemplate(input: string, i: number): number {
+  let j = i + 1;
+  while (j < input.length) {
+    const c = input[j];
+    if (c === '\\') {
+      j += 2;
+    } else if (c === '`') {
+      return j + 1;
+    } else if (c === '$' && input[j + 1] === '{') {
+      const close = scanBalancedBraceStrings(input, j + 2);
+      if (close === -1) return -1;
+      j = close + 1;
+    } else {
+      j++;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -160,7 +239,7 @@ function parseSelectors(input: string, start: number): number {
  * End index of the HTML tag starting at the `<` at `start`, or -1 when the
  * runtime tokenizer would treat it as text.
  */
-function htmlTagEnd(input: string, start: number): number {
+function htmlTagEnd(input: string, start: number, strings: boolean): number {
   let j = start + 1;
   const isClose = input[j] === '/';
   if (isClose) j++;
@@ -185,12 +264,27 @@ function htmlTagEnd(input: string, start: number): number {
     if (input[j] === '"' || input[j] === "'") {
       const quote = input[j];
       j++;
-      let braceDepth = 0;
-      while (j < input.length) {
-        if (input[j] === '{') braceDepth++;
-        else if (input[j] === '}') braceDepth--;
-        else if (input[j] === quote && braceDepth <= 0) break;
-        j++;
+      if (strings) {
+        // 0.50.1+: a balanced {...} is skipped whole; any other character
+        // other than the closing quote is part of the value
+        while (j < input.length) {
+          if (input[j] === '{') {
+            const close = scanBalancedBraceStrings(input, j + 1);
+            if (close !== -1) {
+              j = close + 1;
+              continue;
+            }
+          } else if (input[j] === quote) break;
+          j++;
+        }
+      } else {
+        let braceDepth = 0;
+        while (j < input.length) {
+          if (input[j] === '{') braceDepth++;
+          else if (input[j] === '}') braceDepth--;
+          else if (input[j] === quote && braceDepth <= 0) break;
+          j++;
+        }
       }
       if (j < input.length) j++;
     } else {
@@ -259,7 +353,7 @@ export function restoreSvgBlocks(text: string, tokens: string[]): string {
  * Lines that contain Spindle tokens but no HTML tags are replaced as a
  * single whole-line placeholder so Prettier cannot split them.
  */
-export function replaceSpindleTokens(html: string): PlaceholderResult {
+export function replaceSpindleTokens(html: string, options: ScanOptions = {}): PlaceholderResult {
   const tokens: string[] = [];
   // A token may span lines (e.g. a template literal with a newline). The
   // per-line scan below cannot see it whole, so protect complete multiline
@@ -269,7 +363,7 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
   while (html.includes(`{${tag}`)) tag += 'X';
   let source = '';
   let last = 0;
-  for (const m of scanSpindleTokens(html)) {
+  for (const m of scanSpindleTokens(html, options)) {
     if (!m.token.includes('\n')) continue;
     source += html.slice(last, m.start) + `{${tag}${multiline.length}}`;
     multiline.push(m.token);
@@ -285,7 +379,7 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
     const trimmed = line.trim();
 
     // Scan for Spindle tokens
-    const found = scanSpindleTokens(trimmed);
+    const found = scanSpindleTokens(trimmed, options);
 
     if (found.length === 0) {
       resultLines.push(line);

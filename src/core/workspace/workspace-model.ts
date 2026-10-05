@@ -155,6 +155,7 @@ export class WorkspaceModel extends EventEmitter {
       isBlock: (name) => this.isContainer(name),
       passages: this.passages.getPassagesInDocument(uri),
       rawDoBodies: this.capabilities.rawDoBodies,
+      stringAwareBraces: this.capabilities.stringAwareBraces,
     };
   }
 

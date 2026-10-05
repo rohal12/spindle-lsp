@@ -17,7 +17,7 @@ import { tokenize, type Token } from '../../node_modules/@rohal12/spindle/src/ma
 import { attributeValueSpans } from '../../src/core/parsing/html-scanner.js';
 import { findBracketLinks, parseDocumentPassageRefs } from '../../src/core/parsing/link-parser.js';
 import { buildLineStarts, parseMacros } from '../../src/core/parsing/macro-parser.js';
-import { createCodeScanner } from '../../src/core/parsing/code-scanner.js';
+import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 
 vi.mock('../../node_modules/@rohal12/spindle/src/store.ts', () => ({
@@ -45,13 +45,14 @@ function oracle(text: string): Facts {
   };
 }
 
-/** What the language server reads from the same text. */
+/** What the language server reads from the same text, counting braces as the installed release does. */
 function ours(text: string): Facts {
   const lineStarts = buildLineStarts(text);
+  const reading = INSTALLED_CAPABILITIES;
   return {
-    links: findBracketLinks(text).map(link => [link.start, link.end]),
-    macros: parseMacros(text).map(m => [lineStarts[m.range.start.line] + m.range.start.character, m.name, !m.open]),
-    attributes: attributeValueSpans(text).map(([start, end]) => text.slice(start, end)).filter(value => value !== ''),
+    links: findBracketLinks(text, reading).map(link => [link.start, link.end]),
+    macros: parseMacros(text, reading).map(m => [lineStarts[m.range.start.line] + m.range.start.character, m.name, !m.open]),
+    attributes: attributeValueSpans(text, reading).map(([start, end]) => text.slice(start, end)).filter(value => value !== ''),
   };
 }
 
@@ -116,17 +117,9 @@ describe('D3: [[ inside HTML attribute values, against tokenize()', () => {
       let text = '';
       for (let k = 1 + Math.floor(random() * 10); k > 0; k--) text += fragments[Math.floor(random() * fragments.length)];
       // Out of scope here: attributes that repeat a name (tokenize() keeps
-      // the last), and braces whose end depends on string literals, which
-      // the macro scanner skips and 0.45.1 does not.
+      // the last). Braces and quotes are compared as the installed release
+      // reads them: every brace counts before 0.50.1, strings are skipped from it.
       if (/(\w+)=[\s\S]*\b\1=/.test(text)) continue;
-      const scanner = createCodeScanner(text);
-      const plain: number[] = [];
-      const open: number[] = [];
-      for (let i = 0; i < text.length; i++) {
-        if (text[i] === '{') open.push(i);
-        else if (text[i] === '}' && open.length > 0) plain[open.pop()!] = i;
-      }
-      if ([...text].some((c, i) => c === '{' && scanner.closeBrace(i + 1) !== (plain[i] ?? -1))) continue;
       compared++;
       const [expected, actual] = [oracle(text), ours(text)];
       // Macro heads with names outside the macro grammar ({a=b}) are not compared
@@ -160,17 +153,18 @@ describe('D1: macro-looking bracket-link labels are link text', () => {
 
   /**
    * The `$` and `%` names Spindle reads from `text`: a link token renders as
-   * `{link "display" "target"}` with interpolated arguments, class and id;
-   * an HTML tag interpolates its attribute values; a `{$x}` display reads
-   * its variable; a macro reads the variables in its arguments (the fixtures
-   * keep those free of strings, so a regular expression finds them).
+   * the `{link}` macro, whose wrapper interpolates its class and id but whose
+   * MacroLink prints the display and navigates to the target as written
+   * (verified by the next describe block against the source and by rendering,
+   * docs/reviews/2026-10-06-convergence-fixes.md); an HTML tag interpolates
+   * its attribute values; a macro reads the variables in its arguments (the
+   * fixtures keep those free of strings, so a regular expression finds them).
    */
   function oracleReads(text: string): string[] {
     const names = tokenize(text).flatMap((token): string[] => {
       switch (token.type) {
         case 'link':
           return [
-            ...interpolationReads(`"${token.display}" "${token.target}"`),
             ...interpolationReads(token.className),
             ...interpolationReads(token.id),
           ];
@@ -212,12 +206,14 @@ describe('D1: macro-looking bracket-link labels are link text', () => {
     ['css-prefixed macro in the label', '[[{.c print $x}->Target]]'],
     ['bare $x word in the label', '[[cost $x->Target]]'],
     ['transient in a macro in the label', '[[{if %t}a{/if}->Target]]'],
-    ['display interpolation is read', '[[Hi {$x}->Target]]'],
-    ['display expression interpolation is read', '[[Hi {$a + $b}->Target]]'],
-    ['target interpolation is read', '[[go->{$x}]]'],
-    ['transient interpolation is read', '[[{%t}->Target]]'],
+    ['display interpolation is printed as written', '[[Hi {$x}->Target]]'],
+    ['display expression interpolation is printed as written', '[[Hi {$a + $b}->Target]]'],
+    ['target interpolation is a literal passage name', '[[go->{$x}]]'],
+    ['transient interpolation is printed as written', '[[{%t}->Target]]'],
     ['selector interpolation is read', '[[.c{$k} go->Target]]'],
     ['interpolation next to a macro', '[[{if $x}{$a}{/if}->Target]]'],
+    ['selector id interpolation is read', '[[#i{$y} go->Target]]'],
+    ['selector and label interpolation', '[[.c{$k} go {$a}->T{$b}]]'],
     ['block across the separator reads nothing', '[[{$a->b}->T]]'],
     ['macro after the link still runs', '[[{if $x}l{/if}->T]]{if $y}z{/if}'],
     ['unclosed brace in the label does not swallow the next macro', '[[a {->T]] {set $y = 1}'],

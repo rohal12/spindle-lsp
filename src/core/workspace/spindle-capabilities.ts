@@ -48,6 +48,14 @@ export interface SpindleCapabilities {
    * "x"}` is read as a macro and dropped from the code.
    */
   rawDoBodies: boolean;
+  /**
+   * Spindle >= 0.50.1: the tokenizer skips string and template literals when
+   * it counts the braces of a macro, expression or HTML attribute value, so
+   * `{set $s = "{"}` ends at its own `}`. Below it every brace counts: a
+   * stray `{` in a string extends the token to the next balanced `}` (or
+   * leaves it as text when there is none).
+   */
+  stringAwareBraces: boolean;
 }
 
 /** The oldest Spindle the LSP supports: the one that introduced transients. */
@@ -60,6 +68,8 @@ export const PRIMITIVE_MEMBERS_VERSION = '0.51.1';
 export const LINK_QUOTE_ESCAPES_VERSION = '0.51.1';
 /** First release whose tokenizer keeps `{do}` bodies as raw JavaScript text. */
 export const RAW_DO_BODIES_VERSION = '0.50.1';
+/** First release whose tokenizer ignores braces inside string and template literals. */
+export const STRING_AWARE_BRACES_VERSION = '0.50.1';
 
 type Triple = [number, number, number];
 
@@ -90,6 +100,7 @@ export const DEFAULT_CAPABILITIES: SpindleCapabilities = {
   primitiveMembers: false,
   linkQuoteEscapes: false,
   rawDoBodies: false,
+  stringAwareBraces: false,
 };
 
 /** The capabilities of a Spindle `version`; the default ones if it does not parse. */
@@ -107,6 +118,7 @@ export function capabilitiesForVersion(
     primitiveMembers: atLeast(triple, PRIMITIVE_MEMBERS_VERSION),
     linkQuoteEscapes: atLeast(triple, LINK_QUOTE_ESCAPES_VERSION),
     rawDoBodies: atLeast(triple, RAW_DO_BODIES_VERSION),
+    stringAwareBraces: atLeast(triple, STRING_AWARE_BRACES_VERSION),
   };
 }
 

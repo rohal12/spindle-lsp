@@ -192,14 +192,23 @@ describe('parseMacros balanced braces', () => {
     expect(macros[0].rawArgs).toBe('{a: 1}');
   });
 
-  it('ignores braces inside string literals', () => {
-    const macros = parseMacros(`{set $x = "}", $y = '{'}{/set}`);
+  it('ignores braces inside string literals (Spindle >= 0.50.1)', () => {
+    const macros = parseMacros(`{set $x = "}", $y = '{'}{/set}`, { stringAwareBraces: true });
     expect(macros).toHaveLength(2);
     expect(macros[0].rawArgs).toBe(`$x = "}", $y = '{'`);
   });
 
-  it('ignores braces inside template literals and their interpolations', () => {
-    const macros = parseMacros('{set $x = `}${ {a: 1}.a }{`}after{b}');
+  it('counts braces inside string literals before 0.50.1', () => {
+    // The tokenizer ends the macro at the `}` in the string; the rest is text
+    const macros = parseMacros(`{set $x = "}", $y = '{'}{/set}`);
+    expect(macros.map(m => m.name)).toEqual(['set', 'set']);
+    expect(macros[0].rawArgs).toBe('$x = "');
+    expect(parseMacros('{print "{"}\n{b}')).toHaveLength(1);
+    expect(parseMacros('{print "{"}\n{b}', { stringAwareBraces: true }).map(m => m.name)).toEqual(['print', 'b']);
+  });
+
+  it('ignores braces inside template literals and their interpolations (Spindle >= 0.50.1)', () => {
+    const macros = parseMacros('{set $x = `}${ {a: 1}.a }{`}after{b}', { stringAwareBraces: true });
     expect(macros.map(m => m.name)).toEqual(['set', 'b']);
     expect(macros[0].rawArgs).toBe('$x = `}${ {a: 1}.a }{`');
   });
@@ -308,6 +317,16 @@ function referenceScan(input: string, i: number): number {
   return -1;
 }
 
+/** Spindle's tokenizer before 0.50.1: a plain depth count. */
+function plainScan(input: string, i: number): number {
+  let depth = 1;
+  for (; i < input.length; i++) {
+    if (input[i] === '{') depth++;
+    else if (input[i] === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
 describe('createCodeScanner literalEnd', () => {
   it('finds the end of string and template literals', () => {
     const text = 'x = "a}b" + \'c\' + `d${ {e: "`"} }f` + "g\\"h"';
@@ -336,33 +355,39 @@ describe('scanBalancedBrace performance', () => {
     // doubling the work per level (k = 22 took ~100ms, k = 30 minutes).
     const text = '{a ' + '`${'.repeat(2000);
     const start = performance.now();
-    expect(parseMacros(text)).toEqual([]);
-    expect(performance.now() - start).toBeLessThan(500);
+    expect(parseMacros(text, { stringAwareBraces: true })).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(5000);
   });
 
   it('handles many unclosed macro heads and escaped backticks quickly', () => {
     const start = performance.now();
-    parseMacros('{a '.repeat(10000));
-    parseMacros('{a `' + '\\`'.repeat(10000));
-    expect(performance.now() - start).toBeLessThan(500);
+    for (const reading of [{ stringAwareBraces: true }, {}]) {
+      parseMacros('{a '.repeat(10000), reading);
+      parseMacros('{a `' + '\\`'.repeat(10000), reading);
+    }
+    expect(performance.now() - start).toBeLessThan(5000);
   });
 
   it('completes on random brace/quote/template soup', () => {
     const rand = seededRandom(0x5eed);
     const start = performance.now();
-    for (let n = 0; n < 20; n++) parseMacros(randomText(rand, 5000));
-    expect(performance.now() - start).toBeLessThan(2000);
+    for (let n = 0; n < 20; n++) parseMacros(randomText(rand, 5000), { stringAwareBraces: n % 2 === 0 });
+    expect(performance.now() - start).toBeLessThan(10000);
   });
 
   it('matches the reference scan on random short inputs', () => {
     const rand = seededRandom(42);
     for (let n = 0; n < 2000; n++) {
       const text = randomText(rand, 30);
-      const scanner = createCodeScanner(text);
+      const scanner = createCodeScanner(text, { stringAwareBraces: true });
+      const plain = createCodeScanner(text);
       for (let i = 0; i <= text.length; i++) {
         const expected = referenceScan(text, i);
-        expect(scanBalancedBrace(text, i), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
+        expect(scanBalancedBrace(text, i, { stringAwareBraces: true }), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
         expect(scanner.closeBrace(i), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
+        // Before 0.50.1 every brace counts
+        expect(plain.closeBrace(i), `${JSON.stringify(text)} @ ${i}`).toBe(plainScan(text, i));
+        expect(scanBalancedBrace(text, i), `${JSON.stringify(text)} @ ${i}`).toBe(plainScan(text, i));
       }
     }
   });

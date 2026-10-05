@@ -216,3 +216,52 @@ were measured in the first run and are unsupported by decision (4 above).
 Superseded earlier conclusions: "Not fixed in src/", "Conclusions and proposal
 (not applied)" and the `<0.50.1` range alternative; the proposed follow-ups (a)
 and (b) are implemented above rather than filed.
+
+## Every release green — 2026-10-06 (branch `fix/close-q-versions`)
+
+The previous section left 19 failures on the matrix copies of every release (12 on 0.43.0-0.50.0
+too), recorded as "not new". They are fixed, so each published release from 0.43.0 on now passes
+the whole suite. Node 22.18.0; `npm view @rohal12/spindle versions` lists exactly the 22
+releases from 0.43.0 to 0.51.3 below (0.1.0-0.42.0 are older, unsupported by decision above).
+
+### The 19 failures
+
+| Count | Cause | Fix |
+| --- | --- | --- |
+| 12 | The dist-based tests (`bin`, `format-entrypoints`, CLI, MCP and LSP integration) build the executable with `npm run build` from the matrix copy, which `scripts/peer-matrix.sh` did not give `esbuild.config.ts` | The script copies `esbuild.config.ts`; no test change |
+| 6 | `placeholders-oracle` (K66-scan) compared the formatter's token scan with the installed tokenizer; from 0.50.1 the tokenizer skips string and template literals when it counts braces (the file's `tokenizer.ts` is byte-identical in 0.43.0-0.50.0 and in 0.50.1-0.51.3, verified by hashing all 22 packs) | `SpindleCapabilities.stringAwareBraces` (>= 0.50.1); `scanSpindleTokens`/`replaceSpindleTokens`/`formatDocument` take the reading; the LSP, CLI and MCP tools resolve it from the target release; the oracle tests pass the installed release's reading and state both |
+| 1 | `markup-differential` D3-fuzz excluded only some inputs on which the readings differ; an unbalanced `{` in an attribute value (0.50.1 ends the value at the next quote) was left out | The markup parser (`parseMacros`, `findBracketLinks`, `attributeValueSpans`, `scanHtmlTags` with a new `modern` policy, tracker, signature help) takes the same reading; the fuzz excludes nothing |
+
+Making the reading exact exposed assertions that fixed the "unknown version" behavior
+(`diagnostics-containers`, `diagnostics-malformed-element`, `diagnostics-attribute-blocks`,
+`signature`, `macro-parser`, `macro-head-differential`); they now state both readings and compare
+with `buildAST` for the installed release (details in
+[2026-10-06-convergence-fixes.md](2026-10-06-convergence-fixes.md), "Link interpolation and brace
+reading"). New: `test/unit/format-brace-reading.test.ts` (12), `test/unit/link-interpolation.test.ts`
+(124), `test/helpers/runtime-ast.ts`; 77 files, 1,977 tests, no skips.
+
+### Matrix
+
+`scripts/peer-matrix.sh <version>` for every release, one run each, on the same sources
+(branch tip). Passed / total and `tsc --noEmit` exit code:
+
+| Spindle | passed | typecheck | | Spindle | passed | typecheck |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.43.0 | 1977/1977 | 0 | | 0.48.0 | 1977/1977 | 0 |
+| 0.43.1 | 1977/1977 | 0 | | 0.49.0 | 1977/1977 | 0 |
+| 0.43.2 | 1977/1977 | 0 | | 0.49.1 | 1977/1977 | 0 |
+| 0.43.3 | 1977/1977 | 0 | | 0.50.0 | 1977/1977 | 0 |
+| 0.43.4 | 1977/1977 | 0 | | 0.50.1 | 1977/1977 | 0 |
+| 0.43.5 | 1977/1977 | 0 | | 0.51.0 | 1977/1977 | 0 |
+| 0.43.6 | 1977/1977 | 0 | | 0.51.1 | 1977/1977 | 0 |
+| 0.43.7 | 1977/1977 | 0 | | 0.51.2 | 1977/1977 | 0 |
+| 0.44.0 | 1977/1977 | 0 | | 0.51.3 (latest) | 1977/1977 | 0 |
+| 0.45.0 | 1977/1977 | 0 | | | | |
+| 0.45.1 (devDependency) | 1977/1977 | 0 | | | | |
+| 0.46.0 | 1977/1977 | 0 | | | | |
+| 0.47.0 | 1977/1977 | 0 | | | | |
+
+22 of 22 releases pass; `npm test` (0.45.1, the repository's own install) is 77 files / 1,977
+tests, `npm run typecheck` exits 0. Both brace readings are exercised on both sides of the 0.50.1
+boundary (0.50.0 and 0.50.1 are in the table), and the formatter, CLI and MCP entry points are
+tested with fake installs of 0.50.0 and 0.50.1.

@@ -16,7 +16,7 @@ d=$scratch/run/$v
 mkdir -p "$pk"
 [ -d "$pk/package" ] || (cd "$pk" && npm pack "@rohal12/spindle@$v" --silent >/dev/null && tar xzf ./*.tgz)
 rm -rf "$d"; mkdir -p "$d/node_modules/@rohal12"
-(cd "$root" && cp -r src test package.json tsconfig.json vitest.config.ts vitest.review.config.ts "$d/")
+(cd "$root" && cp -r src test package.json esbuild.config.ts tsconfig.json vitest.config.ts vitest.review.config.ts "$d/")
 for e in "$nm"/* "$nm"/.bin; do
   n=$(basename "$e"); [ "$n" = @rohal12 ] || ln -s "$e" "$d/node_modules/$n"
 done

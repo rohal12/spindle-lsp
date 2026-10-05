@@ -1,4 +1,4 @@
-import { createCodeScanner } from './code-scanner.js';
+import { createCodeScanner, type BraceReading } from './code-scanner.js';
 
 /**
  * An HTML tag as Spindle's tokenizer reads it from passage markup.
@@ -71,11 +71,23 @@ class BudgetExceeded extends Error {}
  * How scanHtmlTags() treats the constructs on which Spindle versions differ.
  *  - `conservative` (the default): stop at the first such construct, so that
  *    a caller draws no conclusion that holds for only some versions.
- *  - `installed`: read them as Spindle 0.45.1 does, the version this package
- *    is verified against. A caller that must decide where markup ends (not
- *    only whether an element is open) follows one version rather than guess.
+ *  - `installed`: read them as Spindle 0.43.0 to 0.50.0 do (the tokenizer is
+ *    the same in all of them; 0.45.1 is the version this package is verified
+ *    against).
+ *  - `modern`: read them as Spindle 0.50.1 and later do: braces in strings
+ *    and templates do not count, an unbalanced `{` in an attribute value is
+ *    plain text, and a `{do}` body is kept as text up to the first `{/do}`.
+ *
+ * A caller that must decide where markup ends (not only whether an element
+ * is open) follows the target version (see `SpindleCapabilities`) rather
+ * than guess; `conservative` is for a caller that does not know it.
  */
-export type ScanPolicy = 'conservative' | 'installed';
+export type ScanPolicy = 'conservative' | 'installed' | 'modern';
+
+/** The scan policy that reads markup as the Spindle release `reading` describes does. */
+export function policyFor(reading: BraceReading): ScanPolicy {
+  return reading.stringAwareBraces === true ? 'modern' : 'installed';
+}
 
 /**
  * For every `{`, the index of the `}` that a plain depth count from it
@@ -127,11 +139,13 @@ function plainBraceMatches(input: string): Int32Array {
  * linear in the text; one that spends it stops, in either policy.
  */
 export function scanHtmlTags(text: string, policy: ScanPolicy = 'conservative'): HtmlScan {
-  const installed = policy === 'installed';
+  // A known release is read exactly; `modern` differs from `installed` below
+  const modern = policy === 'modern';
+  const installed = policy !== 'conservative';
   const n = text.length;
   const tags: HtmlTag[] = [];
   const macros: number[] = [];
-  const code = createCodeScanner(text);
+  const code = createCodeScanner(text, { stringAwareBraces: true });
   const plain = plainBraceMatches(text);
 
   let budget = 64 * n + 100000;
@@ -177,7 +191,7 @@ export function scanHtmlTags(text: string, policy: ScanPolicy = 'conservative'):
 
   /** End of the brace-delimited token opening at `open`, or GIVE_UP. */
   const braceEnd = (open: number): number => {
-    const close = installed ? plain[open] : code.closeBrace(open + 1);
+    const close = installed && !modern ? plain[open] : code.closeBrace(open + 1);
     if (!installed && close !== plain[open]) return GIVE_UP;
     return close === -1 ? open + 1 : close + 1;
   };
@@ -208,7 +222,16 @@ export function scanHtmlTags(text: string, policy: ScanPolicy = 'conservative'):
       const end = braceEnd(i);
       if (end > i + 1) {
         macros.push(i);
-        if (/^do$/i.test(text.slice(at, end - 1).trim().split(/\s/)[0])) rawBody(end);
+        if (/^do$/i.test(text.slice(at, end - 1).trim().split(/\s/)[0])) {
+          // 0.50.1+ keeps the body as text up to the first `{/do}`, which is then read as a macro
+          if (modern) {
+            doCloses ??= [...text.matchAll(/\{\/do\s*\}/gi)].map(match => match.index);
+            const closer = doCloses.find(index => index >= end);
+            if (closer !== undefined) return closer;
+          } else {
+            rawBody(end);
+          }
+        }
       }
       return end;
     }
@@ -310,7 +333,7 @@ export function scanHtmlTags(text: string, policy: ScanPolicy = 'conservative'):
         break;
       }
     }
-    if (!sawBrace || installed) return k;
+    if (!sawBrace || (installed && !modern)) return k;
 
     let d = from;
     while (d < n) {
@@ -325,7 +348,7 @@ export function scanHtmlTags(text: string, policy: ScanPolicy = 'conservative'):
       }
       d++;
     }
-    return d === k ? k : GIVE_UP;
+    return modern || d === k ? d : GIVE_UP;
   };
 
   let i = 0;
@@ -429,18 +452,19 @@ function linkEnd(text: string, i: number, spend: (units: number) => void): numbe
  * The attribute values of the tags Spindle reads in a Twee document, as
  * sorted [start, end) offsets: scanHtmlTags() run on each passage on its own
  * (a line starting with `::` starts the next one), reading what Spindle
- * versions disagree on as 0.45.1 does (the `installed` policy): a caller
- * deciding where markup is must follow some version. Only a scan that
- * spends its work budget stops, and the values from there on are left out.
+ * versions disagree on as `reading` says (see policyFor(); omitted, as
+ * 0.45.1 does): a caller deciding where markup is must follow the target
+ * version. Only a scan that spends its work budget stops, and the values from
+ * there on are left out.
  */
-export function attributeValueSpans(text: string): Array<[number, number]> {
+export function attributeValueSpans(text: string, reading: BraceReading = {}): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
   if (!text.includes('<')) return spans;
   const headers = [...text.matchAll(/^::.*$/gm)];
   const scan = (from: number, to: number) => {
     const content = text.slice(from, to);
     if (!content.includes('<')) return;
-    for (const tag of scanHtmlTags(content, 'installed').tags) {
+    for (const tag of scanHtmlTags(content, policyFor(reading)).tags) {
       for (const [start, end] of tag.values ?? []) spans.push([from + start, from + end]);
     }
   };
@@ -454,6 +478,6 @@ export function attributeValueSpans(text: string): Array<[number, number]> {
 }
 
 /** Whether the character at `offset` lies in an attribute value; see attributeValueSpans(). */
-export function inAttributeValue(text: string, offset: number): boolean {
-  return attributeValueSpans(text).some(([start, end]) => start <= offset && offset < end);
+export function inAttributeValue(text: string, offset: number, reading: BraceReading = {}): boolean {
+  return attributeValueSpans(text, reading).some(([start, end]) => start <= offset && offset < end);
 }

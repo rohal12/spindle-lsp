@@ -43,7 +43,7 @@ export function computeDocumentLinks(uri: string, workspace: WorkspaceModel): Do
     const contentLines = lines.slice(contentStartLine, contentEndLine);
     const content = contentLines.join('\n');
 
-    const passageLinks = parseLinks(content, contentStartLine);
+    const passageLinks = parseLinks(content, contentStartLine, workspace.capabilities);
 
     for (const ref of passageLinks) {
       const targetPassage = workspace.passages.getPassage(ref.name);

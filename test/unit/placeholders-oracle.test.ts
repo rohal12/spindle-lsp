@@ -1,16 +1,23 @@
 /**
  * Contract K66-scan (#66): the formatter protects exactly the spans the
- * installed Spindle runtime (0.45.1) tokenizes as macros, variables,
- * expressions and links. The oracle is Spindle's own tokenizer.
+ * installed Spindle runtime tokenizes as macros, variables, expressions and
+ * links. The oracle is Spindle's own tokenizer, whichever release is installed.
  *
- * Spindle's tokenizer counts braces and ignores string contents, so a stray
- * `{` inside a string extends the macro to the next balanced `}` at runtime.
- * The formatter must protect that same (longer) span: it is the runtime's
- * payload, and reformatting inside it changes the macro's arguments.
+ * Before 0.50.1 Spindle's tokenizer counts braces and ignores string
+ * contents, so a stray `{` inside a string extends the macro to the next
+ * balanced `}` at runtime; the formatter must protect that same (longer) span:
+ * it is the runtime's payload, and reformatting inside it changes the macro's
+ * arguments. From 0.50.1 the tokenizer skips string and template literals
+ * (`stringAwareBraces`), so the stray brace is inert and the span ends at the
+ * macro's own `}`. The scan follows the installed release in both cases.
  */
 import { describe, expect, it } from 'vitest';
 import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
-import { scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
+import { scanSpindleTokens as scanWith } from '../../src/plugins/format/placeholders.js';
+import { INSTALLED_CAPABILITIES, INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
+
+const STRING_AWARE = INSTALLED_CAPABILITIES.stringAwareBraces;
+const scanSpindleTokens = (text: string) => scanWith(text, { stringAwareBraces: STRING_AWARE });
 
 interface Span { start: number; end: number }
 
@@ -92,12 +99,17 @@ const FIXTURES: Record<string, string> = {
   'html macro in tag position': '<div {if $x}class="a"{/if}>t</div>',
   'html self closing': '<br/>{$x}<img src="{$s}"/>',
   'html unclosed tag': '<div class="a" {$x}',
+  'html attr with a quote inside braces': '<div title="{$a + \'"\'}">{$b}</div>',
+  'html attr with a brace in a string': '<div title="{$a + \'{\'}">{$b}</div>',
+  'html attr with an unbalanced brace then a quote': '<div title="{" class="x">{$v}</div>',
+  'html attr with a template in braces': '<div title="{`}`}">{$v}</div>',
+  'html attr with a stray close brace': '<div title="}">{$v}</div>',
   'html custom element': '<my-el a="{$b}">{print 1}</my-el>',
   'html comparison text': 'a < b {set $a = 1} c > d',
   'html tag across lines': '<div\n  class="{$c}"\n>{$x}</div>',
 };
 
-describe('K66-scan: scanSpindleTokens matches the Spindle 0.45.1 tokenizer', () => {
+describe(`K66-scan: scanSpindleTokens matches the Spindle ${INSTALLED_SPINDLE_VERSION} tokenizer`, () => {
   for (const [name, text] of Object.entries(FIXTURES)) {
     it(`K66-scan fixture: ${name}`, () => {
       expect(ourSpansOutsideTags(text)).toEqual(oracleSpans(text));
@@ -126,18 +138,36 @@ describe('K66-scan: scanSpindleTokens matches the Spindle 0.45.1 tokenizer', () 
   });
 
   it('K66-scan: a stray brace in a string protects the runtime span, not the line', () => {
-    // The `{` inside the string is counted, so the macro runs on to the
-    // prose `}` two lines down: that whole span is its runtime payload.
+    // Before 0.50.1 the `{` inside the string is counted, so the macro runs on
+    // to the prose `}` two lines down: that whole span is its runtime payload.
+    // From 0.50.1 the string is skipped and the macro ends at its own `}`.
     const text = '{set $s = "{"}\nprose   here }\nafter';
     const macros = tokenize(text).filter(t => t.type === 'macro');
     expect(macros).toHaveLength(1);
-    expect(macros[0].rawArgs).toContain('prose   here');
-    expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{set $s = "{"}\nprose   here }']);
+    if (STRING_AWARE) {
+      expect(macros[0].rawArgs).toBe('$s = "{"');
+      expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{set $s = "{"}']);
+    } else {
+      expect(macros[0].rawArgs).toContain('prose   here');
+      expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{set $s = "{"}\nprose   here }']);
+    }
   });
 
-  it('K66-scan control: the same stray brace without a later `}` leaves the macro as text', () => {
+  it('K66-scan control: the same stray brace without a later `}`', () => {
+    // Before 0.50.1 the macro is text (no balancing `}`); from 0.50.1 it is a macro.
     const text = '{set $s = "{"}\nprose   here\n{set $t = 1}';
-    expect(tokenize(text).filter(t => t.type === 'macro').map(t => t.rawArgs)).toEqual(['$t = 1']);
-    expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{set $t = 1}']);
+    const expected = STRING_AWARE ? ['$s = "{"', '$t = 1'] : ['$t = 1'];
+    expect(tokenize(text).filter(t => t.type === 'macro').map(t => t.rawArgs)).toEqual(expected);
+    expect(scanSpindleTokens(text).map(m => m.token)).toEqual(STRING_AWARE ? ['{set $s = "{"}', '{set $t = 1}'] : ['{set $t = 1}']);
+  });
+
+  it('K66-scan: the capability follows the installed release', () => {
+    expect(STRING_AWARE).toBe(tokenize('{set $s = "{"}').filter(t => t.type === 'macro').length === 1);
+  });
+
+  it('K66-scan: both modes agree where no string holds a brace', () => {
+    for (const text of ['{set $a = 1} b {$c}', '{if $x}a{/if}', '[[Go->Home]] {print "ok"}', '<div class="{$c}">{$x}</div>']) {
+      expect(scanWith(text, { stringAwareBraces: true })).toEqual(scanWith(text, { stringAwareBraces: false }));
+    }
   });
 });

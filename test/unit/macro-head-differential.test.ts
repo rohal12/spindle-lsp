@@ -9,9 +9,10 @@
  * unknown-macro diagnostics (SP100/SP104), widget references, definition and
  * rename.
  *
- * Oracles: the installed runtime's tokenizer, and the vendored 0.51.3
- * tokenizer (test/fixtures/spindle-0.51.3), which also skips string literals
- * when it looks for the closing brace.
+ * Oracles: the installed runtime's tokenizer (the parser reads braces as that
+ * release does: `stringAwareBraces` from 0.50.1, plain counting before), and
+ * the vendored 0.51.3 tokenizer (test/fixtures/spindle-0.51.3), which skips
+ * string literals when it looks for the closing brace.
  */
 import { describe, expect, it } from 'vitest';
 import { tokenize as installedTokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
@@ -22,6 +23,8 @@ import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { findWidgetReferences } from '../../src/plugins/references.js';
 import { getDefinition } from '../../src/plugins/definition.js';
 import { computeRename } from '../../src/plugins/rename.js';
+import type { BraceReading } from '../../src/core/parsing/code-scanner.js';
+import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 
 type Tokenize = (text: string) => Array<{ type: string } & Record<string, unknown>>;
 
@@ -32,9 +35,10 @@ function oracle(tokenize: Tokenize, text: string): string[] {
     .map(token => `${token.start as number}:${JSON.stringify(token.name)}:${token.isClose as boolean}`);
 }
 
-function ours(text: string): string[] {
+/** The macros the parser reads, counting braces as the release behind the oracle does. */
+function ours(text: string, reading: BraceReading = INSTALLED_CAPABILITIES): string[] {
   const lineStarts = buildLineStarts(text);
-  return parseMacros(text).map(
+  return parseMacros(text, reading).map(
     m => `${lineStarts[m.range.start.line] + m.range.start.character}:${JSON.stringify(m.name)}:${!m.open}`,
   );
 }
@@ -72,11 +76,25 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
     expect(withOddNames).toBeGreaterThan(3000);
   });
 
+  it('H-installed-quotes: heads with quotes and braces agree with the installed tokenizer, whichever release', () => {
+    // Before 0.50.1 every brace counts, from it strings and templates are skipped
+    const random = rng(52);
+    let differing = 0;
+    for (let n = 0; n < 60000; n++) {
+      const text = head(random, [...BASE_CHARS, ...QUOTE_CHARS]);
+      const expected = oracle(installedTokenize as Tokenize, text);
+      expect(ours(text), JSON.stringify(text)).toEqual(expected);
+      if (JSON.stringify(ours(text, { stringAwareBraces: !INSTALLED_CAPABILITIES.stringAwareBraces })) !== JSON.stringify(expected)) differing++;
+    }
+    // The inputs do tell the two readings apart (so this is not vacuous)
+    expect(differing).toBeGreaterThan(10);
+  });
+
   it('H-vendored: heads with quotes and braces agree with the 0.51.3 tokenizer', () => {
     const random = rng(51);
     for (let n = 0; n < 60000; n++) {
       const text = head(random, [...BASE_CHARS, ...QUOTE_CHARS]);
-      expect(ours(text), JSON.stringify(text)).toEqual(oracle(vendoredTokenize as Tokenize, text));
+      expect(ours(text, { stringAwareBraces: true }), JSON.stringify(text)).toEqual(oracle(vendoredTokenize as Tokenize, text));
     }
   });
 
@@ -86,7 +104,8 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
     for (let n = 0; n < 30000; n++) {
       let text = '';
       for (let k = 1 + Math.floor(random() * 8); k > 0; k--) text += fragments[Math.floor(random() * fragments.length)];
-      expect(ours(text), JSON.stringify(text)).toEqual(oracle(vendoredTokenize as Tokenize, text));
+      expect(ours(text, { stringAwareBraces: true }), JSON.stringify(text)).toEqual(oracle(vendoredTokenize as Tokenize, text));
+      expect(ours(text), JSON.stringify(text)).toEqual(oracle(installedTokenize as Tokenize, text));
     }
   });
 

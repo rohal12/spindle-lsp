@@ -57,6 +57,7 @@ const FRAGMENTS = [
   '{{$brace}}', '{ $space }', '{$unbalanced', '{$a + "}"}', '{macro "}" $afterq}', "{x 'don't $apos}",
   'plain $prose.text and $5.50 ', '$', '$.x', '{', '}', '[[', ']]', '<', '< $lt', '\n', '\r\n', ' ',
   '{for @i of $list}{@i.x}$list.y{/for}', '{for @k, @v of $obj}$obj.k{/for}', '{link "go $l" "T"}{/link}',
+  '[[Take {$lbl}->T{$tg}]]', '[[.c{$sel}#i{$sid} go->T]]', '{button "{$bt}"}x{/button}', '{dialog "Open {$dg}"}P{/dialog}',
   '{include "P"}', '{goto "$gt"}', '{widget "w"}{$wd}{/widget}', '{set $o = {a: $in1, b: "$in2"}}',
   '`tpl ${$tp}`', "{print '{$nested}'}", '{print "a\\"$b"}', 'é {$u8}', '😀 $emoji.x {$e2}',
 ];

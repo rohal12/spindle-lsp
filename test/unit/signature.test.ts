@@ -98,11 +98,13 @@ describe('getSignatureHelp for widget arguments', () => {
 });
 
 describe('getSignatureHelp finds the enclosing macro', () => {
-  function help(content: string) {
+  /** `version` is the Spindle the story declares (StoryData `format-version`); 0.45.1 when omitted. */
+  function help(content: string, version?: string) {
     const ws = createWorkspace(
       {
         name: 'widgets.tw',
-        content: ':: MyWidgets [widget]\n{widget "counter" @count @label}\n{@count} {@label}\n{/widget}',
+        content: ':: MyWidgets [widget]\n{widget "counter" @count @label}\n{@count} {@label}\n{/widget}'
+          + (version ? `\n:: StoryData\n{"format": "Spindle", "format-version": "${version}"}` : ''),
       },
       { name: 'test.tw', content },
     );
@@ -114,8 +116,19 @@ describe('getSignatureHelp finds the enclosing macro', () => {
 
   it('looks past braces inside arguments', () => {
     expect(help(':: Start\n{counter {a: 1}, ')?.activeParameter).toBe(1);
-    expect(help(':: Start\n{counter "x}", ')?.activeParameter).toBe(1);
-    expect(help(':: Start\n{counter `${1}}`, ')?.activeParameter).toBe(1);
+    expect(help(':: Start\n{counter {a: 1}, ', '0.51.3')?.activeParameter).toBe(1);
+  });
+
+  it('looks past braces inside strings from Spindle 0.50.1, and counts them before', () => {
+    // From 0.50.1 the tokenizer skips the strings, so `{counter` is still open;
+    // before it the `}` in the string closes it and there is no macro to help with.
+    for (const version of ['0.50.1', '0.51.3']) {
+      expect(help(':: Start\n{counter "x}", ', version)?.activeParameter, version).toBe(1);
+      expect(help(':: Start\n{counter `${1}}`, ', version)?.activeParameter, version).toBe(1);
+    }
+    for (const version of [undefined, '0.43.0', '0.45.1', '0.50.0']) {
+      expect(help(':: Start\n{counter "x}", ', version), String(version)).toBeNull();
+    }
   });
 
   it('follows arguments across lines', () => {

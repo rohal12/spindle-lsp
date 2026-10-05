@@ -1,6 +1,6 @@
 import type { MacroNode, Position, Range } from '../types.js';
-import { createCodeScanner } from './code-scanner.js';
-import { attributeValueSpans, scanHtmlTags, type HtmlTag } from './html-scanner.js';
+import { createCodeScanner, type BraceReading } from './code-scanner.js';
+import { attributeValueSpans, policyFor, scanHtmlTags, type HtmlTag } from './html-scanner.js';
 import { bracketLinkEnd } from './link-parser.js';
 import { HAS_PASSAGE_HEADER, isMarkupPassage, maskNonMarkupPassages, passageBodies, type PassageRole } from './passage-parser.js';
 
@@ -100,12 +100,12 @@ export function offsetToPosition(offset: number, lineStarts: number[]): { line: 
  * but `{$…}`-style expressions there as written (rohal12/spindle#225). See
  * attributeValueSpans().
  */
-export function parseMacros(text: string): MacroNode[] {
+export function parseMacros(text: string, reading: BraceReading = {}): MacroNode[] {
   // Spindle renders each passage on its own: a macro never spans a header
-  if (!HAS_PASSAGE_HEADER.test(text)) return parseMacrosInPassage(text);
+  if (!HAS_PASSAGE_HEADER.test(text)) return parseMacrosInPassage(text, reading);
   const macros: MacroNode[] = [];
   for (const body of passageBodies(text)) {
-    for (const macro of parseMacrosInPassage(text.slice(body.start, body.end))) {
+    for (const macro of parseMacrosInPassage(text.slice(body.start, body.end), reading)) {
       macro.id = macros.length;
       macro.range.start.line += body.line;
       macro.range.end.line += body.line;
@@ -115,18 +115,18 @@ export function parseMacros(text: string): MacroNode[] {
   return macros;
 }
 
-function parseMacrosInPassage(text: string): MacroNode[] {
+function parseMacrosInPassage(text: string, reading: BraceReading): MacroNode[] {
   // Replace variable interpolation with same-length spaces to preserve offsets
   const cleaned = text.replace(variableInterpolationRegex, (match) => {
     return ' '.repeat(match.length);
   });
 
   const lineStarts = buildLineStarts(text);
-  const scanner = createCodeScanner(cleaned);
+  const scanner = createCodeScanner(cleaned, reading);
   const macros: MacroNode[] = [];
   let id = 0;
 
-  const attributeValues = attributeValueSpans(text);
+  const attributeValues = attributeValueSpans(text, reading);
   // The spans are sorted and disjoint (one tag's values follow another's)
   const inAttributeValue = (offset: number): boolean => {
     let low = 0;
@@ -513,6 +513,7 @@ export function collectElementEvents(
   text: string,
   macros: MacroNode[],
   passages: Array<PassageRole & { range: Range }>,
+  reading: BraceReading = {},
 ): ElementEvent[] {
   if (!text.includes('<')) return [];
 
@@ -533,7 +534,7 @@ export function collectElementEvents(
     const content = text.slice(contentStart, contentEnd);
     if (!content.includes('<') || !isMarkupPassage(passage)) continue;
 
-    const scan = scanHtmlTags(content);
+    const scan = scanHtmlTags(content, policyFor(reading));
     const { tags } = scan;
     const macroStart = (k: number) => offsetOf(macros[k].range.start) - contentStart;
     const at = (relative: number) => positionOf(contentStart + relative, lineStarts);
@@ -613,8 +614,8 @@ export function parseDocumentStructure(
   options: DocumentMacroOptions = {},
 ): { macros: MacroNode[]; errors: ElementStructure['errors'] } {
   const masked = maskedDocument(text, passages, options);
-  const macros = parseMacros(masked);
-  const elements: ElementStructure = { events: collectElementEvents(masked, macros, passages), errors: [] };
+  const macros = parseMacros(masked, options);
+  const elements: ElementStructure = { events: collectElementEvents(masked, macros, passages, options), errors: [] };
   pairMacros(macros, isBlock, passages.map(p => p.range.start.line), elements);
   return { macros, errors: elements.errors };
 }
@@ -634,11 +635,11 @@ export function parseDocumentMacros(
   options: DocumentMacroOptions = {},
 ): MacroNode[] {
   if (isBlock) return parseDocumentStructure(text, passages, isBlock, options).macros;
-  return parseMacros(maskedDocument(text, passages, options));
+  return parseMacros(maskedDocument(text, passages, options), options);
 }
 
 /** Version-dependent reading of a document's markup (`SpindleCapabilities`). */
-export interface DocumentMacroOptions {
+export interface DocumentMacroOptions extends BraceReading {
   /** Spindle >= 0.50.1: the body of a `{do}` is JavaScript text, not markup. */
   rawDoBodies?: boolean;
 }
@@ -649,7 +650,7 @@ function maskedDocument(
   options: DocumentMacroOptions,
 ): string {
   const masked = maskNonMarkupPassages(text, passages);
-  return options.rawDoBodies ? maskRawDoBodies(masked) : masked;
+  return options.rawDoBodies ? maskRawDoBodies(masked, options) : masked;
 }
 
 /**
@@ -658,12 +659,12 @@ function maskedDocument(
  * of a `{do}` to the first `{/do}` after it (which is then a macro). A `{do}`
  * with no `{/do}` after it has an ordinary body.
  */
-export function maskRawDoBodies(text: string): string {
+export function maskRawDoBodies(text: string, reading: BraceReading = {}): string {
   if (!/\{[^}]*do/i.test(text)) return text;
   let masked = text;
   let skipUntil = -1;
   const lineStarts = buildLineStarts(text);
-  for (const macro of parseMacros(text)) {
+  for (const macro of parseMacros(text, reading)) {
     const start = lineStarts[macro.range.start.line] + macro.range.start.character;
     if (start < skipUntil || !macro.open || macro.name.toLowerCase() !== 'do') continue;
     const bodyStart = lineStarts[macro.range.end.line] + macro.range.end.character;

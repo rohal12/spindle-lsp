@@ -40,7 +40,7 @@ export function getHoverInfo(
 
   // Spindle outputs macros and widgets inside an attribute value as text
   const offset = (buildLineStarts(text)[position.line] ?? 0) + position.character;
-  const inAttribute = inAttributeValue(text, offset);
+  const inAttribute = inAttributeValue(text, offset, workspace.capabilities);
 
   // --- Macro name hover ---
   // Check if cursor is on a macro name inside {macroName ...} or {/macroName}

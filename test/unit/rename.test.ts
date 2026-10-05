@@ -310,7 +310,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: Start',
       '{textbox "$x"}',
       '{print `${$x}`}',
-      '{link "{$x}"}go{/link}',
+      '{button "{$x}"}go{/button}',
     ].join('\n');
     const ws = createWorkspace({ name: 'test.tw', content });
     const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'y');
@@ -322,7 +322,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: Start',
       '{textbox "$y"}',
       '{print `${$y}`}',
-      '{link "{$y}"}go{/link}',
+      '{button "{$y}"}go{/button}',
     ].join('\n'));
   });
 
@@ -333,7 +333,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: StoryInit',
       '{set %t = 2}',
       ':: Start',
-      '{print `n: ${%t}`} {link "{%t}"}go{/link}',
+      '{print `n: ${%t}`} {button "{%t}"}go{/button}',
     ].join('\n');
     const ws = createWorkspace({ name: 'test.tw', content });
     const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'u');
@@ -343,7 +343,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: StoryInit',
       '{set %u = 2}',
       ':: Start',
-      '{print `n: ${%u}`} {link "{%u}"}go{/link}',
+      '{print `n: ${%u}`} {button "{%u}"}go{/button}',
     ].join('\n'));
   });
 

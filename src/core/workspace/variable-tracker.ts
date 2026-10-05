@@ -1,7 +1,8 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
 import { parsePassageHeader, isMarkupPassage, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
-import { findBracketLinks, linkInterpolationRanges } from '../parsing/link-parser.js';
+import { findBracketLinks, linkSelectorInterpolationRanges } from '../parsing/link-parser.js';
 import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
+import type { BraceReading } from '../parsing/code-scanner.js';
 import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
 import { checkDeclaration, declaredName } from './declaration-check.js';
 import { collectExecutableRefs } from '../parsing/executable-refs.js';
@@ -63,12 +64,19 @@ const COMMENT_PATTERNS = [
  * quote right after a word character or backslash is not a string, and
  * '…' / "…" strings end at the line end, as in the macro parser.
  */
-function replaceCodeLiterals(text: string, replace: (literal: string) => string): string {
-  const scanner = createCodeScanner(text);
+function replaceCodeLiterals(
+  text: string,
+  replace: (literal: string) => string,
+  /** The replacement for the literals of the macro whose head is `head` (`{name …`), if not `replace`. */
+  replaceIn: ((head: string) => ((literal: string) => string) | undefined) | undefined,
+  reading: BraceReading,
+): string {
+  const scanner = createCodeScanner(text, reading);
   let result = '';
   let copied = 0;
   for (const [open, close] of codeBlocks(text, scanner)) {
-    result += text.slice(copied, open + 1) + replaceLiterals(text, scanner, open + 1, close, replace);
+    const replacement = replaceIn?.(text.slice(open + 1, Math.min(close, open + 80))) ?? replace;
+    result += text.slice(copied, open + 1) + replaceLiterals(text, scanner, open + 1, close, replacement, reading);
     copied = close;
   }
   return result + text.slice(copied);
@@ -101,6 +109,7 @@ function replaceLiterals(
   from: number,
   to: number,
   replace: (literal: string) => string,
+  reading: BraceReading,
 ): string {
   let result = '';
   let copied = from;
@@ -110,7 +119,7 @@ function replaceLiterals(
     let literal = replace(text.slice(j, end));
     // Interpolations kept by the replacement are code: replace their literals too.
     if (literal.trim() !== '') {
-      literal = replaceLiterals(literal, createCodeScanner(literal), 0, literal.length, replace);
+      literal = replaceLiterals(literal, createCodeScanner(literal, reading), 0, literal.length, replace, reading);
     }
     result += text.slice(copied, j) + literal;
     copied = end;
@@ -138,17 +147,18 @@ const QUOTED_RECEIVER_RE = new RegExp(
 
 /**
  * Blank the text of the bracket links in `code` (`content` with its comments
- * blanked), apart from the `{$x}`-style blocks Spindle interpolates in a
- * link: the tokenizer reads a link whole, so macros and `$x` words in a
- * label or target are text, not code. Links are found in `content`, which
- * is what the tokenizer reads, comments included.
+ * blanked), apart from the `{$x}`-style blocks in their `.class#id`
+ * selectors, the only part of a link Spindle interpolates: the tokenizer
+ * reads a link whole, so macros, `$x` words and `{$x}` blocks in a label or
+ * target are text (printed as written), not code. Links are found in
+ * `content`, which is what the tokenizer reads, comments included.
  */
-function blankLinkText(content: string, code: string): string {
+function blankLinkText(content: string, code: string, reading: BraceReading): string {
   if (!content.includes('[[')) return code;
   let result = '';
   let copied = 0;
-  for (const link of findBracketLinks(content)) {
-    const keep = linkInterpolationRanges(content, link);
+  for (const link of findBracketLinks(content, reading)) {
+    const keep = linkSelectorInterpolationRanges(content, link);
     let at = link.start;
     const blankTo = (to: number) => {
       result += code.slice(copied, at) + blank(code.slice(at, to));
@@ -169,15 +179,55 @@ function blank(text: string): string {
 }
 
 /**
+ * The built-in macros whose arguments are literal. Spindle runs the arguments
+ * of `{button}` and `{dialog}` (their label) through interpolate(), so a
+ * `{$x}` block in them is a read. Every other built-in takes its arguments as
+ * JavaScript, where a string is just a string (`{print "{$x}"}` prints
+ * `{$x}`), and `{link}` prints and navigates to its quoted text as written.
+ * A macro of the project's own (a script's `defineMacro`, a widget) may
+ * interpolate its arguments, so its strings keep their blocks. The names are
+ * the built-ins of every release from 0.43.0 (`macro-registry.json` is the
+ * same in all of them); verified by rendering each form and by
+ * `link-interpolation.test.ts`, which checks this list against the installed
+ * runtime's macros.
+ */
+export const LITERAL_ARGUMENT_MACROS: ReadonlySet<string> = new Set([
+  'back', 'checkbox', 'computed', 'cycle', 'do', 'for', 'forward', 'goto', 'if', 'include', 'link',
+  'listbox', 'meter', 'nobr', 'numberbox', 'passage', 'print', 'quickload', 'quicksave', 'radiobutton',
+  'repeat', 'restart', 'save-manager', 'saves', 'set', 'settings', 'settings-controls', 'span', 'stop',
+  'story-title', 'switch', 'textarea', 'textbox', 'timed', 'type', 'unset', 'unwatch', 'watch', 'widget',
+]);
+
+const MACRO_HEAD = new RegExp(String.raw`^(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)`);
+
+/** The literal replacement for the macro whose head follows a `{`: blocks are blanked in the arguments of a built-in macro that does not interpolate them. */
+function literalReplacementFor(head: string): ((literal: string) => string) | undefined {
+  const name = MACRO_HEAD.exec(head)?.[1]?.toLowerCase();
+  return name !== undefined && LITERAL_ARGUMENT_MACROS.has(name) ? blankTemplateCode : blankLiteralText;
+}
+
+/**
+ * Blank a string literal except the code Spindle evaluates inside it: the
+ * `${…}` interpolations of a template literal, which are JavaScript.
+ */
+function blankTemplateCode(literal: string): string {
+  return blankLiteralKeeping(literal, false);
+}
+
+/**
  * Blank a string literal except the code Spindle evaluates inside it:
  * `${…}` template interpolations and `{$…}` / `{%…}` interpolation blocks.
  */
 function blankLiteralText(literal: string): string {
+  return blankLiteralKeeping(literal, true);
+}
+
+function blankLiteralKeeping(literal: string, blocks: boolean): string {
   const keep = new Array<boolean>(literal.length).fill(false);
   for (let i = 1; i < literal.length - 1; i++) {
     if (literal[i] !== '{') continue;
     const templateCode = literal[0] === '`' && literal[i - 1] === '$' && literal[i - 2] !== '\\';
-    if (!templateCode && !/^[$%][\w$]/.test(literal.slice(i + 1, i + 3))) continue;
+    if (!templateCode && !(blocks && /^[$%][\w$]/.test(literal.slice(i + 1, i + 3)))) continue;
 
     let depth = 0;
     for (let j = i; j < literal.length - 1; j++) {
@@ -673,9 +723,9 @@ export class VariableTracker {
       for (const pattern of COMMENT_PATTERNS) {
         uncommented = uncommented.replace(pattern, blank);
       }
-      uncommented = blankLinkText(content, uncommented);
-      const cleaned = replaceCodeLiterals(uncommented, blank);
-      let referenced = replaceCodeLiterals(uncommented, blankLiteralText);
+      uncommented = blankLinkText(content, uncommented, this.capabilities);
+      const cleaned = replaceCodeLiterals(uncommented, blank, undefined, this.capabilities);
+      let referenced = replaceCodeLiterals(uncommented, blankLiteralText, literalReplacementFor, this.capabilities);
 
       // Quoted input macro receivers (`{textbox "$name"}`) bind a variable too
       for (const m of uncommented.matchAll(QUOTED_RECEIVER_RE)) {
@@ -693,7 +743,7 @@ export class VariableTracker {
 
       // Spindle evaluates `%` only in code and never validates it, so `%20`
       // outside a `{…}` block is text (URL encoding), not a transient.
-      const blocks = codeBlocks(uncommented, createCodeScanner(uncommented));
+      const blocks = codeBlocks(uncommented, createCodeScanner(uncommented, this.capabilities));
       const inCode = (offset: number) => blocks.some(([open, close]) => open < offset && offset < close);
 
       const scans: Array<[RegExp, VariableUsage[], boolean]> = [

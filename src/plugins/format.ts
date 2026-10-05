@@ -17,6 +17,11 @@ export interface FormatOptions {
   isDedentingSubMacro?: (name: string) => boolean;
   /** If set, wrap prose lines exceeding this character count. */
   maxLineLength?: number;
+  /**
+   * The target Spindle's tokenizer skips strings when it counts braces
+   * (`SpindleCapabilities.stringAwareBraces`, >= 0.50.1). Default: it does not.
+   */
+  stringAwareBraces?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,10 +126,10 @@ function newlineSentinel(text: string): string {
  * line-based formatting steps then see one line and cannot re-indent, wrap,
  * trim, segment or re-flow the runtime payload inside it.
  */
-function protectMultilineTokens(body: string, sentinel: string): string {
+function protectMultilineTokens(body: string, sentinel: string, stringAwareBraces: boolean): string {
   let out = '';
   let last = 0;
-  for (const m of scanSpindleTokens(body)) {
+  for (const m of scanSpindleTokens(body, { stringAwareBraces })) {
     if (!m.token.includes('\n')) continue;
     out += body.slice(last, m.start) + m.token.replaceAll('\n', sentinel);
     last = m.end;
@@ -137,6 +142,7 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
   const isDedenting = options?.isDedentingSubMacro
     ?? ((name: string) => DEFAULT_DEDENTING.has(name.toLowerCase()));
 
+  const stringAware = options?.stringAwareBraces === true;
   const passages = splitPassages(text);
   const sentinel = newlineSentinel(text);
   const resultLines: string[] = [];
@@ -181,7 +187,7 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
 
     // Normal passage: segment into regions. Multiline tokens are joined onto
     // one line first, so their inner lines are never taken for markup.
-    const regions = segmentRegions(protectMultilineTokens(passage.body, sentinel));
+    const regions = segmentRegions(protectMultilineTokens(passage.body, sentinel, stringAware));
 
     for (const region of regions) {
       if (region.type === 'script' || region.type === 'svg') {
@@ -221,7 +227,7 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
         // HTML block — placeholder substitution + Prettier
         const htmlText = region.lines.join('\n');
         const { text: svgPlaceholdered, tokens: svgTokens } = replaceSvgBlocks(htmlText);
-        const { text: placeholdered, tokens } = replaceSpindleTokens(svgPlaceholdered);
+        const { text: placeholdered, tokens } = replaceSpindleTokens(svgPlaceholdered, { stringAwareBraces: stringAware });
         const formatted = await formatHTMLPrettier(placeholdered);
         const restoredSpindle = restoreSpindleTokens(formatted.trim(), tokens);
         const restored = restoreSvgBlocks(restoredSpindle, svgTokens);
@@ -543,6 +549,8 @@ export const formatPlugin: SpindlePlugin = {
       // Block widgets (whose body renders {@children}) are containers too
       isBlock: (name) => ctx.workspace.isContainer(name),
       isDedentingSubMacro: (name) => DEFAULT_DEDENTING.has(name.toLowerCase()),
+      // Read per request: the target version is re-detected as files change
+      get stringAwareBraces() { return ctx.workspace.capabilities.stringAwareBraces; },
     };
 
     ctx.connection.onDocumentFormatting(async (params) => {

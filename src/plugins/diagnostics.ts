@@ -5,11 +5,11 @@ import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
 import { maskRawDoBodies, parseMacros, parseDocumentStructure, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
-import { scanHtmlTags } from '../core/parsing/html-scanner.js';
+import { policyFor, scanHtmlTags } from '../core/parsing/html-scanner.js';
 import { findUnevaluatedBlocks } from '../core/parsing/attribute-blocks.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
-import { findLinkMacroMismatches, findLinkRuntimeMismatches, parseLinks } from '../core/parsing/link-parser.js';
+import { findLinkMacroMismatches, findLinkRuntimeMismatches, findLiteralLinkInterpolations, parseLinks, type LinkRuntimeOptions } from '../core/parsing/link-parser.js';
 import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage, isMarkupPassage, maskNonMarkupPassages } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
@@ -32,7 +32,7 @@ import { MINIMUM_SPINDLE_VERSION, unsupportedVersionMessage } from '../core/work
  *  - Variable validation (SP200, SP201, SP202, SP203, SP204, SP206)
  *  - StoryVariables / StoryTransients declarations Spindle rejects (SP207)
  *  - Temporaries assigned inside {for} (SP205)
- *  - Link/widget validation (SP300, SP301, SP302, SP303)
+ *  - Link/widget validation (SP300, SP301, SP302, SP303, SP304, SP305)
  */
 export interface DiagnosticOptions {
   maxLineLength?: number;
@@ -63,7 +63,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // special passages such as StoryInit and StoryInterface stay markup.
     const masked = maskNonMarkupPassages(text, passages);
     // (from Spindle 0.50.1 a {do} body is JavaScript text, not markup)
-    const markupText = workspace.capabilities.rawDoBodies ? maskRawDoBodies(masked) : masked;
+    const markupText = workspace.capabilities.rawDoBodies ? maskRawDoBodies(masked, workspace.capabilities) : masked;
 
     // Parse macros for the whole document
     // Containers pair together with the HTML elements, which share Spindle's
@@ -119,7 +119,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     }
 
     try {
-      validateLinks(markupText, passages, passageNames, diagnostics);
+      validateLinks(markupText, passages, passageNames, workspace.capabilities, diagnostics);
     } catch {
       // Link validation failed — continue
     }
@@ -128,6 +128,12 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
       validateLinkRuntime(markupText, workspace, diagnostics);
     } catch {
       // Link runtime validation failed — continue
+    }
+
+    try {
+      validateLiteralLinkInterpolation(markupText, workspace, diagnostics);
+    } catch {
+      // Link interpolation validation failed — continue
     }
 
     try {
@@ -368,7 +374,7 @@ function validateAttributeBlocks(
     if (!content.includes('<') || !content.includes('{')) continue;
 
     let rawText: string | undefined;
-    for (const tag of scanHtmlTags(content).tags) {
+    for (const tag of scanHtmlTags(content, policyFor(workspace.capabilities)).tags) {
       const name = tag.name.toLowerCase();
       if (rawText !== undefined) {
         if (tag.kind === 'close' && name === rawText) rawText = undefined;
@@ -755,9 +761,10 @@ function validateLinks(
   text: string,
   passages: Array<{ name: string; range: import('../core/types.js').Range }>,
   passageNames: Set<string>,
+  reading: LinkRuntimeOptions,
   diagnostics: Diagnostic[],
 ): void {
-  const links = parseLinks(text);
+  const links = parseLinks(text, 0, reading);
   for (const link of links) {
     if (!passageNames.has(link.name)) {
       diagnostics.push(makeDiag(
@@ -793,7 +800,7 @@ function validateLinkRuntime(
   diagnostics: Diagnostic[],
 ): void {
   const caps = workspace.capabilities;
-  const options = { linkQuoteEscapes: caps.linkQuoteEscapes };
+  const options = { linkQuoteEscapes: caps.linkQuoteEscapes, stringAwareBraces: caps.stringAwareBraces };
   const version = caps.version ?? 'before 0.51.1';
   const fix = caps.linkQuoteEscapes
     ? ''
@@ -819,6 +826,44 @@ function validateLinkRuntime(
         (caps.linkQuoteEscapes
           ? 'The macro decodes only \\\\, \\" and \\\' escapes; write other characters literally.'
           : 'It decodes no escapes: write the text without backslash escapes or quotes, or update Spindle to 0.51.1 or later.'),
+    ));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Interpolation Spindle's link macro does not perform (SP305)
+// ---------------------------------------------------------------------------
+
+/**
+ * SP305: Spindle renders every bracket link and `{link}` with MacroLink,
+ * which prints the label and navigates to the passage exactly as written. It
+ * interpolates the link's `.class#id` selectors and HTML attributes, and the
+ * label of `{button}` / `{dialog}`, but not the text of a link: `[[Take
+ * {$item}->T]]` shows `Take {$item}` and goes to `T`, and `[[Go->T{$n}]]`
+ * goes to a passage named `T{$n}`. The same on every release from 0.43.0
+ * (`findLiteralLinkInterpolations`).
+ */
+function validateLiteralLinkInterpolation(
+  text: string,
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  const caps = workspace.capabilities;
+  for (const found of findLiteralLinkInterpolations(text, {
+    linkQuoteEscapes: caps.linkQuoteEscapes,
+    stringAwareBraces: caps.stringAwareBraces,
+  })) {
+    const target = found.place === 'link-target' || found.place === 'link-macro-passage';
+    const what = target
+      ? 'the passage name a click navigates to'
+      : 'the label shown';
+    diagnostics.push(makeDiag(
+      found.range,
+      DiagnosticCode.LiteralLinkInterpolation,
+      `Spindle does not interpolate ${found.block} in the text of a link: ${what} contains it as written, ` +
+        'braces included. A link\'s class/id selectors, HTML attributes and the label of {button} and {dialog} ' +
+        'are interpolated; to build a label from a variable use `{button "Take {$item}"}{goto "Passage"}{/button}`, ' +
+        'or write the target as plain text.',
     ));
   }
 }

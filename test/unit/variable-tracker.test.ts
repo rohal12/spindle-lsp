@@ -258,7 +258,7 @@ describe('VariableTracker references in StoryInit and strings (#44, #62)', () =>
     ':: Start',
     '{textbox "$box"} {checkbox \'$check\' "Label"}',
     '{print `${$tpl}`} {print `${%tplT}`}',
-    '{link "{$label}"}go{/link} {button "{%btnT}"}{/button}',
+    '{button "{$label}"}go{/button} {button "{%btnT}"}{/button}',
     '{print "plain $literal"} {foo "$notInput"}',
   ].join('\n');
 
@@ -279,7 +279,7 @@ describe('VariableTracker references in StoryInit and strings (#44, #62)', () =>
     });
     expect(tracker.getUsages('check')).toHaveLength(1);
     expect(tracker.getUsages('tpl')[0].range.start).toEqual({ line: 4, character: 10 });
-    expect(tracker.getUsages('label')[0].range.start).toEqual({ line: 5, character: 8 });
+    expect(tracker.getUsages('label')[0].range.start).toEqual({ line: 5, character: 10 });
     expect(tracker.getTransientUsages('initT')).toHaveLength(1);
     expect(tracker.getTransientUsages('tplT')).toHaveLength(1);
     expect(tracker.getTransientUsages('btnT')).toHaveLength(1);

@@ -2,12 +2,16 @@ import type { Range } from '../types.js';
 import { buildLineStarts, offsetToPosition, parseMacros } from './macro-parser.js';
 import { ArgType, lexArguments } from './argument-lexer.js';
 import { attributeValueSpans } from './html-scanner.js';
+import { createCodeScanner, type BraceReading } from './code-scanner.js';
 import { HAS_PASSAGE_HEADER, maskNonMarkupPassages, passageBodies } from './passage-parser.js';
 import { decodeStringLiteralBody, type JsQuote } from './js-string-literal.js';
 import { bracketLinkMismatch, linkMacroStrings, readLinkMacroArgs, type LinkRead } from './link-runtime.js';
 
-/** Version-dependent link behavior (`SpindleCapabilities.linkQuoteEscapes`); Spindle 0.45.1 when omitted. */
-export interface LinkRuntimeOptions {
+/**
+ * Version-dependent link behavior (`SpindleCapabilities.linkQuoteEscapes`)
+ * and brace reading (`stringAwareBraces`); Spindle 0.45.1 when omitted.
+ */
+export interface LinkRuntimeOptions extends BraceReading {
   linkQuoteEscapes?: boolean;
 }
 
@@ -39,10 +43,10 @@ type MaskablePassage = { name?: string; tags?: string[]; range: Range };
  * (whose arguments Spindle's tokenizer consumes whole) and HTML attribute
  * values.
  */
-function literalSpans(text: string, lineStarts: number[]): Array<[number, number]> {
-  const spans: Array<[number, number]> = attributeValueSpans(text);
+function literalSpans(text: string, lineStarts: number[], reading: BraceReading): Array<[number, number]> {
+  const spans: Array<[number, number]> = attributeValueSpans(text, reading);
   if (text.includes('{')) {
-    for (const macro of parseMacros(text)) {
+    for (const macro of parseMacros(text, reading)) {
       spans.push([
         lineStarts[macro.range.start.line] + macro.range.start.character,
         lineStarts[macro.range.end.line] + macro.range.end.character,
@@ -182,11 +186,11 @@ export interface BracketLink {
  * macro tag or an HTML attribute value starts no link, and one that never
  * closes is text (the scan resumes right after its `[[`).
  */
-export function findBracketLinks(text: string): BracketLink[] {
+export function findBracketLinks(text: string, reading: BraceReading = {}): BracketLink[] {
   // Spindle renders each passage on its own: a link never spans a header
-  if (!HAS_PASSAGE_HEADER.test(text)) return findBracketLinksInPassage(text);
+  if (!HAS_PASSAGE_HEADER.test(text)) return findBracketLinksInPassage(text, reading);
   return passageBodies(text).flatMap(body =>
-    findBracketLinksInPassage(text.slice(body.start, body.end)).map(link => ({
+    findBracketLinksInPassage(text.slice(body.start, body.end), reading).map(link => ({
       start: link.start + body.start,
       end: link.end + body.start,
       innerStart: link.innerStart + body.start,
@@ -194,10 +198,10 @@ export function findBracketLinks(text: string): BracketLink[] {
     })));
 }
 
-function findBracketLinksInPassage(text: string): BracketLink[] {
+function findBracketLinksInPassage(text: string, reading: BraceReading): BracketLink[] {
   const links: BracketLink[] = [];
   if (!text.includes('[[')) return links;
-  const literals = mergeSpans(literalSpans(text, buildLineStarts(text)));
+  const literals = mergeSpans(literalSpans(text, buildLineStarts(text), reading));
   let literal = 0;
   const inLiteral = (offset: number) => {
     while (literal < literals.length && literals[literal][1] <= offset) literal++;
@@ -230,74 +234,117 @@ function findBracketLinksInPassage(text: string): BracketLink[] {
 }
 
 /**
- * The text of a bracket link that Spindle evaluates, as sorted [start, end)
- * source offsets. The tokenizer reads a link as one token and renders it as
- * `{link "display" "target"}` with `.class#id` selectors; that macro
- * interpolates its arguments and selectors (`interpolate: true`), so a
- * `{$x}`-style block in them is read, while everything else in the link is
- * plain text: `{if $x}` or `{goto "X"}` in a label execute nothing.
+ * The `{$x}`-style blocks in a bracket link's `.class#id` selectors, as sorted
+ * [start, end) source offsets: the only part of a link Spindle interpolates.
+ * The tokenizer reads a link as one token and renders it as the `{link}`
+ * macro; that macro is defined with `interpolate: true`, which makes the
+ * macro wrapper (define-macro.ts) run its class and id through
+ * interpolate(). The display and the target are not interpolated: MacroLink
+ * prints and navigates to them as written, so `[[Take {$item}->T]]` renders
+ * `Take {$item}` and everything else in the link is plain text (`{if $x}` or
+ * `{goto "X"}` in a label execute nothing either). Verified on every release
+ * from 0.43.0 by rendering the link (see docs/reviews/2026-10-06-convergence-fixes.md)
+ * and by `link-interpolation.test.ts`.
  *
- * The blocks are found the way Spindle's interpolate() finds them in the
- * arguments `"display" "target"` it builds (display and target as
- * parseLink() splits and trims them). A block that runs across the
- * separator holds the quotes Spindle adds, so it is no expression and reads
- * nothing.
+ * The tokenizer's own selector grammar admits interpolations of exactly the
+ * form `{$name}`, `{_name}` and `{@name}` (with dot paths), so those are the
+ * blocks there are.
  */
-export function linkInterpolationRanges(text: string, link: BracketLink): Array<[number, number]> {
-  // The arguments Spindle builds, with the source offset of each character
-  // (-1 for the ones it adds)
-  let raw = '';
-  const origin: number[] = [];
-  const add = (literal: string) => {
-    raw += literal;
-    for (let i = 0; i < literal.length; i++) origin.push(-1);
-  };
-  const addSpan = (from: number, to: number) => {
-    for (let i = from; i < to; i++) {
-      raw += text[i];
-      origin.push(i);
-    }
-  };
-
-  // Selectors (`[[.cls{$k} … ]]`) are interpolated as they are
-  addSpan(link.start + 2, link.innerStart);
-  add('\n');
-
-  const inner = text.slice(link.innerStart, link.innerEnd);
-  const { display, target } = splitLinkInner(inner);
-  add('"');
-  addSpan(link.innerStart + display[0], link.innerStart + display[1]);
-  add('" "');
-  addSpan(link.innerStart + target[0], link.innerStart + target[1]);
-  add('"');
-
-  // interpolate() runs only where hasInterpolation() finds `{` and a sigil
+export function linkSelectorInterpolationRanges(text: string, link: BracketLink): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
-  if (!/\{[$_@%]\w/.test(raw)) return ranges;
-  let i = 0;
-  while (i < raw.length) {
-    if (raw[i] !== '{') {
-      i++;
-      continue;
-    }
-    i++;
-    if (!'$_@%'.includes(raw[i] ?? '')) continue;
-    let depth = 1;
-    let j = i;
-    while (j < raw.length && depth > 0) {
-      j++;
-      if (raw[j] === '{') depth++;
-      else if (raw[j] === '}') depth--;
-    }
-    if (depth !== 0) continue;
-    // A block that runs across the separator holds the quotes Spindle adds
-    // (`{$a" "b}`): its expression does not parse, so it reads nothing.
-    let whole = true;
-    for (let k = i - 1; k <= j; k++) if (origin[k] === -1) whole = false;
-    if (whole) ranges.push([origin[i - 1], origin[j] + 1]);
-    i = j + 1;
+  const selectors = text.slice(link.start + 2, link.innerStart);
+  for (const m of selectors.matchAll(/\{[$_@]\w[\w.]*\}/g)) {
+    ranges.push([link.start + 2 + m.index, link.start + 2 + m.index + m[0].length]);
   }
   return ranges;
+}
+
+/** Where a block the runtime prints literally was written. */
+export type LiteralInterpolationPlace = 'link-label' | 'link-target' | 'link-macro-label' | 'link-macro-passage';
+
+/** A `{$x}`-style block in link text, which Spindle's link macro prints as written. */
+export interface LiteralLinkInterpolation {
+  /** The block, braces included. */
+  range: Range;
+  /** The block's text, e.g. `{$item}`. */
+  block: string;
+  place: LiteralInterpolationPlace;
+}
+
+/** Options for {@link findLiteralLinkInterpolations}. */
+export interface LiteralInterpolationOptions extends LinkRuntimeOptions {
+  /** Spindle >= 0.50.1: braces inside strings are not counted when finding a block's end. */
+  stringAwareBraces?: boolean;
+}
+
+/**
+ * The `{$x}`, `{_x}`, `{@x}` and `{%x}` blocks (the ones interpolate() would
+ * evaluate) in the display and target of the bracket links, and in the first
+ * two strings of the `{link}` macros, of `text`. Spindle's link macro
+ * interpolates none of them (see {@link linkSelectorInterpolationRanges}), so
+ * each is rendered, or navigated to, with its braces. The same on every
+ * release from 0.43.0.
+ */
+export function findLiteralLinkInterpolations(text: string, options: LiteralInterpolationOptions = {}): LiteralLinkInterpolation[] {
+  const lineStarts = buildLineStarts(text);
+  const found: LiteralLinkInterpolation[] = [];
+  const stringAware = options.stringAwareBraces === true;
+  const blocksIn = (from: number, to: number, place: LiteralInterpolationPlace) => {
+    const part = text.slice(from, to);
+    const scanner = stringAware ? createCodeScanner(part, { stringAwareBraces: true }) : undefined;
+    for (let i = 0; i < part.length; i++) {
+      if (part[i] !== '{' || !/^\{[$_@%]\w/.test(part.slice(i, i + 3))) continue;
+      let close = -1;
+      if (scanner) {
+        close = scanner.closeBrace(i + 1);
+      } else {
+        let depth = 1;
+        for (let j = i + 1; j < part.length; j++) {
+          if (part[j] === '{') depth++;
+          else if (part[j] === '}' && --depth === 0) {
+            close = j;
+            break;
+          }
+        }
+      }
+      if (close === -1) continue;
+      found.push({
+        range: { start: offsetToPosition(from + i, lineStarts), end: offsetToPosition(from + close + 1, lineStarts) },
+        block: part.slice(i, close + 1),
+        place,
+      });
+      i = close;
+    }
+  };
+
+  const items: Array<{ at: number; run: () => void }> = [];
+  for (const link of findBracketLinks(text, options)) {
+    const parts = splitLinkInner(text.slice(link.innerStart, link.innerEnd));
+    items.push({
+      at: link.start,
+      run: () => {
+        blocksIn(link.innerStart + parts.display[0], link.innerStart + parts.display[1], 'link-label');
+        // `[[x]]` reads its text as both display and target: one block, one finding
+        if (parts.target[0] !== parts.display[0] || parts.target[1] !== parts.display[1]) {
+          blocksIn(link.innerStart + parts.target[0], link.innerStart + parts.target[1], 'link-target');
+        }
+      },
+    });
+  }
+  for (const macro of parseMacros(text, options)) {
+    if (!macro.open || !macro.rawArgs || macro.name.toLowerCase() !== 'link') continue;
+    const argsEnd = lineStarts[macro.range.end.line] + macro.range.end.character - 1;
+    const argsStart = argsEnd - macro.rawArgs.length;
+    const strings = linkMacroStrings(macro.rawArgs, options.linkQuoteEscapes === true).slice(0, 2);
+    items.push({
+      at: argsStart,
+      run: () => strings.forEach((str, index) => {
+        blocksIn(argsStart + str.start, argsStart + str.end, index === 0 ? 'link-macro-label' : 'link-macro-passage');
+      }),
+    });
+  }
+  for (const item of items.sort((x, y) => x.at - y.at)) item.run();
+  return found;
 }
 
 /** A bracket link whose runtime navigation differs from its source. */
@@ -320,7 +367,7 @@ export function findLinkRuntimeMismatches(text: string, options: LinkRuntimeOpti
   if (escapes) return [];
   const lineStarts = buildLineStarts(text);
   const found: LinkRuntimeMismatch[] = [];
-  for (const link of findBracketLinks(text)) {
+  for (const link of findBracketLinks(text, options)) {
     const inner = text.slice(link.innerStart, link.innerEnd);
     const parts = splitLinkInner(inner);
     const display = inner.slice(...parts.display);
@@ -360,7 +407,7 @@ export function findLinkMacroMismatches(text: string, options: LinkRuntimeOption
   const escapes = options.linkQuoteEscapes === true;
   const lineStarts = buildLineStarts(text);
   const found: LinkMacroMismatch[] = [];
-  for (const macro of parseMacros(text)) {
+  for (const macro of parseMacros(text, options)) {
     if (!macro.open || !macro.rawArgs || macro.name.toLowerCase() !== 'link') continue;
     const argsEnd = lineStarts[macro.range.end.line] + macro.range.end.character - 1;
     const args = text.slice(argsEnd - macro.rawArgs.length, argsEnd);
@@ -384,11 +431,11 @@ export function findLinkMacroMismatches(text: string, options: LinkRuntimeOption
   return found;
 }
 
-export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
+export function parseLinks(text: string, lineOffset: number = 0, reading: BraceReading = {}): PassageRef[] {
   const lineStarts = buildLineStarts(text);
   const refs: PassageRef[] = [];
 
-  for (const link of findBracketLinks(text)) {
+  for (const link of findBracketLinks(text, reading)) {
     const target = locateTarget(text.slice(link.innerStart, link.innerEnd));
     if (target.end <= target.start) continue;
     const nameStart = link.innerStart + target.start;
@@ -439,7 +486,7 @@ export function parseDocumentPassageRefs(
   options: LinkRuntimeOptions = {},
 ): PassageRef[] {
   const markup = maskNonMarkupPassages(text, passages);
-  return [...parseLinks(markup), ...parseMacroPassageRefs(markup, 0, options)];
+  return [...parseLinks(markup, 0, options), ...parseMacroPassageRefs(markup, 0, options)];
 }
 
 // ---------------------------------------------------------------------------
@@ -549,7 +596,7 @@ export function parseMacroPassageRefs(text: string, lineOffset: number = 0, opti
   const lineStarts = buildLineStarts(text);
   const refs: PassageRef[] = [];
 
-  for (const macro of parseMacros(text)) {
+  for (const macro of parseMacros(text, options)) {
     if (!macro.open || !macro.rawArgs) continue;
     const resolve = macroTargetResolvers[macro.name.toLowerCase()];
     if (!resolve) continue;

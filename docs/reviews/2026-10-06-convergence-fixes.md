@@ -296,3 +296,117 @@ installed tokenizer (`placeholders-oracle`, D3-fuzz) that disagree about braces 
 strings. The base commit has the identical 19 failures on 0.51.3 (1,749 / 1,768) and the
 failing test names match.
 
+
+## Link interpolation and brace reading: runtime truth per version (branch `fix/close-q-versions`)
+
+Two contracts, both settled against the published runtime rather than against another
+consumer. Verification and the version x pass table are in
+[2026-10-06-peer-range.md](2026-10-06-peer-range.md) (section "Every release green").
+
+### 1. What Spindle interpolates in a link: the contradiction, resolved
+
+The claim "the `link` macro does not interpolate `{$x}` in a label or passage" (found by one
+agent) and `linkInterpolationRanges()` treating `{$x}` in a label, target and selectors as
+executable (added by another) cannot both hold. The runtime decides.
+
+**Evidence.** `scripts/runtime-render.mjs <version> [markup]` installs a published release plus
+jsdom, bundles its own `tokenize` -> `buildAST` -> `renderNodes` with the builtin macros and prints
+the HTML (variables `item = "Sword"`, `n = 3`). Twelve cases on all 22 releases from 0.43.0 to
+0.51.3 and on 0.42.0 for the record: **identical output on every one of the 23 releases**, so no
+capability gate is needed.
+
+| Markup | Rendered |
+| --- | --- |
+| `[[Take {$item}->T]]`, `[[Take {$item}]]` | `<a class="macro-link">Take {$item}</a>` |
+| `[[Go->T{$n}]]`, `[[Take\|T{$n}]]` | `<a ...>Go</a>`, `<a ...>Take</a>` (the target is the literal name `T{$n}`) |
+| `[[.c{$item} Go->T]]` | `class="macro-link cSword"` (selectors **are** interpolated) |
+| `{link "Take {$item}" "T"}` | `Take {$item}` |
+| `{button "Take {$item}"}`, `{dialog "Open {$item}"}` | `Take Sword`, `Open Sword` (the label **is** interpolated) |
+| `{print "a {$item}"}`, `{set _s = "a {$item}"}{_s}` | `a {$item}` (a string is a string) |
+| ``{print `a ${$item}`}`` | `a Sword` (template code is JavaScript) |
+| `<a title="{$item}">` | `title="Sword"` (attribute values are interpolated) |
+
+**Why**, from the source (all releases): the tokenizer reads a link as one token; `buildAST` turns
+it into the `link` macro with `rawArgs` = the quoted display and target and `className`/`id` from
+the selectors; the macro wrapper (`define-macro.ts`) resolves `className` and `id` through
+`interpolate()` when the macro is defined with `interpolate: true`; `MacroLink` itself never calls
+`ctx.resolve` and prints/navigates to the strings `parseArgs` returns. Across all releases the only
+components calling `ctx.resolve` are `Button` and `Dialog` (label), `If` and `Timed` (section
+selectors). `render.tsx` resolves HTML attribute values.
+
+So the second agent's `linkInterpolationRanges()` was wrong about display and target, and
+`blankLiteralText()` (keep `{$x}` in every macro string) was wrong for every macro but `{button}`
+and `{dialog}`.
+
+**Consumers, now in agreement** (`link-interpolation.test.ts`, 124 tests, LF and CRLF; `scripts/runtime-render.mjs` is the render evidence and is not part of `npm test`, it needs the network):
+
+| Consumer | Before | Now |
+| --- | --- | --- |
+| Usages (references, rename, code lens) | `{$x}` in link display/target and in every macro string | Link selectors, `{button}`/`{dialog}` labels, attributes, code. Built-in macros that take JavaScript (`LITERAL_ARGUMENT_MACROS`, 39 names, checked against the installed registry) keep no block in their strings; a macro of the project's own may interpolate, so its strings still do |
+| SP200/SP201 (startup validation) | unchanged | unchanged: raw text before 0.50.1 (a `{$x}` in a label is flagged), tokenizer-based from it (link tokens validate nothing); compared with the installed `validatePassages` on 9 fixtures |
+| `linkInterpolationRanges()` | display, target, selectors | `linkSelectorInterpolationRanges()`: selectors only |
+| New diagnostic **SP305** (`LiteralLinkInterpolation`, warning) | none | one per `{$x}`/`{_x}`/`{@x}`/`{%x}` block in the display or target of a bracket link and in the first two strings of `{link}`; message says the text is printed/navigated to as written and names `{button "…"}{goto "…"}{/button}`; same on every release, so ungated; the brace end follows `stringAwareBraces` |
+
+SP305 deliberately stays on links. Other macro strings print braces literally too, but a macro the
+project defines may interpolate its arguments, so flagging them would be a guess; the usage rule
+above is the same boundary.
+
+Existing tests that encoded the wrong rule were corrected, not weakened: `D1` (markup-differential)
+and `L1` (markup-contexts) now model the runtime (selectors read, display/target literal);
+`#44` string-interpolation tests use `{button}` for the positive case.
+
+**Rename.** `Q-rename-edits/-reparse/-lens` rename `$x` with `computeRename`, apply the edits with
+`TextDocument.applyEdits`, rebuild the workspace and re-read with the runtime tokenizer: the
+selector, the `{button}` label, the attribute and the `{print $x}` code change; the link text, the
+`{link}` string and `{print "{$x}"}` do not, and the interpolated reads of `y` equal those of `x`
+before.
+
+### 2. The tokenizer's brace reading changed in 0.50.1: made version-aware
+
+Cause of the 7 oracle failures on >= 0.50.1: the tokenizer (byte-identical in 0.43.0 to 0.50.0,
+byte-identical in 0.50.1 to 0.51.3) counts every brace before 0.50.1 and skips string and template
+literals from it (`scanBalancedBrace`; also in attribute values and in `interpolate()`).
+
+New capability `stringAwareBraces` (>= 0.50.1) in `SpindleCapabilities`. Followed by:
+
+- **Formatter** (`scanSpindleTokens`, `replaceSpindleTokens`, `FormatOptions.stringAwareBraces`): the
+  LSP passes the workspace's capabilities per request, the CLI and the MCP tools resolve the target
+  with `findSpindleCapabilities` (installed `@rohal12/spindle` at or above the files, else StoryData
+  `format-version`, else the 0.45.1 behavior).
+- **Markup parser** (`BraceReading`): `createCodeScanner`, `parseMacros`, `findBracketLinks`,
+  `attributeValueSpans`, `parseLinks`, `scanHtmlTags` (new `modern` policy beside `installed`),
+  the variable tracker and signature help take the reading; omitted means 0.45.1. Before, the
+  parser read braces as 0.50.1 does on every release, so on 0.45.1 `{set $x = "}"}` was one macro
+  where the runtime sees `{set $x = "}` and text. **Behavior change on < 0.50.1**, verified against
+  that tokenizer (60,000 random heads with quotes, `H-installed-quotes`; the D3 fuzz of links,
+  tags and attribute values with no case excluded).
+- Oracle tests use the installed tokenizer with the matching reading
+  (`placeholders-oracle`, `markup-differential`, `macro-head-differential`); the tests that fixed
+  the unknown-version behavior (`diagnostics-containers`, `diagnostics-malformed-element`,
+  `diagnostics-attribute-blocks`, `signature`, `macro-parser`) now state both readings, force the
+  release with a StoryData `format-version`, and compare with `buildAST` for the installed one.
+- Findings from making it exact: a tag with whitespace around `=` and an unbalanced `{` in an
+  attribute value were treated as "versions disagree, stop"; the tokenizer is the same for the
+  first in every release (no tag, `</a>` is unexpected) and differs for the second only at 0.50.1.
+  Diagnostics now report them as the target release would (`SP102 unexpected closing </a>`).
+
+Also: `scripts/peer-matrix.sh` now copies `esbuild.config.ts`, so the 12 dist-based tests
+(`bin`, `format-entrypoints`, CLI, MCP, LSP integration) run in every matrix copy;
+`vitest.config.ts` has a 120 s test timeout (the differential suites time out on a loaded machine),
+and the three wall-clock thresholds in `macro-parser.test.ts` are 5-10 s (quadratic behavior still
+fails them by orders of magnitude).
+
+Superseded: the "Verification" note of the previous section ("matrix failures are not new: 12 tests
+need the built `dist/` ... and 7 oracle comparisons") describes the state before this branch; the
+matrix is now 22 of 22 green (1,977 tests each).
+
+### Verification
+
+| Run | Result |
+| --- | --- |
+| `npm test` (0.45.1) | 77 files, 1,977 passed |
+| `npm run typecheck` | exit 0 |
+| `scripts/peer-matrix.sh` on all 22 releases 0.43.0-0.51.3 | 1,977 / 1,977 each, tsc 0 |
+| Runtime render, 12 cases on 23 releases (0.42.0, 0.43.0-0.51.3) | identical output |
+| New tests: `link-interpolation` (124), `format-brace-reading` (12) | pass on 0.45.1, 0.50.0, 0.50.1, 0.51.3 (and all others) |
+| Existing tests changed | `markup-differential` D1/D3, `markup-contexts` L1, `variable-tracker`/`rename`/`variable-declarations` string-interpolation cases (`{link` -> `{button`), `diagnostics-*`, `signature`, `macro-parser`, `macro-head-differential`, `placeholders-oracle`, `spindle-capabilities` |

@@ -42,7 +42,7 @@ export function getCompletions(
   // Spindle outputs macros inside an attribute value as text (SP103), so
   // offer none there. The character before the cursor is the one typed.
   const inAttribute = () =>
-    inAttributeValue(text, (buildLineStarts(text)[position.line] ?? 0) + position.character - 1);
+    inAttributeValue(text, (buildLineStarts(text)[position.line] ?? 0) + position.character - 1, workspace.capabilities);
 
   // --- Context: closing macro `{/` ---
   const closing = /\{\/[A-Za-z\w-]*$/.exec(lineText);

@@ -70,8 +70,9 @@ scripts/peer-matrix.sh <spindle-version> [scratch-dir]
 The script packs that release, copies `src/`, `test/` and the configs to
 `<scratch>/run/<version>` (default `$TMPDIR/spindle-peer`), links the repo's
 `node_modules` except `@rohal12/spindle`, runs vitest and `tsc --noEmit`
-there and prints `<version> <passed>/<total> tsc=<exit>`; `out.json`,
-`out.log` and `tsc.log` stay in the run directory. The repo's `node_modules`
+there (including `esbuild.config.ts`, which the dist-based tests build the
+executable with) and prints `<version> <passed>/<total> tsc=<exit>`;
+`out.json`, `out.log` and `tsc.log` stay in the run directory. The repo's `node_modules`
 is never modified. Tests find the runtime by relative
 `node_modules/@rohal12/spindle/src/...` imports and learn its version from
 `test/helpers/spindle-version.ts`, so version-dependent expectations follow
@@ -84,10 +85,23 @@ Version-dependent behavior lives in
 target version is the one installed under the workspace root, else StoryData's
 `format-version`, else the Spindle 0.45.1 behavior. Add a flag there, with the
 release that introduced the behavior, rather than testing versions inline.
+Code that reads braces the way the tokenizer does takes a `BraceReading`
+(`stringAwareBraces`, from 0.50.1) and its callers pass
+`workspace.capabilities`; an omitted reading means the 0.45.1 behavior. Oracle
+tests compare against the installed tokenizer with the matching reading
+(`INSTALLED_CAPABILITIES`) instead of excluding the inputs on which releases
+differ, and state both readings with a StoryData `format-version` when a test
+must fix the release.
 
 Different runtime consumers have different contracts:
 
 - Markup tokens determine which macro/link syntax executes.
+- Interpolation is per consumer, not per syntax: the `{link}` macro (every
+  bracket link) interpolates its `.class#id` selectors but prints its label and
+  navigates to its target as written; `{button}` and `{dialog}` interpolate
+  their label; HTML attribute values are interpolated; a string in any other
+  macro's arguments is not. Render the markup with a real release
+  (`scripts/runtime-render.mjs`) before encoding a rule about it.
 - Executable symbol usages drive navigation and rename.
 - Spindle's startup variable validation can inspect raw passage text, including
   strings/prose that are not executable references. Preserve that behavior in

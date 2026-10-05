@@ -60,7 +60,7 @@ describe('L1: macro-looking bracket-link labels', () => {
       ':: Start',
       '[[{goto "X"}->Target]]',
       '[[{if $x}label{/if}|Target]]',
-      '[[Hi {$x}->Target]]',
+      '[[.k{$x} Hi->Target]]',
       '[[{if %t}a{/if}->Target]]',
       ':: Target', 'end',
       ':: X', 'x',
@@ -97,7 +97,9 @@ describe('L1: macro-looking bracket-link labels', () => {
     it(`L1-variables: only what the link interpolates is a usage (${eolName})`, () => {
       const model = workspace(text);
       const x = findVariableReferences('x', model, false);
-      // `{$x}` in the third label is the only one: `{if $x}` is label text
+      // The selector's `{$x}` in the third link is the only one: the link
+      // macro interpolates its class and id, and prints a label as written
+      // (`{if $x}` is label text, and so would be `{$x}` there)
       expect(x.map(r => r.range.start.line)).toEqual([6]);
       expect(model.variables.getTransientUsages('t')).toEqual([]);
     });
@@ -106,14 +108,14 @@ describe('L1: macro-looking bracket-link labels', () => {
       const model = workspace(text);
       const edits = computeRename(uri, at(text, '{$x}', 2), 'y', model);
       const output = apply(text, edits.get(uri));
-      expect(output).toContain('[[Hi {$y}->Target]]');
+      expect(output).toContain('[[.k{$y} Hi->Target]]');
       expect(output).toContain('[[{if $x}label{/if}|Target]]');
       expect(output).toContain(`${eol}$y = 1`);
       // Reparse: the tokens differ only in the renamed interpolation
       const before = tokenize(text.replace(/\r\n/g, '\n'));
       const after = tokenize(output.replace(/\r\n/g, '\n'));
-      expect(after.map(t => (t.type === 'link' ? [t.display.replace('$y', '$x'), t.target] : t.type)))
-        .toEqual(before.map(t => (t.type === 'link' ? [t.display, t.target] : t.type)));
+      expect(after.map(t => (t.type === 'link' ? [t.display, t.target, t.className?.replace('$y', '$x')] : t.type)))
+        .toEqual(before.map(t => (t.type === 'link' ? [t.display, t.target, t.className] : t.type)));
     });
 
     it(`L1-rename-passage: renaming the target edits the target, not the labels (${eolName})`, () => {

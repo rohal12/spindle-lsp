@@ -54,7 +54,7 @@ function getPassageRefDefinition(
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  const ref = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), { linkQuoteEscapes: workspace.capabilities.linkQuoteEscapes });
+  const ref = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
   if (!ref) return null;
   const passage = workspace.passages.getPassage(ref.name);
   if (!passage) return null;

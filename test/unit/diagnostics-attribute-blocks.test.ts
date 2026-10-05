@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import type { Diagnostic } from '../../src/core/types.js';
+import { runtimeAttributeValues } from '../helpers/runtime-ast.js';
 
 function diagnose(content: string): Diagnostic[] {
   const workspace = new WorkspaceModel();
@@ -109,9 +110,12 @@ describe('SP103: {…} in an HTML attribute that Spindle outputs as text', () =>
     expect(sp103(diagnose(story))).toEqual([]);
   });
 
-  it('does not report where the scan stops', () => {
-    // Whitespace around = makes 0.45.1 re-read the text after `<`.
-    expect(sp103(diagnose(`${vars}:: Start\n<a href = "x"> <b title="{if $x}a{/if}">t</b></a>\n`))).toEqual([]);
+  it('reads a tag with whitespace around = as text, in every release', () => {
+    // `<a href = "x">` is no tag (the tokenizer re-reads the text after `<`),
+    // but the `<b>` after it is: its value is interpolated as text.
+    const found = sp103(diagnose(`${vars}:: Start\n<a href = "x"> <b title="{if $x}a{/if}">t</b></a>\n`));
+    expect(found.map(at)).toEqual([[5, 25, 38]]);
+    expect(runtimeAttributeValues('<a href = "x"> <b title="{if $x}a{/if}">t</b></a>')).toEqual(['{if $x}a{/if}']);
   });
 
   it('reports nothing for other story formats', () => {
