@@ -51,7 +51,7 @@ function addWidgetParamHints(
 ): void {
   if (workspace.widgets.getAllWidgets().length === 0) return;
 
-  const macros = parseDocumentMacros(text, workspace.passages.getPassagesInDocument(uri));
+  const macros = parseDocumentMacros(text, workspace.passages.getPassagesInDocument(uri), undefined, workspace.capabilities);
   const lineStarts = buildLineStarts(text);
 
   for (const macro of macros) {

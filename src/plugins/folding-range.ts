@@ -42,7 +42,7 @@ export function computeFoldingRanges(uri: string, workspace: WorkspaceModel): Fo
   }
 
   // Block macro folding ranges
-  const macros = parseDocumentMacros(text, passages, (name) => workspace.isContainer(name));
+  const macros = parseDocumentMacros(text, passages, (name) => workspace.isContainer(name), workspace.capabilities);
 
   for (const macro of macros) {
     if (macro.open && macro.pair !== -1) {

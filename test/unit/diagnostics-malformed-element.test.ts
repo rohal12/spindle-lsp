@@ -60,9 +60,12 @@ describe('SP102: HTML element structure Spindle cannot render', () => {
 
   it('flags a block closing while an element inside it is open', () => {
     const diags = diagnose(`${vars}:: Start\n{if $x}<span>a{/if}</span>\n`);
-    expect(codes(diags)).toEqual(['SP102']);
-    expect(diags[0].message).toBe('Malformed element: expected </span> but found {/if}');
-    expect(at(diags[0])).toEqual([3, 14, 19]);
+    // Like crossed macros ({wrap}{if}{/wrap}{/if}), the rejected closer is
+    // blamed and the container it would close stays open (SP101)
+    expect(codes(diags).sort()).toEqual(['SP101', 'SP102']);
+    expect(sp102(diags)[0].message).toBe('Malformed element: expected </span> but found {/if}');
+    expect(at(sp102(diags)[0])).toEqual([3, 14, 19]);
+    expect(diags.find(d => d.code === 'SP101')!.message).toBe('Malformed container: no matching {/if}');
   });
 
   it('flags an element closing while a block inside it is open', () => {
@@ -91,11 +94,13 @@ describe('SP102: HTML element structure Spindle cannot render', () => {
     expect(sp102(diags)[0].message).toBe('Malformed element: expected </p> but found {/if}');
   });
 
-  it('reports an element error before an unpaired container, but nothing after it', () => {
+  it('reports an element error before an unpaired container, and one at a closing tag over it', () => {
     const before = diagnose(`${vars}:: Start\n</i>{if $x}\n`);
     expect(codes(before).sort()).toEqual(['SP101', 'SP102']);
+    // The unclosed {if} stays on Spindle's stack, so </i> is the closer it rejects
     const after = diagnose(`${vars}:: Start\n{if $x}</i>\n`);
-    expect(codes(after)).toEqual(['SP101']);
+    expect(codes(after).sort()).toEqual(['SP101', 'SP102']);
+    expect(sp102(after)[0].message).toBe('Malformed element: expected {/if} but found </i>');
   });
 
   it('sees tags inside HTML comments, as Spindle\'s tokenizer does', () => {

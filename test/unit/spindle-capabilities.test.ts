@@ -42,17 +42,17 @@ describe('SpindleCapabilities', () => {
   it('gates each behavior at the release that introduced it', () => {
     const at = (v: string) => {
       const c = capabilitiesForVersion(v);
-      return [c.supported, c.executableRefsOnly, c.primitiveMembers];
+      return [c.supported, c.executableRefsOnly, c.primitiveMembers, c.linkQuoteEscapes, c.rawDoBodies];
     };
-    expect(at('0.42.0')).toEqual([false, false, false]);
-    expect(at('0.43.0')).toEqual([true, false, false]);
-    expect(at('0.45.1')).toEqual([true, false, false]);
-    expect(at('0.50.0')).toEqual([true, false, false]);
-    expect(at('0.50.1')).toEqual([true, true, false]);
-    expect(at('0.51.0')).toEqual([true, true, false]);
-    expect(at('0.51.1')).toEqual([true, true, true]);
-    expect(at('0.51.3')).toEqual([true, true, true]);
-    expect(at('1.0.0')).toEqual([true, true, true]);
+    expect(at('0.42.0')).toEqual([false, false, false, false, false]);
+    expect(at('0.43.0')).toEqual([true, false, false, false, false]);
+    expect(at('0.45.1')).toEqual([true, false, false, false, false]);
+    expect(at('0.50.0')).toEqual([true, false, false, false, false]);
+    expect(at('0.50.1')).toEqual([true, true, false, false, true]);
+    expect(at('0.51.0')).toEqual([true, true, false, false, true]);
+    expect(at('0.51.1')).toEqual([true, true, true, true, true]);
+    expect(at('0.51.3')).toEqual([true, true, true, true, true]);
+    expect(at('1.0.0')).toEqual([true, true, true, true, true]);
   });
 
   it('compares numerically and ignores a prerelease suffix', () => {
@@ -66,7 +66,7 @@ describe('SpindleCapabilities', () => {
 
   it('defaults to the behavior pinned by the 0.45.1 tests', () => {
     expect(DEFAULT_CAPABILITIES).toEqual({
-      version: undefined, source: 'default', supported: true, executableRefsOnly: false, primitiveMembers: false,
+      version: undefined, source: 'default', supported: true, executableRefsOnly: false, primitiveMembers: false, linkQuoteEscapes: false, rawDoBodies: false,
     });
     expect(capabilitiesForVersion('0.45.1')).toMatchObject({ executableRefsOnly: false, primitiveMembers: false });
   });

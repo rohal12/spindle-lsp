@@ -154,6 +154,7 @@ export class WorkspaceModel extends EventEmitter {
     return {
       isBlock: (name) => this.isContainer(name),
       passages: this.passages.getPassagesInDocument(uri),
+      rawDoBodies: this.capabilities.rawDoBodies,
     };
   }
 
@@ -349,7 +350,7 @@ export class WorkspaceModel extends EventEmitter {
       const text = this.documents.getText(uri);
       // Empty documents are scanned too, dropping their previous usages
       if (text !== undefined && !isMacroSource(uri)) {
-        const macros = parseDocumentMacros(text, this.passages.getPassagesInDocument(uri));
+        const macros = parseDocumentMacros(text, this.passages.getPassagesInDocument(uri), undefined, this.capabilities);
         this.variables.scanDocument(uri, text, macros, storeVarMacros);
         this.widgets.recordInvocations(uri, macros);
       }

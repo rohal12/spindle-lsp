@@ -86,7 +86,7 @@ export function findReferences(
   }
 
   // --- Passage reference in [[link]] or macro arguments ---
-  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri));
+  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), { linkQuoteEscapes: workspace.capabilities.linkQuoteEscapes });
   if (passageRef) {
     return findPassageReferences(passageRef.name, workspace, includeDeclaration);
   }
@@ -162,7 +162,7 @@ export function findPassageRefs(
     if (!docText) continue;
 
     const passages = workspace.passages.getPassagesInDocument(docUri);
-    for (const ref of parseDocumentPassageRefs(docText, passages)) {
+    for (const ref of parseDocumentPassageRefs(docText, passages, { linkQuoteEscapes: workspace.capabilities.linkQuoteEscapes })) {
       if (ref.name === passageName) found.push({ uri: docUri, ref });
     }
   }

@@ -102,7 +102,7 @@ describe('MacroRegistry discovered macros', () => {
 describe('WorkspaceModel macro discovery', () => {
   const storyInit = (name: string) => `:: StoryInit
 {do}
-Story.defineMacro({name: "${name}", render: () => "${name}"});
+Story.defineMacro({ name: "${name}", render: () => "${name}"});
 {/do}
 
 :: Start
@@ -189,7 +189,7 @@ Story.defineMacro({
   it('removes discovered macros when the defining document closes', () => {
     const ws = new WorkspaceModel();
     ws.initialize(new Map([
-      ['file:///init.tw', ':: StoryInit\n{do}Story.defineMacro({name: "hello", render: () => null});{/do}\n'],
+      ['file:///init.tw', ':: StoryInit\n{do}Story.defineMacro({ name: "hello", render: () => null});{/do}\n'],
       ['file:///start.tw', ':: Start\n{hello}\n'],
     ]));
     expect(sp100(ws, 'file:///start.tw')).toEqual([]);
@@ -202,7 +202,7 @@ Story.defineMacro({
   it('ignores Story.defineMacro outside StoryInit {do} blocks and script passages', () => {
     const ws = new WorkspaceModel();
     ws.initialize(new Map([['file:///story.tw', `:: Other
-{do}Story.defineMacro({name: "hello", render: () => null});{/do}
+{do}Story.defineMacro({ name: "hello", render: () => null});{/do}
 
 :: Start
 {hello}

@@ -134,8 +134,9 @@ describe('parseMacros CSS-prefixed variable displays (#58)', () => {
     expect(parseMacros('{.cls}')).toEqual([]);
   });
 
-  it('does not take a selector prefix on a closing macro', () => {
-    expect(parseMacros('{/.cls if}')).toEqual([]);
+  it('takes no selector prefix on a closing macro: Spindle reads the text after the slash as its name', () => {
+    // tokenize('{/.cls if}') is one closing macro named `.cls` with arguments `if`
+    expect(parseMacros('{/.cls if}').map(m => [m.name, m.open, m.cssPrefix])).toEqual([['.cls', false, undefined]]);
   });
 });
 
@@ -219,10 +220,12 @@ describe('parseMacros balanced braces', () => {
 
   it('treats a macro without a balanced closing brace as text', () => {
     // {set …} never closes; Spindle renders it as text and resumes scanning
-    // at the next character, so only {b} is a macro.
+    // at the next character, where `{a: 1}` is a macro named `a:` (its name is
+    // everything up to the whitespace) and {b} another.
     const macros = parseMacros('{set $x = {a: 1}\n{b}');
-    expect(macros.map(m => m.name)).toEqual(['b']);
-    expect(macros[0].range.start).toEqual({ line: 1, character: 0 });
+    expect(macros.map(m => m.name)).toEqual(['a:', 'b']);
+    expect(macros[0].range.start).toEqual({ line: 0, character: 10 });
+    expect(macros[1].range.start).toEqual({ line: 1, character: 0 });
   });
 
   it('still skips variable interpolation inside arguments', () => {

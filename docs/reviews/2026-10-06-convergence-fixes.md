@@ -163,3 +163,136 @@ quote regex, so a label containing `"` navigates elsewhere at runtime
 (control `C-D1-quote`). Macro heads whose names contain other characters
 (`{a=b}`) are macros to the tokenizer but not to the macro grammar.
 HTML elements are not on the pairing stack (SP102 replays them).
+
+## Observed items closed: link quotes, macro heads, element/macro stack, fixture provenance (branch `fix/close-p-observed`)
+
+Spindle 0.45.1 installed; the same suite was run through `scripts/peer-matrix.sh` on 0.43.0,
+0.45.1, 0.50.0, 0.50.1, 0.51.0, 0.51.1 and 0.51.3 (see the table at the end). Normal gate:
+`npm test` 75 files / 1,825 tests (base 71 / 1,768; +57 new tests in 4 new files, no
+existing test removed; the existing expectations that changed are listed per item); `npm run typecheck` clean.
+
+### 1. Link-label quotes: fixed (SP304), a Spindle bug fixed in 0.51.1
+
+Reproduced against the real runtime: tokenize, then `buildAST` (which renders every
+bracket link as `{link "display" "target"}`), then the installed component's own
+`parseArgs`, cut out of `MacroLink.tsx` by `test/helpers/link-macro-oracle.ts`. The earlier
+control `C-D1-quote` copied the regex by hand; the new oracle runs the installed source.
+
+| Source | 0.45.1 (and every release before 0.51.1) | 0.51.1 and later |
+| --- | --- | --- |
+| `[[He said "hi"->T]]` | label `He said `, navigates nowhere (passage `""`) | reads back as written |
+| `[[{goto "X"}->Target]]` | label `{goto `, navigates to `}` | reads back |
+| `[[Go->a"b]]` | navigates to `a` | reads back |
+| two-line label `[[a<LF>b->T]]` | navigates nowhere (`.` does not match a line break) | reads back |
+| `{link "say \"hi\"" "T"}` | no escapes: label `say \`, passage `""` | `\"`, `\'`, `\\` decoded |
+| `{link "a\nb" "T"}` | label `a\nb` (backslash, n) | same: only quotes and backslashes are decoded |
+
+The release boundary is 0.51.1 (0.51.0 has the regex `/(["'])(.*?)\1/g`; 0.51.1 builds the arguments with
+`quoteArg` and reads them with an escape-aware regex); checked on the packed 0.43.0 to 0.51.3 sources.
+Not a defect to ignore: the link navigates somewhere other than the source says, with no error.
+
+- New diagnostic **SP304** (`LinkRuntimeMismatch`, warning), message names the runtime reading
+  ("Spindle 0.45.1 reads this link differently from how it is written: the link macro reads
+  the label as "He said " and a click navigates nowhere, not to "T". ... update Spindle to
+  0.51.1 or later"), range = the whole `[[...]]` or `{link ...}` tag, masked passages and
+  attribute values excluded. Gated by the new capability `linkQuoteEscapes` (>= 0.51.1);
+  without a detectable version the 0.45.1 behavior applies (`link-runtime.ts` is the port).
+- `{link "x" "T"}` string targets (references, definition, rename, document links) follow the
+  runtime reading: before 0.51.1 verbatim, from 0.51.1 with `\"`, `\'`, `\\` decoded;
+  rename encodes the new name for the version (escapes from 0.51.1, rejected before 0.51.1 when
+  the quote, a line break or a backslash cannot be written). A `{$x}` in a link string is
+  literal text at runtime (the link macro never interpolates its arguments), so it is the
+  name, no longer skipped as dynamic.
+- Bracket-link targets stay the written target for definition, references and document
+  links (that is what rename must edit); SP304 names where the click goes instead. Rename to
+  a name with `"` or a line break is rejected for a `[[link]]` before 0.51.1 (`RenameError`
+  with the position), accepted from 0.51.1.
+- Differential `P1-bracket`: 3 forms x 584 labels x 7 targets (over 12,000 links incl. LF/CRLF
+  breaks) against the real `parseArgs`: SP304 fires exactly when the runtime reading differs
+  (0 times on 0.51.x). `P1-macro` does the same for `{link}` strings.
+- Tests: `test/unit/link-runtime.test.ts` (26). Adjusted: `literal-contracts.test.ts`
+  `X70-script-rename-quote`, `R67-bracket-multifile` (renamed to `Bob's`, valid in every
+  version), `R67-link-macro`, `R67-reject-link-macro` (installed-version dependent).
+
+Observed while doing this, not part of the item: Spindle's `link` macro does not interpolate
+`{$x}` in its label or passage (`ctx.resolve` is only applied to `className`/`id` in
+`define-macro.ts`, and `Button`/`Dialog` labels): `[[Take {$item}->T]]` shows the braces
+literally in 0.45.1 and 0.51.3. Variable usage inside links is still reported as startup
+validation reads it; no label diagnostic exists for this yet.
+
+### 2. Macro heads: fixed
+
+The tokenizer takes the text between the braces whole: the name is everything up to the first
+whitespace (after `/` for a closer, which accepts any text, also none; after the selectors
+and one space for an opener, which starts with a letter). `{a=b}`, `{if($x)}`, `{x{$y}}`,
+`{/.cls if}` are macros named `a=b`, `if($x)`, `x{$y}`, `.cls`; `{/}` and `{/ x}` close a
+macro named ``. `macroHeadRegex` now matches only the brace and the selectors; the name,
+arguments and close are read from the balanced brace (`parseMacrosInPassage`), so the one
+grammar behind `parseMacros`, `macroHeadNames`/`macroHeadNameAt`, references, rename,
+definition, diagnostics, folding, completions and semantic tokens agrees with the tokenizer.
+
+- Differential `macro-head-differential.test.ts` (12): 60,000 random heads against the
+  installed tokenizer, 60,000 with quotes/backticks and 30,000 mixed fragments against the
+  vendored 0.51.3 tokenizer, comparing start, name and closer flag. All three fail on the
+  old head grammar. Consumers: SP100 names the whole macro (`{a=b}`), SP104 reports a
+  closer of any macro that is no container (also unknown names and `{/ x}`; Spindle throws
+  at every such closer), a widget `{widget "a=b"}` has references, definition and rename.
+- Found through it, **`{do}` bodies** (version dependent, now handled): from 0.50.1 the
+  tokenizer keeps a `{do}` body as raw text up to the first `{/do}` (capability
+  `rawDoBodies`; masked by `maskRawDoBodies` in diagnostics, pairing, folding, heads,
+  completions, tokens), so an object literal `{name: "x"}` is no macro. Before 0.50.1 it
+  is a macro, and `{do}` runs `collectText(children)`, which drops it: the installed 0.45.1
+  turns `Story.defineMacro({name: "x", ...})` into `Story.defineMacro();`. SP100 on it
+  now says so. Tests `do-body.test.ts` (10).
+- Adjusted: `macro-parser.test.ts` (`{/.cls if}` is a closer named `.cls`, `{a: 1}` after an
+  unclosed macro is the macro `a:`); StoryInit discovery tests and the CLI test wrote
+  `{name:` in a `{do}`, which 0.45.1 drops, so they use `{ name:` now.
+
+### 3. HTML elements and macro blocks: divergences found and fixed
+
+`element-macro-differential.test.ts` (9 tests) runs every sequence of up to 5 of `<div>`,
+`</div>`, `{if}`, `{/if}`, `{wrap}`, `{/wrap}` (a block widget) and every sequence of up to 4
+of eight symbols with two element names, LF and CRLF, through the installed `tokenize` +
+`buildAST` and each consumer: diagnostics (SP101/SP102/SP104 absent when `buildAST`
+accepts, one at the failing token otherwise), folding (the pairs `buildAST` makes, up to
+its first error), widget heads (references, definition, rename) and the shared pairing.
+
+On the old source: references, definition and rename already agreed (the heads test passed);
+**pairing, folding and diagnostics diverged** and are fixed:
+- `pairMacros` ignored elements: `{wrap}<div>{/wrap}</div>` paired `{wrap}`/`{/wrap}` (and
+  folded it) although `buildAST` throws at `{/wrap}`; SP102 replayed the stack separately and
+  stopped at any unpaired container, so `{if}<div>` reported no unclosed `<div>`.
+- Fix: elements are events on the one stack (`collectElementEvents`, `pairMacros(...,
+  elements)`, `parseDocumentStructure`); the closer `buildAST` rejects stays unpaired
+  (`expectedElement`, kept by rename as a closer of an open container), the SP102 findings
+  come from the same simulation (`replayElements` is gone), `macro.element` replaces its
+  map, and the reading still stops where the scanner is uncertain (`stop` event). The
+  documented recovery for missing closers (`{if}{for}{/if}`) is unchanged and applies to
+  elements.
+- Behavior changes: a crossed closer over an element reports SP102 at the closer and SP101
+  "no matching" on the container it leaves open (as crossed macros already did); a closing
+  tag after an unclosed `{if}` is now SP102 `expected {/if} but found </i>` (was suppressed).
+  Adjusted tests: `diagnostics-containers` (1), `diagnostics-malformed-element` (2).
+
+### 4. Fixture provenance
+
+`test/fixtures/spindle-0.51.3/README.md`: origin package and version, Unlicense, which files
+are byte-identical (`tokenizer.ts`) and which changed (`story-variables.ts`: header and
+two import lines), why they exist, and how to refresh them.
+
+### Verification
+
+| Run | Result |
+| --- | --- |
+| `npm test` (0.45.1) | 75 files, 1,825 passed |
+| `npm run typecheck` | exit 0 |
+| New tests on the old source (overlay on a detached worktree of the base) | 25 of 50 in the five affected files fail: `link-runtime` (file fails to load), element differential diagnostics/folding/pairing, all macro-head differentials, `do-body` D-before/after/outside/mask, capability tests |
+| `scripts/peer-matrix.sh` 0.43.0 / 0.45.1 / 0.50.0 | 1,813 / 1,825, tsc 0 |
+| 0.50.1 / 0.51.0 / 0.51.1 / 0.51.3 | 1,806 / 1,825, tsc 0 |
+
+The matrix failures are not new: 12 tests need the built `dist/` (bin, format entrypoints,
+absent in the peer-matrix copy) and, from 0.50.1, 7 older oracle comparisons against the
+installed tokenizer (`placeholders-oracle`, D3-fuzz) that disagree about braces inside
+strings. The base commit has the identical 19 failures on 0.51.3 (1,749 / 1,768) and the
+failing test names match.
+

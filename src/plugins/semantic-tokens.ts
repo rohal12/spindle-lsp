@@ -107,7 +107,7 @@ export function computeSemanticTokensAbsolute(
   }
 
   // Macro name tokens
-  const macros = parseDocumentMacros(text, passages);
+  const macros = parseDocumentMacros(text, passages, undefined, workspace.capabilities);
   for (const macro of macros) {
     const macroLine = macro.range.start.line;
     const macroChar = macro.range.start.character;

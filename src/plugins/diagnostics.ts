@@ -3,13 +3,13 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
-import { parseMacros, pairMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
+import { maskRawDoBodies, parseMacros, parseDocumentStructure, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
-import { scanHtmlTags, type HtmlScan, type HtmlTag } from '../core/parsing/html-scanner.js';
+import { scanHtmlTags } from '../core/parsing/html-scanner.js';
 import { findUnevaluatedBlocks } from '../core/parsing/attribute-blocks.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
-import { parseLinks } from '../core/parsing/link-parser.js';
+import { findLinkMacroMismatches, findLinkRuntimeMismatches, parseLinks } from '../core/parsing/link-parser.js';
 import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage, isMarkupPassage, maskNonMarkupPassages } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
@@ -61,15 +61,15 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // the declaration/metadata passages in NON_MARKUP_PASSAGES): blank their
     // bodies (keeping offsets) before parsing macros and links. Executable
     // special passages such as StoryInit and StoryInterface stay markup.
-    const markupText = maskNonMarkupPassages(text, passages);
+    const masked = maskNonMarkupPassages(text, passages);
+    // (from Spindle 0.50.1 a {do} body is JavaScript text, not markup)
+    const markupText = workspace.capabilities.rawDoBodies ? maskRawDoBodies(masked) : masked;
 
     // Parse macros for the whole document
-    const macros = parseMacros(markupText);
-    pairMacros(
-      macros,
-      (name) => workspace.isContainer(name),
-      passages.map(p => p.range.start.line),
-    );
+    // Containers pair together with the HTML elements, which share Spindle's
+    // AST stack with them.
+    const structure = parseDocumentStructure(text, passages, (name) => workspace.isContainer(name), workspace.capabilities);
+    const macros = structure.macros;
 
     // Collect all passage names across workspace for link validation
     const allPassages = workspace.passages.getAllPassages();
@@ -78,14 +78,15 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // Each validation step is wrapped individually so that a failure
     // in one category still allows the others to produce diagnostics.
 
-    let elements = new Map<number, string>();
-    try {
-      const replay = replayElements(markupText, macros, passages, workspace);
-      elements = replay.elements;
-      diagnostics.push(...replay.errors);
-    } catch {
-      // Without element information, containers are judged by macros alone
+    // SP102: where Spindle's AST builder throws on the HTML elements
+    for (const error of structure.errors) {
+      diagnostics.push(makeDiag(error.range, DiagnosticCode.MalformedElement, `Malformed element: ${error.message}`));
     }
+    // The element directly enclosing each macro, by macro index
+    const elements = new Map<number, string>();
+    macros.forEach((macro, index) => {
+      if (macro.element !== undefined) elements.set(index, macro.element);
+    });
 
     try {
       validateAttributeBlocks(markupText, passages, workspace, diagnostics);
@@ -121,6 +122,12 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
       validateLinks(markupText, passages, passageNames, diagnostics);
     } catch {
       // Link validation failed — continue
+    }
+
+    try {
+      validateLinkRuntime(markupText, workspace, diagnostics);
+    } catch {
+      // Link runtime validation failed — continue
     }
 
     try {
@@ -175,7 +182,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 /**
  * `elements` maps the index of each macro whose innermost enclosing node on
  * Spindle's AST stack is an HTML element to that element's tag name; see
- * replayElements().
+ * pairMacros().
  */
 function validateMacros(
   macros: MacroNode[],
@@ -183,6 +190,15 @@ function validateMacros(
   workspace: WorkspaceModel,
   diagnostics: Diagnostic[],
 ): void {
+  // Before Spindle 0.50.1 a {do} body is tokenized like any text, and {do}
+  // runs only its plain-text pieces (see rawDoBodies in the capabilities)
+  const inDoBody = new Set<number>();
+  macros.forEach((macro, index) => {
+    if (macro.open && macro.pair !== -1 && macro.name.toLowerCase() === 'do') {
+      for (let i = index + 1; i < macro.pair; i++) inDoBody.add(i);
+    }
+  });
+
   for (let curIndex = 0; curIndex < macros.length; curIndex++) {
     const macro = macros[curIndex];
     const info = workspace.macros.getMacro(macro.name);
@@ -194,7 +210,18 @@ function validateMacros(
         diagnostics.push(makeDiag(
           macro.range,
           DiagnosticCode.UndefinedMacro,
-          `Unrecognized macro: {${macro.name}}`,
+          `Unrecognized macro: {${macro.name}}` + (inDoBody.has(curIndex)
+            ? `. Spindle ${workspace.capabilities.version ?? 'before 0.50.1'} reads it as a macro inside {do} and drops it from the code: ` +
+              'write a space after the brace of an object literal ({ name: 1 }), or use Spindle 0.50.1 or later'
+            : ''),
+        ));
+      } else {
+        // Whatever it is, Spindle's AST builder takes a closer only for the
+        // container on top of its stack, and an unknown macro is no container
+        diagnostics.push(makeDiag(
+          macro.range,
+          DiagnosticCode.IllegalClosingTag,
+          `Illegal closing tag: {${macro.name}} is not a container`,
         ));
       }
       continue;
@@ -208,9 +235,10 @@ function validateMacros(
           DiagnosticCode.MalformedContainer,
           `Malformed container: no matching {/${macro.name}}`,
         ));
-      } else if (!macro.open && macro.pair === -1) {
+      } else if (!macro.open && macro.pair === -1 && macro.expectedElement === undefined) {
         // A closer over a container that is closed later is the one Spindle
-        // rejects: "Expected {/for} but found {/if}"
+        // rejects: "Expected {/for} but found {/if}". (One over an element
+        // that is closed later is reported as SP102.)
         diagnostics.push(makeDiag(
           macro.range,
           DiagnosticCode.MalformedContainer,
@@ -280,7 +308,7 @@ const DIRECT_CHILD_MACROS = new Set(['elseif', 'else', 'case', 'default', 'next'
  * The innermost container enclosing the macro at `index`, as on Spindle's
  * AST stack: built-in and custom block macros as well as block widgets.
  * Containers without a closing tag are skipped; SP101 reports them. HTML
- * elements share that stack; replayElements() finds those.
+ * elements share that stack; pairMacros() finds those.
  */
 function innermostContainer(
   macros: MacroNode[],
@@ -295,184 +323,6 @@ function innermostContainer(
     if (workspace.isContainer(candidate.name)) return candidate;
   }
   return undefined;
-}
-
-/** An entry of Spindle's AST stack: a paired container macro or an HTML element. */
-type StackEntry = { macro: number } | { element: HtmlTag };
-
-/** What replaying Spindle's AST stack over a document's passages found. */
-interface ElementReplay {
-  /**
-   * The HTML element directly enclosing each macro, keyed by macro index:
-   * macros whose innermost enclosing node on the stack is an element rather
-   * than a block macro (or nothing).
-   */
-  elements: Map<number, string>;
-  /** SP102: element structure at which buildAST throws. */
-  errors: Diagnostic[];
-}
-
-/**
- * Replay Spindle's AST stack over each passage of the document.
- *
- * Spindle's buildAST pushes HTML elements onto the same stack as block
- * macros, so `{if $x}<span>{else}</span>{/if}` attaches `{else}` to the
- * `<span>` and throws "{else} without matching {if}". Each passage is
- * replayed on its own: paired containers and the tags from scanHtmlTags()
- * in document order, an opening tag taking effect at its `>` so that a
- * macro written inside a tag is not taken to be inside its element.
- *
- * Where buildAST throws on the HTML, the replay reports it (SP102) and
- * stops for that passage, since nothing after it is rendered: a closing tag
- * with nothing open or that does not match the top of the stack (an element
- * or a block), a block closing over an open element, and elements still
- * open at the end of the passage.
- *
- * It also stops, reporting nothing more, at an unpaired container, which
- * Spindle's stack keeps open or throws at (SP101 reports it); where the
- * scanner gave up because Spindle versions disagree or following them
- * would be quadratic; and where the scanner and the macro parser disagree
- * about which text is a macro (such as `{if}` inside a link, which Spindle
- * reads as part of the link). Macros after that are judged by macros alone,
- * as if there were no HTML.
- */
-function replayElements(
-  text: string,
-  macros: MacroNode[],
-  passages: Passage[],
-  workspace: WorkspaceModel,
-): ElementReplay {
-  const replay: ElementReplay = { elements: new Map(), errors: [] };
-  if (!text.includes('<')) return replay;
-
-  const lineStarts = buildLineStarts(text);
-  const lineOffset = (line: number) => lineStarts[line] ?? text.length;
-  const ordered = [...passages].sort((a, b) => a.range.start.line - b.range.start.line);
-  let m = 0;
-
-  for (const passage of ordered) {
-    const contentStart = lineOffset(passage.range.start.line + 1);
-    const contentEnd = lineOffset(passage.range.end.line + 1);
-    while (m < macros.length && positionToOffset(macros[m].range.start, lineStarts) < contentStart) m++;
-    const first = m;
-    while (m < macros.length && positionToOffset(macros[m].range.start, lineStarts) < contentEnd) m++;
-
-    const content = text.slice(contentStart, contentEnd);
-    if (!content.includes('<') || !isMarkupPassage(passage)) continue;
-    replayPassage(macros, first, m, scanHtmlTags(content), contentStart, lineStarts, workspace, replay);
-  }
-  return replay;
-}
-
-/**
- * Replay one passage's stack for replayElements(). Macros [from, to) lie in
- * the passage, whose content starts at offset `base`; `scan` is the
- * scanHtmlTags() result for that content.
- */
-function replayPassage(
-  macros: MacroNode[],
-  from: number,
-  to: number,
-  scan: HtmlScan,
-  base: number,
-  lineStarts: number[],
-  workspace: WorkspaceModel,
-  replay: ElementReplay,
-): void {
-  const { tags } = scan;
-  // Offsets from here on are relative to the passage content
-  const macroStart = (k: number) => positionToOffset(macros[k].range.start, lineStarts) - base;
-
-  // The replay follows Spindle up to `certainUntil`: where the scanner gave
-  // up, or the first macro Spindle reads that the macro parser did not find.
-  let certainUntil = scan.stoppedAt === -1 ? Infinity : scan.stoppedAt;
-  const parsed = new Set<number>();
-  for (let k = from; k < to; k++) parsed.add(macroStart(k));
-  const unparsed = scan.macros.find(at => !parsed.has(at));
-  if (unparsed !== undefined) certainUntil = Math.min(certainUntil, unparsed);
-
-  const stack: StackEntry[] = [];
-  let t = 0;
-  let s = 0;
-  let lastMacroEnd = -1;
-
-  const report = (range: Range, message: string) => {
-    replay.errors.push(makeDiag(range, DiagnosticCode.MalformedElement, `Malformed element: ${message}`));
-  };
-  const tagRange = (tag: HtmlTag): Range => ({
-    start: offsetToPosition(base + tag.start, lineStarts),
-    end: offsetToPosition(base + tag.end, lineStarts),
-  });
-
-  /** Apply the tags that take effect up to `until`; false where the replay stops. */
-  const applyTags = (until: number): boolean => {
-    for (; t < tags.length; t++) {
-      const tag = tags[t];
-      const at = tag.kind === 'close' ? tag.start : tag.end;
-      if (at > until) break;
-      if (tag.start >= certainUntil) return false;
-      // A tag inside a macro: the scanner read text the parser took as a macro
-      if (tag.start < lastMacroEnd) return false;
-      if (tag.kind === 'open') {
-        stack.push({ element: tag });
-      } else if (tag.kind === 'close') {
-        const top = stack[stack.length - 1];
-        const found = `</${tag.name}>`;
-        if (!top) {
-          report(tagRange(tag), `unexpected closing ${found}`);
-          return false;
-        }
-        if ('macro' in top) {
-          report(tagRange(tag), `expected {/${macros[top.macro].name}} but found ${found}`);
-          return false;
-        }
-        if (top.element.name.toLowerCase() !== tag.name.toLowerCase()) {
-          report(tagRange(tag), `expected </${top.element.name}> but found ${found}`);
-          return false;
-        }
-        stack.pop();
-      }
-    }
-    return true;
-  };
-
-  for (let k = from; k < to; k++) {
-    const macro = macros[k];
-    const start = macroStart(k);
-    if (!applyTags(start)) return;
-
-    if (start >= certainUntil) return;
-    // A macro Spindle does not read, e.g. one inside a link
-    while (s < scan.macros.length && scan.macros[s] < start) s++;
-    if (scan.macros[s] !== start) return;
-    lastMacroEnd = positionToOffset(macro.range.end, lineStarts) - base;
-
-    const top = stack[stack.length - 1];
-    if (top && 'element' in top) replay.elements.set(k, top.element.name);
-
-    if (!workspace.isContainer(macro.name)) continue;
-    // Spindle keeps an unclosed block on its stack and throws at a stray
-    // closing tag, so the stack from here on is not the one replayed.
-    if (macro.pair === -1) return;
-    if (macro.open) {
-      stack.push({ macro: k });
-      continue;
-    }
-    // A closing tag pops its block, which must be on top
-    const opener = stack.pop();
-    if (opener && 'element' in opener) {
-      report(macro.range, `expected </${opener.element.name}> but found {/${macro.name}}`);
-      return;
-    }
-    if (!opener || opener.macro !== macro.pair) return;
-  }
-
-  if (!applyTags(Infinity) || certainUntil !== Infinity) return;
-  // buildAST throws for the innermost node still open at the end, and each
-  // element left open needs its closing tag.
-  for (const entry of stack) {
-    if ('element' in entry) report(tagRange(entry.element), `unclosed <${entry.element.name}>`);
-  }
 }
 
 /** Elements whose content is not markup: their tags are not checked for SP103. */
@@ -916,6 +766,60 @@ function validateLinks(
         `Passage "${link.name}" not found in workspace`,
       ));
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Link text the runtime reads differently (SP304)
+// ---------------------------------------------------------------------------
+
+/** How a click on a link navigates, for a message. */
+function describeNavigation(passage: string | null): string {
+  if (passage === null) return 'navigates nowhere';
+  if (passage === '') return 'navigates nowhere (the passage name it reads is empty)';
+  return `navigates to ${JSON.stringify(passage)}`;
+}
+
+/**
+ * SP304: the link macro, which renders every bracket link and `{link}`,
+ * reads its quoted arguments with a quote regex. Where that reading differs
+ * from the source (a `"` or a line break in a bracket link's text before
+ * Spindle 0.51.1, an escape in a `{link}` string), a click goes somewhere
+ * else than the source says; see core/parsing/link-runtime.ts.
+ */
+function validateLinkRuntime(
+  text: string,
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  const caps = workspace.capabilities;
+  const options = { linkQuoteEscapes: caps.linkQuoteEscapes };
+  const version = caps.version ?? 'before 0.51.1';
+  const fix = caps.linkQuoteEscapes
+    ? ''
+    : ' Remove the quote or line break from the link text, or update Spindle to 0.51.1 or later.';
+
+  for (const link of findLinkRuntimeMismatches(text, options)) {
+    diagnostics.push(makeDiag(
+      link.range,
+      DiagnosticCode.LinkRuntimeMismatch,
+      `Spindle ${version} reads this link differently from how it is written: the link macro reads ` +
+        `the label as ${JSON.stringify(link.runtime.display)} and a click ${describeNavigation(link.runtime.passage)}, ` +
+        `not to ${JSON.stringify(link.target)}.${fix}`,
+    ));
+  }
+
+  for (const link of findLinkMacroMismatches(text, options)) {
+    diagnostics.push(makeDiag(
+      link.range,
+      DiagnosticCode.LinkRuntimeMismatch,
+      `Spindle ${version} reads the strings of {link} differently from their JavaScript meaning: ` +
+        `the label is read as ${JSON.stringify(link.runtime.display)} and a click ${describeNavigation(link.runtime.passage)}, ` +
+        `not ${link.passage === null ? 'a link without a passage' : `to ${JSON.stringify(link.passage)}`}. ` +
+        (caps.linkQuoteEscapes
+          ? 'The macro decodes only \\\\, \\" and \\\' escapes; write other characters literally.'
+          : 'It decodes no escapes: write the text without backslash escapes or quotes, or update Spindle to 0.51.1 or later.'),
+    ));
   }
 }
 

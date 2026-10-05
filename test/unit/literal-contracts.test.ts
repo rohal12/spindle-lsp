@@ -19,6 +19,8 @@ import { resolveIncludeTarget } from '../../src/plugins/diagnostics.js';
 import { parseMacroPassageRefs } from '../../src/core/parsing/link-parser.js';
 import { decodeStringLiteralBody, encodeStringLiteralBody } from '../../src/core/parsing/js-string-literal.js';
 
+import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
+
 const uri = 'file:///story.tw';
 const models: WorkspaceModel[] = [];
 function workspace(text: string, extra: Array<[string, string]> = []) {
@@ -127,9 +129,9 @@ describe('X70 (extra): literal context variants and nearby controls', () => {
   it('X70-script-rename-quote: renaming does not break script strings', () => {
     const body = ':: Code [script]\nconst docs = "[[Old]]";';
     const model = workspace(`:: StoryVariables\n:: Old\nhello\n:: Start\n[[Old]]\n${body}`);
-    const output = renamed(model, 1, 5, 'Bob"s');
+    const output = renamed(model, 1, 5, "Bob's");
     expect(output).toContain(body);
-    expect(output).toContain('[[Bob"s]]');
+    expect(output).toContain("[[Bob's]]");
   });
   it('C-X70-link-variants: pipe, arrow, reverse and CSS-prefixed links are references', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[a|Old]] [[b->Old]] [[Old<-c]] [[.cls#id Old]]');
@@ -178,18 +180,24 @@ describe('R67 (extra): per-context encoding', () => {
   it('R67-bracket-multifile: bracket links in other files keep syntax and unrelated text', () => {
     const other = 'file:///other.tw';
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[x|Old]] {goto "Old"}', [[other, ':: Other\nbefore [[Old]] after']]);
-    const edits = computeRename(uri, { line: 1, character: 5 }, 'Bob"s', model);
-    expect(apply(model.documents.getText(other)!, edits.get(other) ?? [])).toBe(':: Other\nbefore [[Bob"s]] after');
-    expect(apply(model.documents.getText(uri)!, edits.get(uri) ?? [])).toBe(':: StoryVariables\n:: Bob"s\nhello\n:: Start\n[[x|Bob"s]] {goto "Bob\\"s"}');
+    const edits = computeRename(uri, { line: 1, character: 5 }, "Bob's", model);
+    expect(apply(model.documents.getText(other)!, edits.get(other) ?? [])).toBe(":: Other\nbefore [[Bob's]] after");
+    expect(apply(model.documents.getText(uri)!, edits.get(uri) ?? [])).toBe(":: StoryVariables\n:: Bob's\nhello\n:: Start\n[[x|Bob's]] {goto \"Bob's\"}");
   });
-  it('R67-link-macro: {link} reads quoted text verbatim, so a backslash is kept as is', () => {
+  it('R67-link-macro: {link} reads quoted text verbatim before 0.51.1, so a backslash is kept as is', () => {
+    const escapes = INSTALLED_CAPABILITIES.linkQuoteEscapes;
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{link "go" "Old"}{/link}');
     const output = renamed(model, 1, 5, 'A\\B');
-    expect(output).toContain('{link "go" "A\\B"}');
-    expect(parseMacroPassageRefs(output).map(r => r.name)).toEqual(['A\\B']);
+    expect(output).toContain(escapes ? '{link "go" "A\\\\B"}' : '{link "go" "A\\B"}');
+    expect(parseMacroPassageRefs(output, 0, { linkQuoteEscapes: escapes }).map(r => r.name)).toEqual(['A\\B']);
   });
-  it('R67-reject-link-macro: a name its {link} string cannot hold is rejected with no edits', () => {
+  it('R67-reject-link-macro: a name its {link} string cannot hold is rejected with no edits (before 0.51.1)', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"} {link "go" "Old"}{/link}');
+    if (INSTALLED_CAPABILITIES.linkQuoteEscapes) {
+      // 0.51.1 escapes the delimiter, so these names are representable (L-quote tests)
+      expect(() => computeRename(uri, { line: 1, character: 5 }, 'Bob"s', model)).not.toThrow();
+      return;
+    }
     expect(() => computeRename(uri, { line: 1, character: 5 }, 'Bob"s', model)).toThrow(RenameError);
     expect(() => computeRename(uri, { line: 1, character: 5 }, 'two\nlines', model)).toThrow(/{link}/);
   });

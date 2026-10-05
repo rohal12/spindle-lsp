@@ -116,7 +116,7 @@ function getClosingMacroCompletions(
   range: Range,
 ): CompletionItem[] {
   const passages = workspace.passages.getPassagesInDocument(uri);
-  const macros = parseDocumentMacros(text, passages, (name) => workspace.isContainer(name));
+  const macros = parseDocumentMacros(text, passages, (name) => workspace.isContainer(name), workspace.capabilities);
 
   // Only containers opened in the cursor's passage can be closed here
   const passageStart = workspace.passages.getPassageAt(uri, position.line)?.range.start.line ?? 0;

@@ -2,7 +2,8 @@ import { ErrorCodes, ResponseError } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { findPassageRefAt, parseLinks, resolveExpressionTarget, resolveLinkMacroTarget, type PassageRef } from '../core/parsing/link-parser.js';
+import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
+import { findPassageRefAt, parseLinks, resolveExpressionTarget, resolveLinkMacroTarget, type LinkRuntimeOptions, type PassageRef } from '../core/parsing/link-parser.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
@@ -71,7 +72,7 @@ export function computeRename(
       const refEdits: Array<{ uri: string; range: Range; text: string }> = [];
       for (const { uri: refUri, ref } of findPassageRefs(symbol.name, workspace)) {
         try {
-          refEdits.push({ uri: refUri, range: ref.range, text: encodePassageRefName(ref, newName) });
+          refEdits.push({ uri: refUri, range: ref.range, text: encodePassageRefName(ref, newName, { linkQuoteEscapes: workspace.capabilities.linkQuoteEscapes }) });
         } catch (error) {
           if (error instanceof RenameError) throw error.at(refUri, ref.range);
           throw error;
@@ -173,7 +174,7 @@ function passageHeaderProblem(name: string): string | null {
  * Spell `newName` for the reference's context so that Spindle reads the
  * same name back. Throws RenameError when the context cannot represent it.
  */
-export function encodePassageRefName(ref: PassageRef, newName: string): string {
+export function encodePassageRefName(ref: PassageRef, newName: string, options: LinkRuntimeOptions = {}): string {
   const unrepresentable = (where: string): RenameError =>
     new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it cannot be written inside ${where}.`);
 
@@ -188,17 +189,28 @@ export function encodePassageRefName(ref: PassageRef, newName: string): string {
       return `"${encodeStringLiteralBody(newName, '"')}"`;
     }
     case 'link-string': {
+      // The link macro reads its quoted arguments with a quote regex: before
+      // Spindle 0.51.1 nothing is escaped, from 0.51.1 `\\` and the
+      // delimiter are (see link-runtime.ts).
       const quote = ref.quote ?? '"';
-      const probe = resolveLinkMacroTarget(`"label" ${quote}${newName}${quote}`);
+      const body = options.linkQuoteEscapes
+        ? newName.replace(/\\/g, '\\\\').split(quote).join(`\\${quote}`)
+        : newName;
+      const probe = resolveLinkMacroTarget(`"label" ${quote}${body}${quote}`, options);
       if (!probe || probe.name !== newName) {
-        throw unrepresentable(`a {link} ${quote}-quoted argument (it cannot contain the quote, a line break or interpolation)`);
+        throw unrepresentable(`a {link} ${quote}-quoted argument (it cannot contain the quote, a line break or a backslash before Spindle 0.51.1)`);
       }
-      return newName;
+      return body;
     }
     case 'bracket': {
       const probe = parseLinks(`[[${newName}]]`);
       if (probe.length !== 1 || probe[0].name !== newName) {
         throw unrepresentable('a [[link]] (it cannot contain |, ->, <-, [[, ]], or leading/trailing whitespace)');
+      }
+      // The link macro that renders the link must read the name back: before
+      // Spindle 0.51.1 a double quote or a line break sends the click elsewhere.
+      if (bracketLinkMismatch('label', newName, options.linkQuoteEscapes === true)) {
+        throw unrepresentable('a [[link]] (Spindle before 0.51.1 reads the link text with a quote regex, so it cannot contain a double quote or a line break)');
       }
       return newName;
     }
@@ -311,7 +323,7 @@ function resolveSymbolAtCursor(
   }
 
   // --- Passage reference in [[link]] or macro arguments (goto, include, link) ---
-  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri));
+  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), { linkQuoteEscapes: workspace.capabilities.linkQuoteEscapes });
   if (passageRef && workspace.passages.getPassage(passageRef.name)) {
     return { kind: 'passage', name: passageRef.name, range: passageRef.range };
   }

@@ -32,6 +32,22 @@ export interface SpindleCapabilities {
    * field of a primitive is an error.
    */
   primitiveMembers: boolean;
+  /**
+   * Spindle >= 0.51.1: a bracket link is rendered as `{link}` arguments with
+   * its backslashes and double quotes escaped, and the link macro reads
+   * backslash escapes (and line breaks) inside its quoted arguments. Below
+   * it the arguments are `"display" "target"` read by a quote regex that
+   * stops at the first quote or line break, so such text navigates elsewhere.
+   */
+  linkQuoteEscapes: boolean;
+  /**
+   * Spindle >= 0.50.1: the tokenizer keeps a `{do}` body as JavaScript text
+   * up to the first `{/do}`, so nothing inside it (`{name: 1}`, `[[x]]`,
+   * `{if}`) is markup. Below it the body is tokenized like any passage text
+   * and `{do}` runs only its plain-text pieces: an object literal `{name:
+   * "x"}` is read as a macro and dropped from the code.
+   */
+  rawDoBodies: boolean;
 }
 
 /** The oldest Spindle the LSP supports: the one that introduced transients. */
@@ -40,6 +56,10 @@ export const MINIMUM_SPINDLE_VERSION = '0.43.0';
 export const EXECUTABLE_REFS_VERSION = '0.50.1';
 /** First release whose startup validation allows primitive wrapper members. */
 export const PRIMITIVE_MEMBERS_VERSION = '0.51.1';
+/** First release whose link macro reads backslash escapes and escapes bracket-link text. */
+export const LINK_QUOTE_ESCAPES_VERSION = '0.51.1';
+/** First release whose tokenizer keeps `{do}` bodies as raw JavaScript text. */
+export const RAW_DO_BODIES_VERSION = '0.50.1';
 
 type Triple = [number, number, number];
 
@@ -68,6 +88,8 @@ export const DEFAULT_CAPABILITIES: SpindleCapabilities = {
   supported: true,
   executableRefsOnly: false,
   primitiveMembers: false,
+  linkQuoteEscapes: false,
+  rawDoBodies: false,
 };
 
 /** The capabilities of a Spindle `version`; the default ones if it does not parse. */
@@ -83,6 +105,8 @@ export function capabilitiesForVersion(
     supported: atLeast(triple, MINIMUM_SPINDLE_VERSION),
     executableRefsOnly: atLeast(triple, EXECUTABLE_REFS_VERSION),
     primitiveMembers: atLeast(triple, PRIMITIVE_MEMBERS_VERSION),
+    linkQuoteEscapes: atLeast(triple, LINK_QUOTE_ESCAPES_VERSION),
+    rawDoBodies: atLeast(triple, RAW_DO_BODIES_VERSION),
   };
 }
 

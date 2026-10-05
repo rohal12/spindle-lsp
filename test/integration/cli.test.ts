@@ -358,7 +358,7 @@ describe('CLI check --config', () => {
   it('applies discovered macros, with config taking precedence', () =>
     withProject({
       'custom.yaml': 'macros:\n  box:\n    container: false\n',
-      'story.twee': ':: StoryInit\n{do}\nStory.defineMacro({name: "box", block: true, render: () => null});\nStory.defineMacro({name: "hello", render: () => null});\n{/do}\n\n:: Start\n{hello}\n{box}\n',
+      'story.twee': ':: StoryInit\n{do}\nStory.defineMacro({ name: "box", block: true, render: () => null});\nStory.defineMacro({ name: "hello", render: () => null});\n{/do}\n\n:: Start\n{hello}\n{box}\n',
     }, async (dir) => {
       const { exitCode, output } = await captureStdout(() =>
         runCheck(['--config', join(dir, 'custom.yaml'), '--format', 'json', join(dir, 'story.twee')]),

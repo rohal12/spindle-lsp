@@ -230,7 +230,8 @@ describe('HTML elements on Spindle\'s AST stack', () => {
   it('stops tracking elements after a block closes over an open element', () => {
     // {if}<span>{/if}</span> crosses: Spindle throws "Expected </span> but found {/if}".
     const diags = diagnose(`${vars}:: Start\n{if $x}<span>{/if}</span>{if $x}<i>{else}</i>{/if}\n`);
-    expect(codes(diags)).toEqual(['SP102']);
+    // the rejected {/if} (SP102) leaves its {if} open (SP101); {else} after it is not judged
+    expect(codes(diags).sort()).toEqual(['SP101', 'SP102']);
   });
 
   it('stops tracking elements where Spindle versions disagree', () => {

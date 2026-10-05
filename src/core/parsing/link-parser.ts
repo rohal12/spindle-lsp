@@ -4,6 +4,12 @@ import { ArgType, lexArguments } from './argument-lexer.js';
 import { attributeValueSpans } from './html-scanner.js';
 import { HAS_PASSAGE_HEADER, maskNonMarkupPassages, passageBodies } from './passage-parser.js';
 import { decodeStringLiteralBody, type JsQuote } from './js-string-literal.js';
+import { bracketLinkMismatch, linkMacroStrings, readLinkMacroArgs, type LinkRead } from './link-runtime.js';
+
+/** Version-dependent link behavior (`SpindleCapabilities.linkQuoteEscapes`); Spindle 0.45.1 when omitted. */
+export interface LinkRuntimeOptions {
+  linkQuoteEscapes?: boolean;
+}
 
 /**
  * How a reference spells its target; rename re-encodes a new name per form.
@@ -86,23 +92,30 @@ function skipSelectors(text: string, i: number): number {
  * `inner`, with surrounding whitespace excluded.
  */
 function locateTarget(inner: string): { start: number; end: number } {
-  let start = 0;
-  let end = inner.length;
-
-  const pipeIdx = inner.indexOf('|');
-  const arrowIdx = inner.indexOf('->');
-  const revIdx = inner.indexOf('<-');
-  if (pipeIdx !== -1) {
-    start = pipeIdx + 1;
-  } else if (arrowIdx !== -1) {
-    start = arrowIdx + 2;
-  } else if (revIdx !== -1) {
-    end = revIdx;
-  }
-
-  while (start < end && /\s/.test(inner[start])) start++;
-  while (end > start && /\s/.test(inner[end - 1])) end--;
+  const [start, end] = splitLinkInner(inner).target;
   return { start, end };
+}
+
+/**
+ * Split a link's inner text into its display and target spans (offsets
+ * relative to `inner`, surrounding whitespace excluded), the way Spindle's
+ * `parseLink` does: `display|target`, then `display->target`, then
+ * `target<-display`, else the whole text for both.
+ */
+function splitLinkInner(inner: string): { display: [number, number]; target: [number, number] } {
+  const trimmed = (from: number, to: number): [number, number] => {
+    while (from < to && /\s/.test(inner[from])) from++;
+    while (to > from && /\s/.test(inner[to - 1])) to--;
+    return [from, to];
+  };
+  const pipe = inner.indexOf('|');
+  const arrow = inner.indexOf('->');
+  const reverse = inner.indexOf('<-');
+  if (pipe !== -1) return { display: trimmed(0, pipe), target: trimmed(pipe + 1, inner.length) };
+  if (arrow !== -1) return { display: trimmed(0, arrow), target: trimmed(arrow + 2, inner.length) };
+  if (reverse !== -1) return { display: trimmed(reverse + 2, inner.length), target: trimmed(0, reverse) };
+  const whole = trimmed(0, inner.length);
+  return { display: whole, target: whole };
 }
 
 /**
@@ -251,28 +264,7 @@ export function linkInterpolationRanges(text: string, link: BracketLink): Array<
   add('\n');
 
   const inner = text.slice(link.innerStart, link.innerEnd);
-  const trimmed = (from: number, to: number): [number, number] => {
-    while (from < to && /\s/.test(inner[from])) from++;
-    while (to > from && /\s/.test(inner[to - 1])) to--;
-    return [from, to];
-  };
-  const pipe = inner.indexOf('|');
-  const arrow = inner.indexOf('->');
-  const reverse = inner.indexOf('<-');
-  let display: [number, number];
-  let target: [number, number];
-  if (pipe !== -1) {
-    display = trimmed(0, pipe);
-    target = trimmed(pipe + 1, inner.length);
-  } else if (arrow !== -1) {
-    display = trimmed(0, arrow);
-    target = trimmed(arrow + 2, inner.length);
-  } else if (reverse !== -1) {
-    target = trimmed(0, reverse);
-    display = trimmed(reverse + 2, inner.length);
-  } else {
-    display = target = trimmed(0, inner.length);
-  }
+  const { display, target } = splitLinkInner(inner);
   add('"');
   addSpan(link.innerStart + display[0], link.innerStart + display[1]);
   add('" "');
@@ -306,6 +298,90 @@ export function linkInterpolationRanges(text: string, link: BracketLink): Array<
     i = j + 1;
   }
   return ranges;
+}
+
+/** A bracket link whose runtime navigation differs from its source. */
+export interface LinkRuntimeMismatch {
+  /** The whole `[[...]]` link. */
+  range: Range;
+  /** Display text and target as the source says (the tokenizer's reading). */
+  display: string;
+  target: string;
+  /** What Spindle's link macro reads instead. */
+  runtime: LinkRead;
+}
+
+/**
+ * The bracket links Spindle's link macro does not read back as written (see
+ * link-runtime.ts), in order. Spindle >= 0.51.1 reads every link back.
+ */
+export function findLinkRuntimeMismatches(text: string, options: LinkRuntimeOptions = {}): LinkRuntimeMismatch[] {
+  const escapes = options.linkQuoteEscapes === true;
+  if (escapes) return [];
+  const lineStarts = buildLineStarts(text);
+  const found: LinkRuntimeMismatch[] = [];
+  for (const link of findBracketLinks(text)) {
+    const inner = text.slice(link.innerStart, link.innerEnd);
+    const parts = splitLinkInner(inner);
+    const display = inner.slice(...parts.display);
+    const target = inner.slice(...parts.target);
+    const runtime = bracketLinkMismatch(display, target, escapes);
+    if (!runtime) continue;
+    found.push({
+      range: { start: offsetToPosition(link.start, lineStarts), end: offsetToPosition(link.end, lineStarts) },
+      display,
+      target,
+      runtime,
+    });
+  }
+  return found;
+}
+
+/** A `{link "label" "Passage"}` whose runtime reading differs from its string literals. */
+export interface LinkMacroMismatch {
+  /** The macro tag. */
+  range: Range;
+  /** The label and passage the two string literals say. */
+  display: string;
+  passage: string | null;
+  /** What Spindle's link macro reads instead. */
+  runtime: LinkRead;
+}
+
+/**
+ * The `{link}` macros whose string arguments Spindle's link macro reads
+ * differently from the JavaScript string literals they are written as: a
+ * backslash escape before 0.51.1 (`{link "say \"hi\"" "T"}` navigates
+ * nowhere), `\n` and the like (the macro decodes only quotes and
+ * backslashes) in every version. Only macros whose arguments are all string
+ * literals are compared; a variable argument has no value to compare.
+ */
+export function findLinkMacroMismatches(text: string, options: LinkRuntimeOptions = {}): LinkMacroMismatch[] {
+  const escapes = options.linkQuoteEscapes === true;
+  const lineStarts = buildLineStarts(text);
+  const found: LinkMacroMismatch[] = [];
+  for (const macro of parseMacros(text)) {
+    if (!macro.open || !macro.rawArgs || macro.name.toLowerCase() !== 'link') continue;
+    const argsEnd = lineStarts[macro.range.end.line] + macro.range.end.character - 1;
+    const args = text.slice(argsEnd - macro.rawArgs.length, argsEnd);
+    const lexed = lexArguments(args);
+    if (lexed.length === 0 || lexed.some(arg => arg.type !== ArgType.String)) continue;
+    const written: string[] = [];
+    for (const arg of lexed.slice(0, 2)) {
+      const quote = arg.text[0];
+      if ((quote !== '"' && quote !== "'") || arg.text.length < 2 || arg.text.at(-1) !== quote) break;
+      const value = decodeStringLiteralBody(arg.text.slice(1, -1), quote);
+      if (value === null) break;
+      written.push(value);
+    }
+    if (written.length !== Math.min(2, lexed.length)) continue;
+    const display = written[0];
+    const passage = written[1] ?? null;
+    const runtime = readLinkMacroArgs(args, escapes);
+    if (runtime.display === display && runtime.passage === passage) continue;
+    found.push({ range: macro.range, display, passage, runtime });
+  }
+  return found;
 }
 
 export function parseLinks(text: string, lineOffset: number = 0): PassageRef[] {
@@ -342,9 +418,10 @@ export function findPassageRefAt(
   text: string,
   position: { line: number; character: number },
   passages: MaskablePassage[] = [],
+  options: LinkRuntimeOptions = {},
 ): PassageRef | undefined {
   const { line, character } = position;
-  return parseDocumentPassageRefs(text, passages).find(({ range: { start, end } }) =>
+  return parseDocumentPassageRefs(text, passages, options).find(({ range: { start, end } }) =>
     (line > start.line || (line === start.line && character >= start.character)) &&
     (line < end.line || (line === end.line && character <= end.character)));
 }
@@ -356,9 +433,13 @@ export function findPassageRefAt(
  * and HTML attribute values. This is the one extraction every navigation,
  * rename, link and diagnostic consumer shares.
  */
-export function parseDocumentPassageRefs(text: string, passages: MaskablePassage[]): PassageRef[] {
+export function parseDocumentPassageRefs(
+  text: string,
+  passages: MaskablePassage[],
+  options: LinkRuntimeOptions = {},
+): PassageRef[] {
   const markup = maskNonMarkupPassages(text, passages);
-  return [...parseLinks(markup), ...parseMacroPassageRefs(markup)];
+  return [...parseLinks(markup), ...parseMacroPassageRefs(markup, 0, options)];
 }
 
 // ---------------------------------------------------------------------------
@@ -435,27 +516,21 @@ function resolveIncludeTarget(args: string): ArgTarget | null {
 
 /**
  * `{link "label" "Passage"}` navigates to its second quoted string. Spindle's
- * MacroLink collects them with `/(["'])(.*?)\1/g` over the raw arguments:
- * no escape is decoded, so a backslash is part of the name and a name cannot
- * contain its own delimiter or a line break.
+ * MacroLink collects the strings with a quote regex over the raw arguments
+ * (see link-runtime.ts): before 0.51.1 no escape is decoded, so a backslash
+ * is part of the name and a name cannot contain its own delimiter or a line
+ * break; from 0.51.1 `\"`, `\'` and `\\` are decoded. The arguments are not
+ * interpolated, so `{$x}` in the name is part of the passage name.
  */
-export function resolveLinkMacroTarget(args: string): ArgTarget | null {
-  const re = /(["'])(.*?)\1/g;
-  let match: RegExpExecArray | null;
-  let index = 0;
-  while ((match = re.exec(args)) !== null) {
-    if (++index < 2) continue;
-    const name = match[2];
-    if (interpolationRegex.test(name)) return null;
-    const start = match.index + 1;
-    return { name, start, end: start + name.length, form: 'link-string', quote: match[1] as JsQuote };
-  }
-  return null;
+export function resolveLinkMacroTarget(args: string, options: LinkRuntimeOptions = {}): ArgTarget | null {
+  const second = linkMacroStrings(args, options.linkQuoteEscapes === true)[1];
+  if (!second) return null;
+  return { name: second.text, start: second.start, end: second.end, form: 'link-string', quote: second.quote };
 }
 
-const macroTargetResolvers: Record<string, (args: string) => ArgTarget | null> = {
-  goto: resolveExpressionTarget,
-  include: resolveIncludeTarget,
+const macroTargetResolvers: Record<string, (args: string, options: LinkRuntimeOptions) => ArgTarget | null> = {
+  goto: args => resolveExpressionTarget(args),
+  include: args => resolveIncludeTarget(args),
   link: resolveLinkMacroTarget,
 };
 
@@ -470,7 +545,7 @@ const macroTargetResolvers: Record<string, (args: string) => ArgTarget | null> =
  * @param text - the text to parse
  * @param lineOffset - optional line offset added to all line numbers (default 0)
  */
-export function parseMacroPassageRefs(text: string, lineOffset: number = 0): PassageRef[] {
+export function parseMacroPassageRefs(text: string, lineOffset: number = 0, options: LinkRuntimeOptions = {}): PassageRef[] {
   const lineStarts = buildLineStarts(text);
   const refs: PassageRef[] = [];
 
@@ -483,7 +558,7 @@ export function parseMacroPassageRefs(text: string, lineOffset: number = 0): Pas
     // the source text, since parseMacros blanks {$var} interpolations.
     const argsEnd = lineStarts[macro.range.end.line] + macro.range.end.character - 1;
     const argsStart = argsEnd - macro.rawArgs.length;
-    const target = resolve(text.slice(argsStart, argsEnd));
+    const target = resolve(text.slice(argsStart, argsEnd), options);
     if (!target || target.name === '') continue;
 
     const startPos = offsetToPosition(argsStart + target.start, lineStarts);
