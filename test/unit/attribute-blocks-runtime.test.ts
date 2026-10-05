@@ -9,6 +9,7 @@ import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokeniz
 import { evaluate } from '../../node_modules/@rohal12/spindle/src/expression.js';
 import { conditionalExpression, findUnevaluatedBlocks, printExpression } from '../../src/core/parsing/attribute-blocks.js';
 import { scanHtmlTags } from '../../src/core/parsing/html-scanner.js';
+import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 
 vi.mock('../../node_modules/@rohal12/spindle/src/store.ts', () => ({
   useStoryStore: {
@@ -209,9 +210,13 @@ describe('SP103 {print} quick fix against Spindle', () => {
     expect(checked).toBe(22);
   });
 
-  it("needs {E ?? ''} for a dotted path: 0.45.1 reads a primitive's property as ''", () => {
-    // resolveSimple() handles {$s.length} without the evaluator; upstream
-    // main boxes primitives and renders 3.
-    expect(renderAttributes('<span class="{$s.length}">t</span>', { variables: { s: 'abc' } }).class).toBe('');
+  it("needs {E ?? ''} for a dotted path: before 0.51.1 a primitive's property reads as ''", () => {
+    // resolveSimple() handles {$s.length} without the evaluator; from 0.51.1
+    // primitives are boxed and it renders 3. The `?? ''` form always goes
+    // through the evaluator and renders 3.
+    const expected = INSTALLED_CAPABILITIES.primitiveMembers ? '3' : '';
+    const attrs = (value: string) => renderAttributes(`<span class="${value}">t</span>`, { variables: { s: 'abc' } }).class;
+    expect(attrs('{$s.length}')).toBe(expected);
+    expect(attrs("{$s.length ?? ''}")).toBe('3');
   });
 });

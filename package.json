@@ -22,7 +22,7 @@
     "yaml": "^2.7.0"
   },
   "peerDependencies": {
-    "@rohal12/spindle": ">=0.34.0"
+    "@rohal12/spindle": ">=0.43.0"
   },
   "optionalDependencies": {
     "prettier": "^3.0.0"

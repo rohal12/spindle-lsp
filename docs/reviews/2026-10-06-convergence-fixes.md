@@ -22,8 +22,13 @@ Normal gate: `npm test` 63 files / 1,402 tests pass; `npm run typecheck` clean.
 Integration note: Q68-other-doc was adjusted after merge because #78 reports
 SP202 once, on the owning story document; the test now locates that document.
 
-Known gaps: Spindle `>=0.34.0` peer range unverified (see the peer-range note
-once recorded); keywords are tokenized only in macro arguments, including `${}`
+Peer range: verified and narrowed to `>=0.43.0`, with version-gated SP200/SP201
+and an SP001 diagnostic below the floor (see the "Result" section of
+[2026-10-06-peer-range.md](2026-10-06-peer-range.md)). The earlier
+`>=0.34.0` was never supportable: Spindle before 0.43.0 has no transients, so
+the range is a ledger decision, recorded here and in `package.json`.
+
+Known gaps: keywords are tokenized only in macro arguments, including `${}`
 interpolations (string/template text excluded). Spindle 0.45.1 has no keyword
 sugar at all (`expression.ts` only rewrites sigils; `StoryVariables` is plain
 `new Function`), so no other context is an expression for them (control

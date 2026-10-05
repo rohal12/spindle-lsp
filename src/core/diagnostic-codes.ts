@@ -1,4 +1,5 @@
 export const DiagnosticCode = {
+  UnsupportedSpindleVersion: 'SP001',
   UndefinedMacro: 'SP100',
   MalformedContainer: 'SP101',
   MalformedElement: 'SP102',
@@ -34,6 +35,7 @@ export type DiagnosticCodeValue = (typeof DiagnosticCode)[keyof typeof Diagnosti
 type Severity = 'error' | 'warning' | 'info' | 'hint';
 
 const severityMap: Record<DiagnosticCodeValue, Severity> = {
+  SP001: 'warning',
   SP100: 'warning',
   SP101: 'error',
   SP102: 'error',

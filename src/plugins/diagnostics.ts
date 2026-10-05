@@ -14,6 +14,7 @@ import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
+import { MINIMUM_SPINDLE_VERSION, unsupportedVersionMessage } from '../core/workspace/spindle-capabilities.js';
 
 // ---------------------------------------------------------------------------
 // Core diagnostic function (no LSP dependency)
@@ -27,6 +28,7 @@ import { isMacroSource } from '../core/workspace/macro-sources.js';
  *  - HTML element structure Spindle cannot render (SP102)
  *  - Macros and expressions in HTML attributes Spindle outputs as text (SP103)
  *  - Argument/parameter validation (SP108, SP109, SP110, SP111, SP112)
+ *  - Target Spindle version (SP001)
  *  - Variable validation (SP200, SP201, SP202, SP203, SP204, SP206)
  *  - StoryVariables / StoryTransients declarations Spindle rejects (SP207)
  *  - Temporaries assigned inside {for} (SP205)
@@ -101,6 +103,12 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
       validateArguments(macros, workspace, passageNames, diagnostics);
     } catch {
       // Argument validation failed — continue
+    }
+
+    try {
+      validateSpindleVersion(uri, workspace, diagnostics);
+    } catch {
+      // Version check failed — continue
     }
 
     try {
@@ -756,6 +764,47 @@ function targetArguments(expr: string): Arg[] {
 /** The target expression of `{include}`: its arguments minus the `inline` keyword. */
 function includeExpression(rawArgs: string): string {
   return rawArgs.replace(/\binline\b/, '').trim();
+}
+
+// ---------------------------------------------------------------------------
+// Target Spindle version (SP001)
+// ---------------------------------------------------------------------------
+
+/**
+ * SP001: the detected Spindle is older than the supported floor (0.43.0,
+ * which introduced transients). Reported once per workspace, on the first
+ * story document, and on a StoryTransients passage, which the old runtime
+ * refuses ("Invalid declaration"). An undetectable version raises nothing.
+ */
+function validateSpindleVersion(
+  uri: string,
+  workspace: WorkspaceModel,
+  diagnostics: Diagnostic[],
+): void {
+  const caps = workspace.capabilities;
+  if (caps.supported) return;
+  const message = unsupportedVersionMessage(caps);
+
+  if (uri === missingStoryVariablesOwner(workspace)) {
+    const first = workspace.passages.getPassagesInDocument(uri)[0];
+    diagnostics.push(makeDiag(
+      { start: first.range.start, end: first.headerEnd.end },
+      DiagnosticCode.UnsupportedSpindleVersion,
+      message,
+    ));
+  }
+
+  const transients = workspace.passages.getStoryTransients();
+  if (transients && transients.uri === uri) {
+    const diagnostic = makeDiag(
+      { start: transients.range.start, end: transients.headerEnd.end },
+      DiagnosticCode.UnsupportedSpindleVersion,
+      `Spindle ${caps.version} does not support StoryTransients (added in ${MINIMUM_SPINDLE_VERSION}); ` +
+        'it rejects the passage when the story starts.',
+    );
+    diagnostic.severity = 'error';
+    diagnostics.push(diagnostic);
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -51,6 +51,27 @@ export function readStoryDataFormat(content: string): string | undefined {
 }
 
 /**
+ * The `format-version` of a StoryData passage's JSON content, trimmed, for
+ * a StoryData that names Spindle or no format. Undefined if the content does
+ * not parse, names another format, or has no string `format-version`.
+ */
+export function readStoryDataFormatVersion(content: string): string | undefined {
+  let data: unknown;
+  try {
+    data = JSON.parse(content);
+  } catch {
+    return undefined;
+  }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
+  const record = data as Record<string, unknown>;
+  if (typeof record.format === 'string' && record.format.trim() && !isSpindleFormatName(record.format)) {
+    return undefined;
+  }
+  const version = record['format-version'];
+  return typeof version === 'string' && version.trim() ? version.trim() : undefined;
+}
+
+/**
  * Combine the formats declared by every StoryData passage (undefined for
  * one that names none): Spindle if any names Spindle, foreign if one names
  * another format, Spindle otherwise.
@@ -89,6 +110,21 @@ export function storyDataFormats(
     formats.push(text === undefined ? undefined : readStoryDataFormat(passageContent(passage, text)));
   }
   return formats;
+}
+
+/** The first `format-version` declared by a Spindle StoryData passage among `passages`. */
+export function storyDataFormatVersion(
+  passages: Iterable<Passage>,
+  getText: (uri: string) => string | undefined,
+): string | undefined {
+  for (const passage of passages) {
+    if (passage.name !== 'StoryData') continue;
+    const text = getText(passage.uri);
+    if (text === undefined) continue;
+    const version = readStoryDataFormatVersion(passageContent(passage, text));
+    if (version !== undefined) return version;
+  }
+  return undefined;
 }
 
 /**
