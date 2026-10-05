@@ -104,3 +104,78 @@ describe('arrow link forms', () => {
     );
   });
 });
+
+describe('macro passage references', () => {
+  const content = [
+    ':: Start',
+    "{goto 'Target'}",
+    '{goto Target}',
+    '{include Target}',
+    '{include "Target" inline}',
+    "{include inline 'Target'}",
+    '{.cls#id goto "Target"}',
+    '{#box include "Target"}',
+    '{link "Target" "Target"}{/link}',
+    "{link 'Go to Target' 'Target'}{/link}",
+    ':: Target',
+    'Text',
+  ].join('\n');
+
+  it('finds every literal goto, include and link target', () => {
+    expect(referencedTexts(content, 'Target')).toEqual(Array(9).fill('Target'));
+  });
+
+  it('renames only the targets, keeping labels and the inline keyword', () => {
+    expect(renamePassage(content, 'Target', 'Renamed')).toBe([
+      ':: Start',
+      "{goto 'Renamed'}",
+      '{goto Renamed}',
+      '{include Renamed}',
+      '{include "Renamed" inline}',
+      "{include inline 'Renamed'}",
+      '{.cls#id goto "Renamed"}',
+      '{#box include "Renamed"}',
+      '{link "Target" "Renamed"}{/link}',
+      "{link 'Go to Target' 'Renamed'}{/link}",
+      ':: Renamed',
+      'Text',
+    ].join('\n'));
+  });
+
+  it('jumps to the passage from each target', () => {
+    const ws = createWorkspace(content);
+    const lines = content.split('\n');
+    for (let line = 1; line <= 9; line++) {
+      const character = lines[line].lastIndexOf('Target') + 1;
+      expect(getDefinition(URI, { line, character }, ws)?.range.start.line, lines[line]).toBe(10);
+    }
+  });
+
+  it('jumps from a {link} target, not from a label naming another passage', () => {
+    const ws = createWorkspace(':: Start\n{link "Elsewhere" "Target"}{/link}\n:: Target\nText\n:: Elsewhere\nText');
+    expect(getDefinition(URI, { line: 1, character: 8 }, ws)).toBeNull();
+    expect(getDefinition(URI, { line: 1, character: 21 }, ws)?.range.start.line).toBe(2);
+  });
+
+  it('finds references from the cursor on a macro target', () => {
+    const pos = positionOf(content, "'Target'");
+    const refs = findReferences(URI, { line: pos.line, character: pos.character + 2 }, createWorkspace(content), true);
+    expect(refs).toHaveLength(10);
+  });
+
+  it('skips dynamic targets and macros that do not navigate', () => {
+    const dynamic = [
+      ':: Start',
+      '{goto $dest}',
+      '{include _part}',
+      '{goto "Tar" + "get"}',
+      '{include "Target {$n}"}',
+      '{link "Go" $dest}{/link}',
+      '{link $label "Target"}{/link}',
+      '{button "Target" "Target"}{/button}',
+      ':: Target',
+      'Text',
+    ].join('\n');
+    expect(referencedTexts(dynamic, 'Target')).toEqual([]);
+  });
+});

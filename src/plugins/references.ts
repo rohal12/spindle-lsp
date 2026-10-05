@@ -1,7 +1,7 @@
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseLinks } from '../core/parsing/link-parser.js';
+import { findPassageRefAt, parseLinks, parseMacroPassageRefs } from '../core/parsing/link-parser.js';
 import { parseMacros } from '../core/parsing/macro-parser.js';
 
 // ---------------------------------------------------------------------------
@@ -92,6 +92,12 @@ export function findReferences(
     }
   }
 
+  // --- Passage reference in [[link]] or macro arguments ---
+  const passageRef = findPassageRefAt(text, position);
+  if (passageRef) {
+    return findPassageReferences(passageRef.name, workspace, includeDeclaration);
+  }
+
   // --- Passage name in link (also check passage names) ---
   {
     const allPassages = workspace.passages.getAllPassages();
@@ -139,42 +145,15 @@ export function findPassageReferences(
     }
   }
 
-  // Scan all documents for passage references
-  const gotoRegex = /\{(?:goto|include)\s+"([^"]+)"\s*\}/gi;
-  const linkMacroRegex = /\{(?:link|button)\s+"[^"]*"\s+"([^"]+)"\s*\}/gi;
-
+  // Scan all documents for [[links]] and macro references
+  // ({goto}, {include}, {link "label" "passage"})
   for (const docUri of workspace.documents.getUris()) {
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
-    // Find [[passage]] links
-    const links = parseLinks(docText);
-    for (const link of links) {
-      if (link.name === passageName) {
-        locations.push({ uri: docUri, range: link.range });
-      }
-    }
-
-    // Find {goto "passage"} and {include "passage"}
-    const lines = docText.split('\n');
-    for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-      const line = lines[lineNum];
-
-      for (const regex of [gotoRegex, linkMacroRegex]) {
-        regex.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        while ((match = regex.exec(line)) !== null) {
-          if (match[1] === passageName) {
-            const nameStart = match.index + match[0].indexOf(match[1]);
-            locations.push({
-              uri: docUri,
-              range: {
-                start: { line: lineNum, character: nameStart },
-                end: { line: lineNum, character: nameStart + match[1].length },
-              },
-            });
-          }
-        }
+    for (const ref of [...parseLinks(docText), ...parseMacroPassageRefs(docText)]) {
+      if (ref.name === passageName) {
+        locations.push({ uri: docUri, range: ref.range });
       }
     }
   }

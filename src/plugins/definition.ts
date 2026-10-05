@@ -1,7 +1,7 @@
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseLinks } from '../core/parsing/link-parser.js';
+import { findPassageRefAt } from '../core/parsing/link-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core definition function (no LSP dependency)
@@ -17,7 +17,7 @@ export interface DefinitionResult {
  *
  * Supports:
  *  - Passage name in [[link]] -> jump to passage header
- *  - Passage name in macro args (goto, include, link, button) -> jump to passage
+ *  - Passage name in macro args (goto, include, link) -> jump to passage
  *  - Widget name in {widgetName} -> jump to widget definition
  */
 export function getDefinition(
@@ -32,13 +32,9 @@ export function getDefinition(
   if (position.line >= lines.length) return null;
   const line = lines[position.line];
 
-  // --- Passage ref in [[link]] ---
-  const linkResult = getPassageLinkDefinition(text, position, workspace);
-  if (linkResult) return linkResult;
-
-  // --- Passage ref in macro args (goto, include, link, button) ---
-  const macroPassageResult = getMacroPassageDefinition(line, position, workspace);
-  if (macroPassageResult) return macroPassageResult;
+  // --- Passage ref in [[link]] or macro args (goto, include, link) ---
+  const passageResult = getPassageRefDefinition(text, position, workspace);
+  if (passageResult) return passageResult;
 
   // --- Widget name -> definition ---
   const widgetResult = getWidgetDefinition(line, position, workspace);
@@ -51,58 +47,19 @@ export function getDefinition(
 // Sub-functions
 // ---------------------------------------------------------------------------
 
-function getPassageLinkDefinition(
+function getPassageRefDefinition(
   text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  const links = parseLinks(text);
-  for (const link of links) {
-    if (link.range.start.line === position.line &&
-      position.character >= link.range.start.character &&
-      position.character <= link.range.end.character) {
-      const passage = workspace.passages.getPassage(link.name);
-      if (passage) {
-        return {
-          uri: passage.uri,
-          range: passage.headerEnd,
-        };
-      }
-    }
-  }
-  return null;
-}
-
-function getMacroPassageDefinition(
-  line: string,
-  position: Position,
-  workspace: WorkspaceModel,
-): DefinitionResult | null {
-  // Match {goto "passage"}, {include "passage"}, {link "text" "passage"}, {button "text" "passage"}
-  const patterns = [
-    /\{(?:goto|include)\s+"([^"]+)"\s*\}/gi,
-    /\{(?:link|button)\s+"[^"]*"\s+"([^"]+)"\s*\}/gi,
-  ];
-
-  for (const pattern of patterns) {
-    pattern.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(line)) !== null) {
-      const passageName = match[1];
-      const nameStart = match.index + match[0].indexOf(passageName);
-      const nameEnd = nameStart + passageName.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        const passage = workspace.passages.getPassage(passageName);
-        if (passage) {
-          return {
-            uri: passage.uri,
-            range: passage.headerEnd,
-          };
-        }
-      }
-    }
-  }
-  return null;
+  const ref = findPassageRefAt(text, position);
+  if (!ref) return null;
+  const passage = workspace.passages.getPassage(ref.name);
+  if (!passage) return null;
+  return {
+    uri: passage.uri,
+    range: passage.headerEnd,
+  };
 }
 
 function getWidgetDefinition(
