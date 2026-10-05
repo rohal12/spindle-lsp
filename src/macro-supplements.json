@@ -245,8 +245,8 @@
   "dialog": {
     "name": "dialog",
     "container": true,
-    "description": "Opens a dialog with its contents.\n\nUsage:\n\n```\n{dialog \"title\"}\n  ...\n{/dialog}\n```",
-    "parameters": ["text"]
+    "description": "Creates a button that opens the passage named in its body in a dialog. Add `noclose` to hide the dialog's close button.\n\nUsage:\n\n```\n{dialog \"label\"}Passage Name{/dialog}\n{dialog \"label\" noclose}Passage Name{/dialog}\n```",
+    "parameters": ["text |+ 'noclose'"]
   },
   "nobr": {
     "name": "nobr",

@@ -65,6 +65,12 @@ describe('argument validation with receiver parameters', () => {
     expect(argDiags).toEqual([]);
   });
 
+  it('accepts the noclose modifier of dialog', () => {
+    const text = ':: Start\n{dialog "Open" noclose}Target{/dialog}\n{dialog "Open"}Target{/dialog}\n:: Target\nHi';
+    expect(diagnose(text).filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
+    expect(codes(':: Start\n{dialog "Open" extra}Target{/dialog}', 'SP109')).toHaveLength(1);
+  });
+
   it('rejects a receiver that is not a variable', () => {
     const sp109 = codes(':: Start\n{textbox 42 "x"}', 'SP109');
     expect(sp109).toHaveLength(1);
