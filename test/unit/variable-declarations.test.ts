@@ -3,7 +3,7 @@ import { SymbolKind } from 'vscode-languageserver';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { findReferences, findVariableReferences, findTransientReferences } from '../../src/plugins/references.js';
-import { computeRename } from '../../src/plugins/rename.js';
+import { computeRename, prepareRename } from '../../src/plugins/rename.js';
 import { getHoverInfo } from '../../src/plugins/hover.js';
 import { computeSemanticTokensAbsolute } from '../../src/plugins/semantic-tokens.js';
 import { getCompletions } from '../../src/plugins/completions.js';
@@ -218,6 +218,50 @@ describe('variable names Spindle accepts (#62)', () => {
       { line: 3, character: 12 },
       { line: 3, character: 34 },
     ]);
+  });
+
+  // Spindle never validates `%` references and evaluates them only in code,
+  // so `%20` in prose, HTML attributes or links is URL encoding, not a transient.
+  describe('digit-leading transients outside code', () => {
+    const line = 'Save 20 %20 today. <a href="x%20y">a</a><a href="/%20">b</a> '
+      + '[[a%20b]] [[Shop|%20off]] {%5}{set _t to %20}';
+    const text = ':: StoryTransients\n%5 = 0\n:: Start\n' + line;
+    const prose = [8, 29, 50, 64, 78];
+
+    it('reports SP203 only for %20 in code', () => {
+      const ws = createWorkspace({ name: 'test.tw', content: text });
+      const sp203 = computeDiagnostics(uri, ws).filter(d => d.code === 'SP203');
+      expect(sp203.map(d => [d.message, d.range.start.character])).toEqual([
+        ["Transient variable '%20' is not declared in StoryTransients", 102],
+      ]);
+    });
+
+    it('finds, hovers and highlights %20 only in code', () => {
+      const ws = createWorkspace({ name: 'test.tw', content: text });
+      expect(findTransientReferences('20', ws, false).map(r => r.range.start.character)).toEqual([102]);
+      expect(findReferences(uri, { line: 3, character: 89 }, ws, false).map(r => r.range.start)).toEqual([
+        { line: 3, character: 88 },
+      ]);
+      const tokens = computeSemanticTokensAbsolute(uri, ws).filter(t => t.line === 3).map(t => t.startChar);
+      expect(tokens).toEqual(expect.arrayContaining([88, 102]));
+      for (const character of prose) {
+        // Inside [[…]] the cursor is on a passage name, which is fine
+        const pos = { line: 3, character: character + 1 };
+        const refs = findReferences(uri, pos, ws, false).map(r => [r.range.start.character, r.range.end.character]);
+        expect(refs, `at ${character}`).not.toContainEqual([character, character + 3]);
+        expect(prepareRename(uri, pos, ws)?.placeholder, `at ${character}`).not.toBe('20');
+        expect(getHoverInfo(uri, pos, ws)?.contents ?? '', `at ${character}`).not.toContain('%20');
+        expect(tokens, `at ${character}`).not.toContain(character);
+      }
+    });
+
+    it('still treats letter-leading transients in prose as before', () => {
+      const ws = createWorkspace({ name: 'test.tw', content: ':: StoryTransients\n%x = 0\n:: Start\nSee %x and %y.' });
+      expect(findTransientReferences('x', ws, false)).toHaveLength(1);
+      expect(computeDiagnostics(uri, ws).filter(d => d.code === 'SP203').map(d => d.message)).toEqual([
+        "Transient variable '%y' is not declared in StoryTransients",
+      ]);
+    });
   });
 
   it('renames $5 everywhere', () => {

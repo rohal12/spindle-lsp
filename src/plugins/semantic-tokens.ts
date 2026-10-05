@@ -1,6 +1,7 @@
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parseMacros } from '../core/parsing/macro-parser.js';
+import { isTransientAt } from './references.js';
 
 // ---------------------------------------------------------------------------
 // Token legend
@@ -174,6 +175,7 @@ export function computeSemanticTokensAbsolute(
     // Transient vars (%var)
     transientVarRegex.lastIndex = 0;
     while ((m = transientVarRegex.exec(line)) !== null) {
+      if (!isTransientAt(m[1].split('.')[0], uri, lineIndex, m.index, workspace)) continue;
       tokens.push({
         line: lineIndex,
         startChar: m.index,

@@ -8,6 +8,7 @@ import {
   findVariableReferences,
   findTransientReferences,
   findWidgetReferences,
+  isTransientAt,
 } from './references.js';
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,7 @@ function resolveSymbolAtCursor(
       const start = match.index;
       const end = start + match[0].length;
       if (position.character >= start && position.character <= end) {
+        if (!isTransientAt(match[1], uri, position.line, start, workspace)) break;
         return {
           kind: 'variable',
           name: match[1],

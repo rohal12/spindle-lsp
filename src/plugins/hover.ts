@@ -3,6 +3,7 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
+import { isTransientAt } from './references.js';
 
 // ---------------------------------------------------------------------------
 // Core hover function (no LSP dependency)
@@ -39,7 +40,7 @@ export function getHoverInfo(
   if (macroResult) return macroResult;
 
   // --- Variable hover ---
-  const varResult = getVariableHover(line, position, workspace);
+  const varResult = getVariableHover(uri, line, position, workspace);
   if (varResult) return varResult;
 
   // --- Widget invocation hover ---
@@ -101,6 +102,7 @@ function getMacroHover(
 }
 
 function getVariableHover(
+  uri: string,
   line: string,
   position: Position,
   workspace: WorkspaceModel,
@@ -176,6 +178,7 @@ function getVariableHover(
       const end = start + match[0].length;
       if (position.character >= start && position.character <= end) {
         const baseName = match[1].split('.')[0];
+        if (!isTransientAt(baseName, uri, position.line, start, workspace)) break;
         const decl = workspace.variables.getDeclaredTransient().get(baseName);
         const typeInfo = decl?.fields && decl.fields.length > 0
           ? `\n\nFields: ${decl.fields.map(f => `\`${f}\``).join(', ')}`

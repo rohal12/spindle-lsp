@@ -60,6 +60,19 @@ function replaceCodeLiterals(text: string, replace: (literal: string) => string)
   const scanner = createCodeScanner(text);
   let result = '';
   let copied = 0;
+  for (const [open, close] of codeBlocks(text, scanner)) {
+    result += text.slice(copied, open + 1) + replaceLiterals(text, scanner, open + 1, close, replace);
+    copied = close;
+  }
+  return result + text.slice(copied);
+}
+
+/**
+ * The outermost `{…}` blocks of a passage (macros, displays, expressions)
+ * as [open brace, close brace] offsets: the code Spindle evaluates.
+ */
+function codeBlocks(text: string, scanner: CodeScanner): Array<[number, number]> {
+  const blocks: Array<[number, number]> = [];
   for (let i = 0; i < text.length; i++) {
     if (text[i] === '\\' && (text[i + 1] === '{' || text[i + 1] === '}')) {
       i++;
@@ -68,11 +81,10 @@ function replaceCodeLiterals(text: string, replace: (literal: string) => string)
     if (text[i] !== '{') continue;
     const close = scanner.closeBrace(i + 1);
     if (close === -1) continue;
-    result += text.slice(copied, i + 1) + replaceLiterals(text, scanner, i + 1, close, replace);
-    copied = close;
+    blocks.push([i, close]);
     i = close;
   }
-  return result + text.slice(copied);
+  return blocks;
 }
 
 /** text.slice(from, to) of code, with each literal in it replaced. */
@@ -528,11 +540,16 @@ export class VariableTracker {
         if (cleaned[i] === '\n') lineOffsets.push(i + 1);
       }
 
-      const scans: Array<[RegExp, VariableUsage[]]> = [
-        [varRefRegex, usages],
-        [transientRefRegex, transientUsages],
+      // Spindle evaluates `%` only in code and never validates it, so `%20`
+      // outside a `{…}` block is text (URL encoding), not a transient.
+      const blocks = codeBlocks(uncommented, createCodeScanner(uncommented));
+      const inCode = (offset: number) => blocks.some(([open, close]) => open < offset && offset < close);
+
+      const scans: Array<[RegExp, VariableUsage[], boolean]> = [
+        [varRefRegex, usages, false],
+        [transientRefRegex, transientUsages, true],
       ];
-      for (const [regex, out] of scans) {
+      for (const [regex, out, digitsOnlyInCode] of scans) {
         const seen = new Set<number>();
         for (const source of [cleaned, referenced]) {
           const re = new RegExp(regex.source, 'g');
@@ -544,6 +561,7 @@ export class VariableTracker {
 
             const fullName = match[1];
             const baseName = fullName.split('.')[0];
+            if (digitsOnlyInCode && /^\d/.test(baseName) && !inCode(charOffset)) continue;
 
             // Convert offset to line/character within content block
             let localLine = 0;
