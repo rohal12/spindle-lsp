@@ -6,13 +6,13 @@ import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
 import { findPassageRefAt, parseLinks, resolveExpressionTarget, resolveLinkMacroTarget, type LinkRuntimeOptions, type PassageRef } from '../core/parsing/link-parser.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
-import { parsePassageHeader } from '../core/parsing/passage-parser.js';
+import { isReservedPassageName, parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageRefs,
   findVariableReferences,
   findTransientReferences,
   findWidgetReferences,
-  isTransientAt,
+  variableAt,
 } from './references.js';
 
 // ---------------------------------------------------------------------------
@@ -80,8 +80,10 @@ export function computeRename(
       }
       // The header spells the name with Twee escapes (`A\[B`); links and
       // macro arguments use the plain name.
-      const declaration = workspace.passages.getPassage(symbol.name);
-      if (declaration) {
+      if (isReservedPassageName(newName)) {
+        throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it is a reserved passage name with a fixed meaning.`).at(uri, symbol.range);
+      }
+      for (const declaration of workspace.passages.getPassages(symbol.name)) {
         const problem = passageHeaderProblem(newName);
         if (problem) throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: ${problem}.`).at(declaration.uri, declaration.nameRange);
         addEdit(declaration.uri, declaration.nameRange, escapePassageName(newName));
@@ -240,7 +242,7 @@ function resolveSymbolAtCursor(
   workspace: WorkspaceModel,
 ): SymbolInfo | null {
   const text = workspace.documents.getText(uri);
-  if (text === undefined) return null;
+  if (text === undefined || !workspace.hasPassages(uri)) return null;
 
   const lines = text.split('\n');
   if (position.line >= lines.length) return null;
@@ -251,51 +253,16 @@ function resolveSymbolAtCursor(
   if (header) {
     const { start, end } = header.nameRange;
     if (position.character >= start.character && position.character <= end.character) {
+      // A reserved name (StoryInit, StoryVariables, ...) is the passage's role, not a label
+      if (isReservedPassageName(header.name)) return null;
       return { kind: 'passage', name: header.name, range: header.nameRange };
     }
   }
 
-  // --- $variable ---
-  {
-    const varRegex = /\$([\w$]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = varRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        return {
-          kind: 'variable',
-          name: match[1],
-          sigil: '$',
-          range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
-          },
-        };
-      }
-    }
-  }
-
-  // --- %transient ---
-  {
-    const transRegex = /(?<!\w)%([\w$]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = transRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        if (!isTransientAt(match[1], uri, position.line, start, workspace)) break;
-        return {
-          kind: 'variable',
-          name: match[1],
-          sigil: '%',
-          range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
-          },
-        };
-      }
-    }
+  // --- $variable / %transient ---
+  const variable = variableAt(uri, position, workspace);
+  if (variable) {
+    return { kind: 'variable', name: variable.name, sigil: variable.sigil, range: variable.range };
   }
 
   // --- Widget definition: {widget "name" ...} ---
@@ -324,7 +291,7 @@ function resolveSymbolAtCursor(
 
   // --- Passage reference in [[link]] or macro arguments (goto, include, link) ---
   const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
-  if (passageRef && workspace.passages.getPassage(passageRef.name)) {
+  if (passageRef && workspace.passages.getPassage(passageRef.name) && !isReservedPassageName(passageRef.name)) {
     return { kind: 'passage', name: passageRef.name, range: passageRef.range };
   }
 

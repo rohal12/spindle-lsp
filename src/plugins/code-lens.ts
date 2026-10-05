@@ -31,11 +31,14 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
   const text = workspace.documents.getText(uri);
   if (text === undefined) return [];
 
-  const lines = text.split('\n');
+  // Lines end at `\n`; a CRLF document's `\r` is part of the line break, not of the line
+  const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
   const lenses: CodeLensItem[] = [];
 
   const storyVarsPassage = workspace.passages.getStoryVariables();
-  const isStoryVarsFile = storyVarsPassage && storyVarsPassage.uri === uri;
+  const widgetLines = new Map(workspace.widgets.getAllWidgets()
+    .filter(w => w.uri === uri)
+    .map(w => [w.range.start.line, w.name] as const));
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const line = lines[lineNum];
@@ -46,8 +49,8 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
       const passageName = header.name;
       if (passageName === 'StoryData') continue;
 
-      const refs = findPassageReferences(passageName, workspace, true);
-      const refCount = Math.max(0, refs.length - 1);
+      // references only: a name declared twice is two declarations, not references
+      const refCount = findPassageReferences(passageName, workspace, false).length;
 
       lenses.push({
         range: {
@@ -62,9 +65,8 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     }
 
     // --- Widget definitions ---
-    const widgetMatch = line.match(/\{widget\s+["']?([^\s"'}]+)/);
-    if (widgetMatch) {
-      const widgetName = widgetMatch[1];
+    const widgetName = widgetLines.get(lineNum);
+    if (widgetName !== undefined) {
       const refs = findWidgetReferences(widgetName, workspace, true);
       const usageCount = Math.max(0, refs.length - 1);
 
@@ -80,7 +82,8 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     }
 
     // --- StoryVariables declarations ---
-    if (isStoryVarsFile) {
+    if (storyVarsPassage && storyVarsPassage.uri === uri &&
+      lineNum > storyVarsPassage.range.start.line && lineNum <= storyVarsPassage.range.end.line) {
       const varDeclMatch = line.match(/^\$(\w+)\s*=/);
       if (varDeclMatch) {
         const varName = varDeclMatch[1];

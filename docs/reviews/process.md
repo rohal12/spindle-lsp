@@ -151,22 +151,41 @@ satisfy this requirement without a new universal AST.
 
 ## Retain and measure the corpus
 
-The executable corpus is `test/review/convergence.review.ts`, with its separate
-`vitest.review.config.ts`. Run:
+The executable corpus is `test/review/convergence.review.ts` (matrix cells,
+sweeps and oracle in `test/review/support/`), with its separate
+`vitest.review.config.ts`. It is part of the normal gate: `npm test` runs the
+unit/integration suite and then the corpus. Run:
 
 ```sh
-npm test
+npm test                                   # unit + integration + the matrix
+npm run test:unit                          # unit + integration only
 npm run typecheck
-npm run review:convergence
+npm run review:convergence                 # the matrix alone; exits 0 when every cell passes
 npm run review:convergence -- --reporter=json --outputFile=/tmp/spindle-review.json
+REVIEW_WRITE_RESULTS=1 npm run review:convergence   # rewrite the results file after adding/changing cells
 ```
 
-The backlog command intentionally returns nonzero while desired behavior fails.
-It is not part of `npm test` yet. Do not invert assertions, add expected-failure
-markers, delete cases, or skip them to shrink the failure count. When a contract
-passes, move its checks into the normal suite, preserving IDs and issue mapping,
-or enable the full audit in CI once all contracts pass. Do not leave a repaired
-contract indefinitely outside the normal gate.
+Every cell is named `<family>/<role-or-spelling>/<context>[ <property>]` and
+recorded with its six dimensions and a state (pass / fail / not-run /
+not-applicable) in `docs/reviews/2026-10-06-cross-consumer-results.json`; the
+last test of the corpus fails when that file lists different cells or states
+from the run. A failing cell is a defect: do not invert assertions, add
+expected-failure markers, delete cases, or skip them to shrink the failure
+count. A repaired contract keeps its cells here (they are the retained
+evidence) and, when the fix has a narrower unit of behavior, also gets a unit
+test. A cell that cannot apply to a fixture throws `NotApplicable` with its
+reason, and the reason is kept in the results file.
+
+Add a cell by extending the family table (a new context, spelling, boundary or
+role), not by writing a new one-off test: every scene runs the same
+cross-consumer properties (ranges within the document and valid UTF-16;
+references/definition/prepareRename agreeing on every span; diagnostics,
+links, lenses and references agreeing with the runtime's own tokens; rename
+applied, rebuilt, re-diagnosed and re-read by the runtime; formatting
+idempotent with the diagnostics and runtime payload unchanged; semantic token
+validity; state differentials against a fresh build), and the interactive
+cells apply completion `textEdit`s and compare signature help, CLI and LSP
+over JSON-RPC with the in-process consumers.
 
 After each fix, run its entire contract row, neighboring contexts, and relevant
 closed-issue controls; then run normal checks. Broaden the matrix when new
@@ -189,4 +208,6 @@ its selected matrix has dispositions, every confirmed failure has an owner,
 evidence is retained, and remaining coverage gaps are explicit. This is a
 bounded completion criterion, not a claim that no other defects exist.
 
-The initial ledger is [2026-10-05-convergence.md](2026-10-05-convergence.md).
+The initial ledger is [2026-10-05-convergence.md](2026-10-05-convergence.md);
+the cross-consumer matrix and its defects are in
+[2026-10-06-cross-consumer.md](2026-10-06-cross-consumer.md).

@@ -12,10 +12,10 @@ import { DEFAULT_CAPABILITIES, type SpindleCapabilities } from './spindle-capabi
  * Regex to match $variable references including dot notation. A name may
  * start with a digit: Spindle's expression transform reads `$5` as a variable.
  */
-const varRefRegex = /\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
+const varRefRegex = /\$(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
 
 /** Regex to match %transient variable references including dot notation. */
-const transientRefRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
+const transientRefRegex = /(?<!\w)%(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
 
 /**
  * A StoryVariables / StoryTransients declaration line, as Spindle's
@@ -240,6 +240,22 @@ function blankLiteralKeeping(literal: string, blocks: boolean): string {
     }
   }
   return literal.replace(/[^\r\n]/g, (ch, i: number) => (keep[i] ? ch : ' '));
+}
+
+/**
+ * The code Spindle evaluates in a passage body: `content` with its comments,
+ * prose, bracket-link text and string contents blanked (line terminators and
+ * offsets kept), leaving the macro/expression code and the interpolations
+ * inside literals. `_temp` and `@local` variables only mean something there.
+ */
+export function executableCode(content: string, reading: BraceReading = {}): string {
+  let uncommented = content;
+  for (const pattern of COMMENT_PATTERNS) uncommented = uncommented.replace(pattern, blank);
+  uncommented = blankLinkText(content, uncommented, reading);
+  const referenced = replaceCodeLiterals(uncommented, blankLiteralText, undefined, reading);
+  const keep = new Array<boolean>(referenced.length).fill(false);
+  for (const [open, close] of codeBlocks(uncommented, createCodeScanner(uncommented, reading))) keep.fill(true, open, close + 1);
+  return referenced.replace(/[^\r\n]/g, (ch, i: number) => (keep[i] ? ch : ' '));
 }
 
 interface NullDeclaration {

@@ -27,7 +27,7 @@ export function getDefinition(
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
   const text = workspace.documents.getText(uri);
-  if (text === undefined) return null;
+  if (text === undefined || !workspace.hasPassages(uri)) return null;
 
   const lines = text.split('\n');
   if (position.line >= lines.length) return null;

@@ -113,6 +113,23 @@ export function isSpecialPassage(name: string): boolean {
 const CODE_PASSAGE_TAGS = new Set(['script', 'stylesheet']);
 
 /**
+ * Passage names that carry a meaning of their own: Twee's story passages and
+ * the ones Spindle reads by name at startup or around every passage. Renaming
+ * such a passage (or a reference to it) silently changes the passage's role,
+ * so navigation treats these names as fixed.
+ */
+const RESERVED_PASSAGE_NAMES: ReadonlySet<string> = new Set([
+  ...SPECIAL_PASSAGES,
+  'StoryTitle', 'StoryLoading', 'StoryTransients', 'StoryScript', 'SaveTitle',
+  'PassageReady', 'PassageDone', 'PassageHeader', 'PassageFooter',
+]);
+
+/** Whether `name` is a passage name with a fixed meaning (see RESERVED_PASSAGE_NAMES). */
+export function isReservedPassageName(name: string): boolean {
+  return RESERVED_PASSAGE_NAMES.has(name);
+}
+
+/**
  * Check whether a passage is a `script` or `stylesheet` passage. Its body is
  * compiled as JavaScript/CSS, not rendered as story markup, so story syntax
  * checks do not apply to it.
@@ -155,9 +172,12 @@ export function isMarkupPassage(passage: PassageRole): boolean {
  */
 export function maskNonMarkupPassages(text: string, passages: Array<PassageRole & { range: Range }>): string {
   const excluded = passages.filter(passage => !isMarkupPassage(passage));
-  if (excluded.length === 0) return text;
+  // Text before the first header belongs to no passage: the compiler ignores it
+  const prelude = passages.length > 0 ? Math.min(...passages.map(p => p.range.start.line)) : 0;
+  if (excluded.length === 0 && prelude === 0) return text;
 
   const lines = text.split('\n');
+  for (let i = 0; i < Math.min(prelude, lines.length); i++) lines[i] = lines[i].replace(/[^\r]/g, ' ');
   for (const passage of excluded) {
     const last = Math.min(passage.range.end.line, lines.length - 1);
     for (let i = passage.range.start.line + 1; i <= last; i++) {

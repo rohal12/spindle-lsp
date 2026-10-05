@@ -8,11 +8,12 @@
   },
   "scripts": {
     "build": "node esbuild.config.ts",
-    "test": "vitest run",
+    "test": "vitest run && npm run review:convergence",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
     "review:convergence": "vitest run --config vitest.review.config.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit && vitest run"
+    "lint": "tsc --noEmit && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

@@ -149,6 +149,15 @@ export class WorkspaceModel extends EventEmitter {
     return this.macros.isBlock(name) || (this.widgets.getWidget(name)?.block ?? false);
   }
 
+  /**
+   * Whether document `uri` declares any passage. A Twee document with no
+   * `::` header holds no passage (the compiler ignores text outside one), so
+   * there is no markup in it for any consumer to read.
+   */
+  hasPassages(uri: string): boolean {
+    return this.passages.getPassagesInDocument(uri).length > 0;
+  }
+
   /** Per-passage closer pairing for the macro heads of document `uri`. */
   macroHeadPairing(uri: string): MacroHeadPairing {
     return {

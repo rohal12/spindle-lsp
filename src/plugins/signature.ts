@@ -8,6 +8,8 @@ import { Parameters, type ParameterSlot } from '../core/parsing/parameter-valida
 import { activeWidgetArgument } from '../core/parsing/widget-arguments.js';
 import { buildLineStarts, createCodeScanner, SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
 import type { BraceReading } from '../core/parsing/code-scanner.js';
+import { inAttributeValue } from '../core/parsing/html-scanner.js';
+import { isMarkupPassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core signature help function (no LSP dependency)
@@ -153,9 +155,14 @@ export function getSignatureHelp(
   const lineStarts = buildLineStarts(text);
   if (position.line >= lineStarts.length) return null;
   // Only the cursor's passage can hold the macro being typed
-  const passageLine = workspace.passages.getPassageAt(uri, position.line)?.range.start.line ?? 0;
+  const cursorPassage = workspace.passages.getPassageAt(uri, position.line);
+  // script, stylesheet and data passages are not story markup: no macro is being typed there
+  if (cursorPassage && !isMarkupPassage(cursorPassage)) return null;
+  const passageLine = cursorPassage?.range.start.line ?? 0;
   const lineEnd = position.line + 1 < lineStarts.length ? lineStarts[position.line + 1] - 1 : text.length;
   const cursor = Math.min(lineStarts[position.line] + position.character, lineEnd);
+  // Spindle outputs a macro in an HTML attribute value as text (SP103): nothing is being called there
+  if (cursor > 0 && inAttributeValue(text, cursor - 1)) return null;
   const textBefore = text.slice(lineStarts[passageLine], cursor);
 
   const enclosing = findEnclosingMacro(textBefore, workspace.capabilities);

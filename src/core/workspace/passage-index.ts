@@ -9,6 +9,12 @@ export class PassageIndex {
   /** Per-URI list of passages. */
   private byUri = new Map<string, Passage[]>();
 
+  /** The documents' URIs in a fixed (sorted) order, so lookups never depend on the order documents were opened. */
+  private sortedUris: string[] | null = null;
+  private uris(): string[] {
+    return (this.sortedUris ??= [...this.byUri.keys()].sort());
+  }
+
   /**
    * Parse all passage headers in the given document text and
    * store them, replacing any previous entries for this URI.
@@ -16,6 +22,7 @@ export class PassageIndex {
   rebuild(uri: string, text: string): void {
     // Remove old entries for this URI
     this.byUri.delete(uri);
+    this.sortedUris = null;
 
     const lines = text.split('\n');
     const passages: Passage[] = [];
@@ -55,22 +62,39 @@ export class PassageIndex {
 
     if (passages.length > 0) {
       this.byUri.set(uri, passages);
+      this.sortedUris = null;
     }
   }
 
   /** Remove all passages for a URI. */
   remove(uri: string): void {
     this.byUri.delete(uri);
+    this.sortedUris = null;
   }
 
-  /** Get a passage by name. Returns the first match found. */
+  /**
+   * Get a passage by name. A name declared more than once resolves to the
+   * first declaration by document URI, then by line, whatever order the
+   * documents were opened in.
+   */
   getPassage(name: string): Passage | undefined {
-    for (const passages of this.byUri.values()) {
-      for (const p of passages) {
+    for (const uri of this.uris()) {
+      for (const p of this.byUri.get(uri)!) {
         if (p.name === name) return p;
       }
     }
     return undefined;
+  }
+
+  /** Every declaration of a passage name, in the order getPassage() prefers them. */
+  getPassages(name: string): Passage[] {
+    const found: Passage[] = [];
+    for (const uri of this.uris()) {
+      for (const p of this.byUri.get(uri)!) {
+        if (p.name === name) found.push(p);
+      }
+    }
+    return found;
   }
 
   /** Get the passage containing a specific line in a document. */
@@ -92,11 +116,15 @@ export class PassageIndex {
     return this.byUri.get(uri) ?? [];
   }
 
+  private getAllPassagesByUri(): Passage[][] {
+    return this.uris().map(uri => this.byUri.get(uri)!);
+  }
+
   /** Get all passages across all documents. */
   getAllPassages(): Passage[] {
     const result: Passage[] = [];
-    for (const passages of this.byUri.values()) {
-      result.push(...passages);
+    for (const uri of this.uris()) {
+      result.push(...this.byUri.get(uri)!);
     }
     return result;
   }
@@ -122,7 +150,7 @@ export class PassageIndex {
    */
   getDuplicates(): Map<string, Passage[]> {
     const byName = new Map<string, Passage[]>();
-    for (const passages of this.byUri.values()) {
+    for (const passages of this.getAllPassagesByUri()) {
       for (const p of passages) {
         const existing = byName.get(p.name);
         if (existing) {
