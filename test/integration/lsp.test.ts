@@ -1,6 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { spawn } from 'node:child_process';
+import { build } from 'esbuild';
+import {
+  createMessageConnection,
+  StreamMessageReader,
+  StreamMessageWriter,
+  type MessageConnection,
+  type Diagnostic as LspDiagnostic,
+} from 'vscode-languageserver/node.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getCompletions } from '../../src/plugins/completions.js';
@@ -603,5 +614,278 @@ describe('Integration: CLI end-to-end', () => {
       (f: { diagnostics: unknown[] }) => f.diagnostics.length > 0,
     );
     expect(withDiags.length).toBeGreaterThan(0);
+  });
+});
+
+// =========================================================================
+// LSP protocol integration (spawned server over stdio)
+// =========================================================================
+
+interface PublishedDiagnostics {
+  uri: string;
+  diagnostics: LspDiagnostic[];
+}
+
+interface LspSession {
+  conn: MessageConnection;
+  publishes: PublishedDiagnostics[];
+  /** Resolve with the first publish for `uri` (at or after index `from`) matching `predicate`. */
+  waitForDiagnostics(
+    uri: string,
+    predicate: (diags: LspDiagnostic[]) => boolean,
+    from?: number,
+  ): Promise<LspDiagnostic[]>;
+  /** Latest diagnostics published for `uri`, or undefined if none. */
+  latest(uri: string): LspDiagnostic[] | undefined;
+  close(): Promise<void>;
+}
+
+const repoRoot = join(import.meta.dirname, '..', '..');
+let serverBundleDir: string | undefined;
+let serverBundle: string;
+const activeSessions: LspSession[] = [];
+const tempDirs: string[] = [];
+
+/**
+ * Bundle the server so these tests do not depend on a prior `npm run build`.
+ * The bundle lives under node_modules/.cache so runtime lookups of
+ * @rohal12/spindle (builtin macro registry) still resolve.
+ */
+async function bundleServer(): Promise<void> {
+  const cacheDir = join(repoRoot, 'node_modules', '.cache');
+  mkdirSync(cacheDir, { recursive: true });
+  serverBundleDir = mkdtempSync(join(cacheDir, 'spindle-lsp-test-'));
+  serverBundle = join(serverBundleDir, 'bin.js');
+  await build({
+    entryPoints: [join(repoRoot, 'src', 'bin.ts')],
+    bundle: true,
+    platform: 'node',
+    target: 'node18',
+    format: 'esm',
+    outfile: serverBundle,
+    external: ['prettier'],
+    define: { SPINDLE_LSP_VERSION: JSON.stringify('test') },
+    banner: {
+      js: 'import { createRequire as __createRequire } from "node:module";\nconst require = __createRequire(import.meta.url);',
+    },
+    logLevel: 'silent',
+  });
+}
+
+function makeTempWorkspace(files: Record<string, string> = {}): string {
+  const dir = mkdtempSync(join(tmpdir(), 'spindle-lsp-ws-'));
+  tempDirs.push(dir);
+  for (const [name, text] of Object.entries(files)) {
+    writeFileSync(join(dir, name), text);
+  }
+  return dir;
+}
+
+function uriFor(dir: string, name: string): string {
+  return pathToFileURL(join(dir, name)).toString();
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Spawn the server, run initialize/initialized, and return a session. */
+async function startLsp(
+  rootDir: string,
+  initializationOptions: Record<string, unknown> = {},
+): Promise<LspSession> {
+  const proc = spawn(process.execPath, [serverBundle, '--stdio'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  proc.stderr!.resume();
+  const conn = createMessageConnection(
+    new StreamMessageReader(proc.stdout!),
+    new StreamMessageWriter(proc.stdin!),
+  );
+
+  const publishes: PublishedDiagnostics[] = [];
+  const waiters: Array<() => void> = [];
+  conn.onNotification('textDocument/publishDiagnostics', (params: PublishedDiagnostics) => {
+    publishes.push(params);
+    for (const w of waiters.slice()) w();
+  });
+  // Accept client/registerCapability and any other server-to-client request.
+  conn.onRequest(() => null);
+  conn.listen();
+
+  await conn.sendRequest('initialize', {
+    processId: process.pid,
+    rootUri: pathToFileURL(rootDir).toString(),
+    capabilities: {},
+    initializationOptions,
+  });
+  await conn.sendNotification('initialized', {});
+
+  const session: LspSession = {
+    conn,
+    publishes,
+    latest(uri) {
+      for (let i = publishes.length - 1; i >= 0; i--) {
+        if (publishes[i].uri === uri) return publishes[i].diagnostics;
+      }
+      return undefined;
+    },
+    waitForDiagnostics(uri, predicate, from = 0) {
+      return new Promise((resolve, reject) => {
+        let index = from;
+        const check = () => {
+          for (; index < publishes.length; index++) {
+            const p = publishes[index];
+            if (p.uri === uri && predicate(p.diagnostics)) {
+              cleanup();
+              resolve(p.diagnostics);
+              return;
+            }
+          }
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error(
+            `Timed out waiting for diagnostics on ${uri}; latest codes: ` +
+            JSON.stringify(session.latest(uri)?.map(d => d.code)),
+          ));
+        }, 4000);
+        const cleanup = () => {
+          clearTimeout(timer);
+          const i = waiters.indexOf(check);
+          if (i >= 0) waiters.splice(i, 1);
+        };
+        waiters.push(check);
+        check();
+      });
+    },
+    async close() {
+      try {
+        await conn.sendRequest('shutdown');
+        await conn.sendNotification('exit');
+      } catch {
+        // Server may already be gone
+      }
+      conn.dispose();
+      proc.kill();
+    },
+  };
+  activeSessions.push(session);
+  return session;
+}
+
+const codesOf = (diags: LspDiagnostic[]) => diags.map(d => String(d.code));
+const hasCode = (code: string) => (diags: LspDiagnostic[]) => codesOf(diags).includes(code);
+const lacksCode = (code: string) => (diags: LspDiagnostic[]) => !codesOf(diags).includes(code);
+
+async function documentSymbolNames(session: LspSession, uri: string): Promise<string[]> {
+  const symbols = await session.conn.sendRequest('textDocument/documentSymbol', {
+    textDocument: { uri },
+  }) as Array<{ name: string }>;
+  return symbols.map(s => s.name);
+}
+
+function didOpen(session: LspSession, uri: string, text: string): Promise<void> {
+  return session.conn.sendNotification('textDocument/didOpen', {
+    textDocument: { uri, languageId: 'twee', version: 1, text },
+  });
+}
+
+function didChangeFull(session: LspSession, uri: string, version: number, text: string): Promise<void> {
+  return session.conn.sendNotification('textDocument/didChange', {
+    textDocument: { uri, version },
+    contentChanges: [{ text }],
+  });
+}
+
+function didClose(session: LspSession, uri: string): Promise<void> {
+  return session.conn.sendNotification('textDocument/didClose', {
+    textDocument: { uri },
+  });
+}
+
+/** FileChangeType: 1 = Created, 2 = Changed, 3 = Deleted. */
+function watchedFileChanged(session: LspSession, uri: string, type: 1 | 2 | 3): Promise<void> {
+  return session.conn.sendNotification('workspace/didChangeWatchedFiles', {
+    changes: [{ uri, type }],
+  });
+}
+
+describe('Integration: LSP server over stdio', () => {
+  beforeAll(async () => {
+    await bundleServer();
+  });
+
+  afterEach(async () => {
+    while (activeSessions.length > 0) {
+      await activeSessions.pop()!.close();
+    }
+    while (tempDirs.length > 0) {
+      rmSync(tempDirs.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  afterAll(() => {
+    if (serverBundleDir) rmSync(serverBundleDir, { recursive: true, force: true });
+  });
+
+  // -----------------------------------------------------------------------
+  // #14: unsaved editor buffers stay authoritative
+  // -----------------------------------------------------------------------
+
+  it('keeps an unsaved buffer opened before the initial scan finishes (#14)', async () => {
+    const dir = makeTempWorkspace({ 'story.twee': ':: Disk\nOn disk.\n' });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+
+    await didOpen(session, uri, ':: Unsaved\nIn the editor.\n');
+    // Wait for the initial scan to finish (modelReady publishes the URI)
+    await session.waitForDiagnostics(uri, () => true, 0);
+    await sleep(400);
+
+    expect(await documentSymbolNames(session, uri)).toEqual(['Unsaved']);
+  });
+
+  it('ignores watched-file changes and deletions for open documents until didClose (#14)', async () => {
+    const dir = makeTempWorkspace({
+      'story.twee': ':: Disk\nOn disk.\n',
+      'other.twee': ':: Other\n[[Disk]]\n',
+    });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(uri, () => true);
+
+    await didOpen(session, uri, ':: Disk\nOn disk.\n');
+    await didChangeFull(session, uri, 2, ':: Edited\nUnsaved edit.\n');
+
+    // External change to the file on disk while it has unsaved edits
+    writeFileSync(join(dir, 'story.twee'), ':: DiskChanged\nChanged on disk.\n');
+    await watchedFileChanged(session, uri, 2);
+    expect(await documentSymbolNames(session, uri)).toEqual(['Edited']);
+
+    // External deletion while the editor still holds the buffer
+    unlinkSync(join(dir, 'story.twee'));
+    await watchedFileChanged(session, uri, 3);
+    expect(await documentSymbolNames(session, uri)).toEqual(['Edited']);
+  });
+
+  it('keeps passages of an on-disk file after its editor tab closes (#9)', async () => {
+    const dir = makeTempWorkspace({
+      'start.twee': ':: Start\n[[Target]]\n',
+      'target.twee': ':: Target\nArrived.\n',
+    });
+    const startUri = uriFor(dir, 'start.twee');
+    const targetUri = uriFor(dir, 'target.twee');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(startUri, lacksCode('SP300'));
+
+    await didOpen(session, targetUri, ':: Target\nArrived.\n');
+    await didClose(session, targetUri);
+    const mark = session.publishes.length;
+    await sleep(400);
+
+    expect(await documentSymbolNames(session, targetUri)).toEqual(['Target']);
+    const startDiags = session.publishes.slice(mark).filter(p => p.uri === startUri);
+    for (const p of startDiags) {
+      expect(codesOf(p.diagnostics)).not.toContain('SP300');
+    }
   });
 });

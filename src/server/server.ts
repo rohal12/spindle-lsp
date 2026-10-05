@@ -113,6 +113,11 @@ export function startServer(_args: string[]): void {
         try {
           const fileContents = await scanWorkspaceFiles(workspaceRoot);
           console.error('[spindle-lsp] scanned', fileContents.size, 'files from root:', workspaceRoot ?? 'undefined');
+          // Documents opened in the editor while the scan ran are
+          // authoritative — don't replace their (possibly unsaved) text.
+          for (const uri of documents.keys()) {
+            fileContents.delete(uri);
+          }
           workspace.initialize(fileContents);
           console.error('[spindle-lsp] workspace initialized, macros:', workspace.macros.getAllMacros().length);
         } catch (err) {
@@ -176,9 +181,12 @@ export function startServer(_args: string[]): void {
     if (!workspace) return;
 
     for (const change of changes) {
+      // The editor owns open documents: ignore disk changes/deletions until
+      // didClose, which re-reads the file from disk (or removes it).
+      if (documents.has(change.uri)) continue;
+
       if (change.type === FileChangeType.Deleted) {
         workspace.documents.close(change.uri);
-        documents.delete(change.uri);
       } else {
         // Created or Changed — re-read from disk
         try {
