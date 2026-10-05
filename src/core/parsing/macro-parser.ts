@@ -252,14 +252,26 @@ export interface MacroHeadName {
   range: Range;
 }
 
+/** Passage-scoped closer pairing for {@link macroHeadNames}. */
+export interface MacroHeadPairing {
+  isBlock: (name: string) => boolean;
+  passageStartLines: number[];
+}
+
 /**
  * The macro-head names of a document, delimited by the shared macro grammar
  * (selector prefixes, hyphenated names, `{/name}` closers, attribute values
  * and unclosed heads excluded). Widget navigation and rename use this so
  * their notion of a call matches what Spindle's tokenizer executes.
  */
-export function macroHeadNames(text: string): MacroHeadName[] {
-  return parseMacros(text).map((macro) => {
+export function macroHeadNames(text: string, pairing?: MacroHeadPairing): MacroHeadName[] {
+  const macros = parseMacros(text);
+  if (pairing) pairMacros(macros, pairing.isBlock, pairing.passageStartLines);
+  return macros
+    // Spindle rejects a closer with no open container in its passage
+    // ("Unexpected closing"), so it never executes as a call.
+    .filter((macro) => !pairing || macro.open || !pairing.isBlock(macro.name) || macro.pair !== -1)
+    .map((macro) => {
     const skip = 1 + (macro.open ? (macro.cssPrefix ? macro.cssPrefix.length + 1 : 0) : 1);
     const { start } = macro.range;
     return {
@@ -274,8 +286,12 @@ export function macroHeadNames(text: string): MacroHeadName[] {
 }
 
 /** The macro-head name containing `position`, if any. */
-export function macroHeadNameAt(text: string, position: { line: number; character: number }): MacroHeadName | null {
-  for (const head of macroHeadNames(text)) {
+export function macroHeadNameAt(
+  text: string,
+  position: { line: number; character: number },
+  pairing?: MacroHeadPairing,
+): MacroHeadName | null {
+  for (const head of macroHeadNames(text, pairing)) {
     const { start, end } = head.range;
     if (start.line === position.line && position.character >= start.character && position.character <= end.character) {
       return head;

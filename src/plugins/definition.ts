@@ -38,7 +38,7 @@ export function getDefinition(
   if (passageResult) return passageResult;
 
   // --- Widget name -> definition ---
-  const widgetResult = getWidgetDefinition(text, position, workspace);
+  const widgetResult = getWidgetDefinition(uri, text, position, workspace);
   if (widgetResult) return widgetResult;
 
   return null;
@@ -65,11 +65,12 @@ function getPassageRefDefinition(
 }
 
 function getWidgetDefinition(
+  uri: string,
   text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  const head = macroHeadNameAt(text, position);
+  const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
   if (!head) return null;
   // Only if it's not a known macro
   if (workspace.macros.getMacro(head.name)) return null;

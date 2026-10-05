@@ -128,6 +128,14 @@ export class WorkspaceModel extends EventEmitter {
     return this.macros.isBlock(name) || (this.widgets.getWidget(name)?.block ?? false);
   }
 
+  /** Per-passage closer pairing for the macro heads of document `uri`. */
+  macroHeadPairing(uri: string): { isBlock: (name: string) => boolean; passageStartLines: number[] } {
+    return {
+      isBlock: (name) => this.isContainer(name),
+      passageStartLines: this.passages.getPassagesInDocument(uri).map((p) => p.range.start.line),
+    };
+  }
+
   /**
    * The story format named by the project's StoryData passage (trimmed), or
    * undefined if no StoryData passage names one.

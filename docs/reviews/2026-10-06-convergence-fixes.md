@@ -22,6 +22,9 @@ Normal gate: `npm test` 63 files / 1,402 tests pass; `npm run typecheck` clean.
 Integration note: Q68-other-doc was adjusted after merge because #78 reports
 SP202 once, on the owning story document; the test now locates that document.
 
-Known gaps: Spindle `>=0.34.0` peer range unverified; #74 stray `{/w}` closers
-still count as widget references; #80 no longer tokenizes keywords outside
+Known gaps: Spindle `>=0.34.0` peer range unverified; #80 no longer tokenizes keywords outside
 macro arguments; #78 SP202 owner vs. quickfix target (`getUris()[0]`) may differ.
+
+Follow-up (#74): unmatched block-widget closers (no open container in the same
+passage; Spindle 0.45.1 throws "Unexpected closing") are no longer references,
+definition or rename targets (`macroHeadNames` pairing; tests G74/C-G74).

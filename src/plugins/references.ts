@@ -76,7 +76,7 @@ export function findReferences(
 
   // --- Widget ---
   {
-    const head = macroHeadNameAt(text, position);
+    const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
     if (head) {
       const widget = workspace.widgets.getWidget(head.name);
       if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
@@ -272,7 +272,7 @@ export function findWidgetReferences(
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
-    for (const head of macroHeadNames(docText)) {
+    for (const head of macroHeadNames(docText, workspace.macroHeadPairing(docUri))) {
       if (head.closing && !isBlock) continue;
       if (head.name.toLowerCase() === lowerName) {
         locations.push({ uri: docUri, range: head.range });

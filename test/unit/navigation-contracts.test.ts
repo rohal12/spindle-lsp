@@ -115,4 +115,47 @@ describe('W74: widget spelling shared by navigation and edits (#74)', () => {
     const model = workspace(':: StoryVariables\n:: Start\n{if true}x{/if}', [[declUri, ':: Widgets [widget]\n{widget "if"}hi{/widget}']]);
     expect(getDefinition(uri, { line: 2, character: 2 }, model)).toBeNull();
   });
+
+  describe('G74: stray closers are not widget references (#74 follow-up)', () => {
+    const block = [[declUri, ':: Widgets [widget]\n{widget "wrap" block}{@children}{/widget}\n{widget "my-box" block}{@children}{/widget}']] as Array<[string, string]>;
+    const stray = ':: StoryVariables\n:: Start\n{/wrap}\n{wrap}x{/wrap}\n{/wrap}';
+
+    it('G74: unmatched closers are excluded from references', () => {
+      const model = workspace(stray, block);
+      const refs = findReferences(uri, { line: 3, character: 2 }, model, false);
+      expect(refs.map(r => r.range.start.line).sort()).toEqual([3, 3]);
+      expect(findWidgetReferences('wrap', model, false)).toHaveLength(2);
+    });
+
+    it('G74: stray closer has no prepareRename, rename or definition', () => {
+      const model = workspace(stray, block);
+      expect(prepareRename(uri, { line: 2, character: 3 }, model)).toBeNull();
+      expect(getDefinition(uri, { line: 2, character: 3 }, model)).toBeNull();
+      expect(findReferences(uri, { line: 2, character: 3 }, model, false)).toEqual([]);
+      expect(prepareRename(uri, { line: 4, character: 3 }, model)).toBeNull();
+    });
+
+    it('G74: rename applied leaves stray closers untouched', () => {
+      const model = workspace(stray, block);
+      const edits = computeRename(uri, { line: 3, character: 2 }, 'renamed', model);
+      expect(apply(model.documents.getText(uri)!, edits.get(uri) ?? []))
+        .toBe(':: StoryVariables\n:: Start\n{/wrap}\n{renamed}x{/renamed}\n{/wrap}');
+    });
+
+    it('G74: closers do not pair across passages', () => {
+      const model = workspace(':: StoryVariables\n:: A\n{wrap}x\n:: B\ny{/wrap}', block);
+      expect(findWidgetReferences('wrap', model, false)).toHaveLength(1);
+      expect(prepareRename(uri, { line: 4, character: 4 }, model)).toBeNull();
+    });
+
+    it('C-G74: paired closers (CSS-prefixed and hyphenated) stay references and rename together', () => {
+      const model = workspace(':: StoryVariables\n:: Start\n{.box my-box}hi{/my-box}\n{#id wrap}x{/wrap}', block);
+      expect(findWidgetReferences('my-box', model, false)).toHaveLength(2);
+      expect(findWidgetReferences('wrap', model, false)).toHaveLength(2);
+      expect(getDefinition(uri, { line: 2, character: 18 }, model)).not.toBeNull();
+      expect(prepareRename(uri, { line: 2, character: 18 }, model)).not.toBeNull();
+      const edits = computeRename(uri, { line: 2, character: 8 }, 'cell', model);
+      expect(apply(model.documents.getText(uri)!, edits.get(uri) ?? [])).toContain('{.box cell}hi{/cell}');
+    });
+  });
 });
