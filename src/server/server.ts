@@ -220,7 +220,8 @@ export function startServer(_args: string[]): void {
         continue;
       }
 
-      // Dependency/build-output JS is not a macro source (matches the scan)
+      // Hidden, dependency and build-output JS is not a macro source
+      // (same predicate as the initial scan)
       if (isMacroSource(change.uri)
         && isExcludedMacroSource(uriToFsPath(change.uri), workspaceRoot)) {
         continue;

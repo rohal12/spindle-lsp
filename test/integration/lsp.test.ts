@@ -1079,6 +1079,38 @@ describe('Integration: LSP server over stdio', () => {
     ]);
   });
 
+  it('skips JS/TS in dot-folders both in the initial scan and on watcher events (#47)', async () => {
+    const dir = makeTempWorkspace({
+      'macros.js': 'Story.defineMacro({ name: "hello", render() { return null; } });\n',
+      'story.tw': ':: Start\n{hello}\n{storybook}\n{cfg}\n[[Missing]]\n',
+    });
+    mkdirSync(join(dir, '.storybook'));
+    writeFileSync(
+      join(dir, '.storybook', 'preview.js'),
+      'Story.defineMacro({ name: "storybook", render() { return null; } });\n',
+    );
+    mkdirSync(join(dir, '.config'));
+    writeFileSync(
+      join(dir, '.config', 'macros.ts'),
+      'Story.defineMacro({ name: "cfg", render(): null { return null; } });\n',
+    );
+    const uri = uriFor(dir, 'story.tw');
+    const session = await startLsp(dir);
+    await didOpen(session, uri, readFileSync(join(dir, 'story.tw'), 'utf-8'));
+
+    const expected = ['Unrecognized macro: {storybook}', 'Unrecognized macro: {cfg}'];
+    const diags = await session.waitForDiagnostics(uri, hasCode('SP300'));
+    expect(diags.filter(d => d.code === 'SP100').map(d => d.message)).toEqual(expected);
+
+    // Watcher events for them must agree with the initial scan
+    await watchedFileChanged(session, uriFor(dir, '.storybook/preview.js'), 2);
+    await watchedFileChanged(session, uriFor(dir, '.config/macros.ts'), 2);
+    const mark = session.publishes.length;
+    await didChangeFull(session, uri, 2, ':: Start\n{hello}\n{storybook}\n{cfg}\n[[Missing]]\n\n');
+    const after = await session.waitForDiagnostics(uri, hasCode('SP300'), mark);
+    expect(after.filter(d => d.code === 'SP100').map(d => d.message)).toEqual(expected);
+  });
+
   it('reloads macros from a legacy t3lt.twee-config.yaml change (#29)', async () => {
     const story = ':: Start\n{legacymacro}\n';
     const dir = makeTempWorkspace({
