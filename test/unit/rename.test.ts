@@ -154,6 +154,37 @@ describe('computeRename', () => {
     expect(out['test.tw']).toBe(':: Start\n{hello "Sam"} {farewell "Sam"}');
   });
 
+  it('renames closing tags of block widgets, including nested ones', () => {
+    const files = {
+      'widgets.tw': [
+        ':: Widgets [widget]',
+        '{widget "wrap"}<div>{@children}</div>{/widget}',
+        '{widget "outer"}{wrap}{@children}{/wrap}{/widget}',
+      ].join('\n'),
+      'test.tw': ':: Start\n{wrap}hello {Wrap}inner{/Wrap}{/wrap}\n{outer}x{/outer}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+    const expected = {
+      'widgets.tw': [
+        ':: Widgets [widget]',
+        '{widget "newWrap"}<div>{@children}</div>{/widget}',
+        '{widget "outer"}{newWrap}{@children}{/newWrap}{/widget}',
+      ].join('\n'),
+      'test.tw': ':: Start\n{newWrap}hello {newWrap}inner{/newWrap}{/newWrap}\n{outer}x{/outer}',
+    };
+
+    // From an opening tag, a closing tag and the definition
+    for (const [uri, pos] of [
+      ['file:///test.tw', { line: 1, character: 2 }],
+      ['file:///test.tw', { line: 1, character: 32 }],
+      ['file:///widgets.tw', { line: 1, character: 10 }],
+    ] as const) {
+      expect(applyRename(files, computeRename(uri, pos, 'newWrap', ws))).toEqual(expected);
+    }
+  });
+
   it('renames widget invocations spelled with a different case', () => {
     const files = {
       'widgets.tw': ':: W [widget]\n{widget "Hello" @name}Hi{/widget}',

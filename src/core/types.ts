@@ -81,4 +81,6 @@ export interface WidgetDef {
   range: Range;
   /** Range of the widget name inside the definition tag. */
   nameRange: Range;
+  /** Block (container) widget: its body contains `{@children}`, so it takes a `{/name}` closing tag. */
+  block: boolean;
 }

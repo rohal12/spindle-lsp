@@ -78,14 +78,16 @@ export function findReferences(
 
   // --- Widget ---
   {
-    const widgetRegex = /\{([A-Za-z_$][\w$]*)/g;
+    const widgetRegex = /\{\/?([A-Za-z_$][\w$]*)/g;
     let match: RegExpExecArray | null;
     while ((match = widgetRegex.exec(line)) !== null) {
       const name = match[1];
-      const nameStart = match.index + 1;
+      const nameStart = match.index + match[0].length - name.length;
       const nameEnd = nameStart + name.length;
       if (position.character >= nameStart && position.character <= nameEnd) {
-        if (!workspace.macros.getMacro(name) && workspace.widgets.getWidget(name)) {
+        const widget = workspace.widgets.getWidget(name);
+        const isClosing = match[0][1] === '/';
+        if (!workspace.macros.getMacro(name) && widget && (!isClosing || widget.block)) {
           return findWidgetReferences(name, workspace, includeDeclaration);
         }
       }
@@ -246,18 +248,18 @@ export function findWidgetReferences(
   includeDeclaration: boolean,
 ): ReferenceLocation[] {
   const locations: ReferenceLocation[] = [];
+  const widget = workspace.widgets.getWidget(widgetName);
 
   // Include declaration
-  if (includeDeclaration) {
-    const widget = workspace.widgets.getWidget(widgetName);
-    if (widget) {
-      locations.push({ uri: widget.uri, range: widget.range });
-    }
+  if (includeDeclaration && widget) {
+    locations.push({ uri: widget.uri, range: widget.range });
   }
 
-  // Scan all documents for {widgetName ...} invocations (case-insensitive, like Spindle)
-  const widgetInvocationRegex = /\{([A-Za-z_$][\w$]*)\b/g;
+  // Scan all documents for {widgetName ...} invocations (case-insensitive, like Spindle),
+  // plus {/widgetName} closing tags when the widget is a block widget.
+  const widgetInvocationRegex = /\{(\/)?([A-Za-z_$][\w$]*)\b/g;
   const lowerName = widgetName.toLowerCase();
+  const isBlock = widget?.block ?? false;
 
   for (const docUri of workspace.documents.getUris()) {
     const docText = workspace.documents.getText(docUri);
@@ -267,19 +269,17 @@ export function findWidgetReferences(
     for (let lineNum = 0; lineNum < lines.length; lineNum++) {
       const line = lines[lineNum];
 
-      // Skip widget definition lines
-      if (/\{widget\s+"/i.test(line)) continue;
-
       widgetInvocationRegex.lastIndex = 0;
       let match: RegExpExecArray | null;
       while ((match = widgetInvocationRegex.exec(line)) !== null) {
-        if (match[1].toLowerCase() === lowerName) {
-          const nameStart = match.index + 1; // skip '{'
+        if (match[1] && !isBlock) continue;
+        if (match[2].toLowerCase() === lowerName) {
+          const nameStart = match.index + 1 + (match[1] ? 1 : 0); // skip '{' or '{/'
           locations.push({
             uri: docUri,
             range: {
               start: { line: lineNum, character: nameStart },
-              end: { line: lineNum, character: nameStart + match[1].length },
+              end: { line: lineNum, character: nameStart + match[2].length },
             },
           });
         }

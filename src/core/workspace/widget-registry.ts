@@ -80,12 +80,19 @@ export class WidgetRegistry {
           end: toPosition(nameStart + widgetName.length),
         };
 
+        // Like Spindle, a widget whose body contains {@children} is a block widget
+        const bodyStart = match.index + match[0].length;
+        const rest = content.slice(bodyStart);
+        const closeIdx = rest.search(/\{\/widget\}/i);
+        const body = closeIdx >= 0 ? rest.slice(0, closeIdx) : rest;
+
         this.widgets.set(widgetName.toLowerCase(), {
           name: widgetName,
           params: parseParams(match[3]),
           uri: passage.uri,
           range,
           nameRange,
+          block: /\{@children\}/.test(body),
         });
       }
     }

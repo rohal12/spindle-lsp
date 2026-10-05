@@ -180,4 +180,19 @@ describe('WidgetRegistry', () => {
     expect(registry.getAllWidgets().map(w => w.name)).toEqual(['Hello']);
   });
 
+  it('marks widgets whose body contains {@children} as block widgets', () => {
+    const registry = scanWidgets([
+      ':: W [widget]',
+      '{widget "wrap"}<div>{@children}</div>{/widget}',
+      '{widget "panel" @title}',
+      '<h2>{@title}</h2>',
+      '{@children}',
+      '{/widget}',
+      '{widget "plain" @x}{@x}{/widget}',
+    ].join('\n'));
+    expect(registry.getWidget('wrap')!.block).toBe(true);
+    expect(registry.getWidget('panel')!.block).toBe(true);
+    expect(registry.getWidget('plain')!.block).toBe(false);
+  });
+
 });

@@ -193,16 +193,18 @@ function resolveSymbolAtCursor(
     }
   }
 
-  // --- Widget invocation: {widgetName ...} ---
+  // --- Widget invocation: {widgetName ...} or block widget closing tag {/widgetName} ---
   {
-    const re = /\{([A-Za-z_$][\w$]*)/g;
+    const re = /\{\/?([A-Za-z_$][\w$]*)/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(line)) !== null) {
       const name = match[1];
-      const nameStart = match.index + 1;
+      const nameStart = match.index + match[0].length - name.length;
       const nameEnd = nameStart + name.length;
       if (position.character >= nameStart && position.character <= nameEnd) {
-        if (!workspace.macros.getMacro(name) && workspace.widgets.getWidget(name)) {
+        const widget = workspace.widgets.getWidget(name);
+        const isClosing = match[0][1] === '/';
+        if (!workspace.macros.getMacro(name) && widget && (!isClosing || widget.block)) {
           return {
             kind: 'widget',
             name,
