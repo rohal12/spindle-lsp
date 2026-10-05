@@ -308,10 +308,9 @@ function minimalEdit(oldText: string, newText: string): TextEdit {
  * Insert `body` (one or more complete lines, `\n`-terminated) at line index
  * `line`. When `line` lies past the last line (EOF), the edit targets the real
  * end of the text and a separator is prepended unless EOF is already at a line
- * boundary. Line endings follow the document (CRLF aware).
+ * boundary. `eol` is the line ending to write (see {@link lineEndingFor}).
  */
-function insertLinesAt(text: string, line: number, body: string): { range: Range; newText: string } {
-  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+function insertLinesAt(text: string, line: number, body: string, eol: string): { range: Range; newText: string } {
   const lines = text.split('\n');
   const normalized = body.replace(/\r?\n/g, eol);
   if (line < lines.length) {
@@ -323,11 +322,30 @@ function insertLinesAt(text: string, line: number, body: string): { range: Range
   return { range: { start: end, end }, newText: (atBoundary ? '' : eol) + normalized };
 }
 
+/**
+ * The line ending to write into document `uri`: its own when it has a line
+ * break (CRLF if it uses any), otherwise (empty or header-only, nothing to
+ * detect) that of the first other story document that has one, otherwise LF.
+ */
+function lineEndingFor(workspace: WorkspaceModel, uri: string): string {
+  const own = workspace.documents.getText(uri) ?? '';
+  const detect = (text: string) => (text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : undefined);
+  const fromOwn = detect(own);
+  if (fromOwn) return fromOwn;
+  for (const other of workspace.documents.getUris()) {
+    if (other === uri || isMacroSource(other)) continue;
+    const found = detect(workspace.documents.getText(other) ?? '');
+    if (found) return found;
+  }
+  return '\n';
+}
+
 /** Line index where the declaration passage content ends (or `lines.length`). */
 function declarationInsertEdit(
   text: string,
   headerLine: number,
   declaration: string,
+  eol: string,
 ): { range: Range; newText: string } {
   const lines = text.split('\n');
   let contentEnd = lines.length;
@@ -339,7 +357,7 @@ function declarationInsertEdit(
   }
   // A trailing newline yields an empty final "line" that is not content.
   if (contentEnd === lines.length && text.endsWith('\n')) contentEnd = lines.length;
-  return insertLinesAt(text, contentEnd, declaration);
+  return insertLinesAt(text, contentEnd, declaration, eol);
 }
 
 // ---------------------------------------------------------------------------
@@ -363,7 +381,7 @@ function fixUndeclaredVariable(
   const text = workspace.documents.getText(storyVarsUri);
   if (text === undefined) return null;
 
-  const edit = declarationInsertEdit(text, storyVars.headerEnd.end.line, `$${varName} = 0\n`);
+  const edit = declarationInsertEdit(text, storyVars.headerEnd.end.line, `$${varName} = 0\n`, lineEndingFor(workspace, storyVarsUri));
 
   return {
     title: `Declare '$${varName}' in StoryVariables`,
@@ -387,7 +405,7 @@ function fixNoStoryVariables(
   const text = workspace.documents.getText(targetUri);
   if (text === undefined) return null;
 
-  const edit = insertLinesAt(text, text.split('\n').length, '\n:: StoryVariables\n');
+  const edit = insertLinesAt(text, text.split('\n').length, '\n:: StoryVariables\n', lineEndingFor(workspace, targetUri));
 
   return {
     title: 'Create StoryVariables passage',
@@ -417,7 +435,7 @@ function fixUndeclaredTransient(
   const text = workspace.documents.getText(storyTransientsUri);
   if (text === undefined) return null;
 
-  const edit = declarationInsertEdit(text, storyTransients.headerEnd.end.line, `%${varName} = 0\n`);
+  const edit = declarationInsertEdit(text, storyTransients.headerEnd.end.line, `%${varName} = 0\n`, lineEndingFor(workspace, storyTransientsUri));
 
   return {
     title: `Declare '%${varName}' in StoryTransients`,

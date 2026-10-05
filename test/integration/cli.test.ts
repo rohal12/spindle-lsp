@@ -503,4 +503,20 @@ describe('CLI check: missing StoryVariables (#78)', () => {
     const { exitCode } = await captureStdout(() => runCheck([join(root, 'story.tw')]));
     expect(exitCode).toBe(0);
   });
+
+  it('C-M-SP202: a declared Spindle story in an explicitly named non-.tw file exits 1 with SP202', async () => {
+    const root = project({ 'story.tw2': ':: StoryData\n{"format":"Spindle"}\n:: Start\nhello\n' });
+    const { exitCode, output } = await captureStdout(() => runCheck([join(root, 'story.tw2')]));
+    expect(exitCode).toBe(1);
+    expect(output).toContain('SP202');
+  });
+
+  it('C-M-SP202-empty: only an empty story file or a passage-less non-story file exits 0 without SP202', async () => {
+    const root = project({ 'empty.tw': '', 'readme.md': '# Notes\n' });
+    for (const files of [[join(root, 'empty.tw')], [join(root, 'readme.md')], [join(root, 'empty.tw'), join(root, 'readme.md')]]) {
+      const { exitCode, output } = await captureStdout(() => runCheck(files));
+      expect(exitCode).toBe(0);
+      expect(output).not.toContain('SP202');
+    }
+  });
 });
