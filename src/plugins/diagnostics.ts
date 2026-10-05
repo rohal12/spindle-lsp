@@ -9,7 +9,7 @@ import { scanHtmlTags, type HtmlScan, type HtmlTag } from '../core/parsing/html-
 import { findUnevaluatedBlocks } from '../core/parsing/attribute-blocks.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
-import { maskScriptAndStylesheetPassages, parseLinks } from '../core/parsing/link-parser.js';
+import { parseLinks } from '../core/parsing/link-parser.js';
 import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
@@ -54,9 +54,11 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 
     const diagnostics: Diagnostic[] = [];
 
-    // Script and stylesheet passages hold JS/CSS, not story markup: blank
-    // their bodies (keeping offsets) before parsing macros and links.
-    const markupText = maskScriptAndStylesheetPassages(text, passages);
+    // Passages Spindle never tokenizes as markup (script/stylesheet, and
+    // the declaration/metadata passages in NON_MARKUP_PASSAGES): blank their
+    // bodies (keeping offsets) before parsing macros and links. Executable
+    // special passages such as StoryInit and StoryInterface stay markup.
+    const markupText = maskNonMarkupPassages(text, passages);
 
     // Parse macros for the whole document
     const macros = parseMacros(markupText);
@@ -155,6 +157,24 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     // Catastrophic failure — return empty diagnostics rather than crashing
     return [];
   }
+}
+
+/**
+ * Replace the body of every non-markup passage with spaces, keeping
+ * line breaks so that offsets and positions are unchanged.
+ */
+function maskNonMarkupPassages(text: string, passages: Passage[]): string {
+  const excluded = passages.filter(p => !isMarkupPassage(p));
+  if (excluded.length === 0) return text;
+
+  const lines = text.split('\n');
+  for (const passage of excluded) {
+    const last = Math.min(passage.range.end.line, lines.length - 1);
+    for (let i = passage.range.start.line + 1; i <= last; i++) {
+      lines[i] = lines[i].replace(/[^\r]/g, ' ');
+    }
+  }
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -747,25 +767,24 @@ function validateVariables(
   diagnostics: Diagnostic[],
 ): void {
   if (!workspace.variables.hasStoryVariables()) {
-    // SP202: no StoryVariables passage
-    // Only emit once per document, and only if there are variable usages
-    const undeclared = workspace.variables.getUndeclared(uri);
-    // Even with no StoryVariables, getUndeclared returns all usages since nothing is declared
-    // Check if there are any variable usages at all
-    const text = workspace.documents.getText(uri);
-    if (text && /\$[A-Za-z_$]/.test(text)) {
-      // Check if there are non-special passages with variable usages
-      const passages = workspace.passages.getPassagesInDocument(uri);
-      const hasVarUsage = passages.some(p => {
-        const excluded = new Set(['StoryVariables', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface']);
-        return !excluded.has(p.name) && !p.tags?.includes('script') && !p.tags?.includes('stylesheet');
-      });
-      if (hasVarUsage) {
-        diagnostics.push(makeDiag(
+    // SP202: Spindle refuses to start without a StoryVariables passage,
+    // whether or not any variable is used. Report it once, on the first
+    // story document, after the full workspace scan (computeDiagnostics
+    // returns nothing before it). A project that does not declare its story
+    // format is still being edited, so there the diagnostic keeps requiring
+    // a variable usage and stays informational; a declared Spindle story
+    // gets an error, since it cannot start.
+    if (uri === missingStoryVariablesOwner(workspace)) {
+      const declared = workspace.storyFormat !== undefined;
+      if (declared || workspaceUsesVariables(workspace)) {
+        const passages = workspace.passages.getPassagesInDocument(uri);
+        const diagnostic = makeDiag(
           passages[0].range,
           DiagnosticCode.NoStoryVariables,
           'No StoryVariables passage found. Declare all story variables with default values in a StoryVariables passage.',
-        ));
+        );
+        if (declared) diagnostic.severity = 'error';
+        diagnostics.push(diagnostic);
       }
     }
   } else {
@@ -835,6 +854,27 @@ function validateVariables(
       }
     }
   }
+}
+
+/** The document that carries the one workspace-wide SP202. */
+function missingStoryVariablesOwner(workspace: WorkspaceModel): string | undefined {
+  return workspace.documents.getUris().find(
+    u => !isMacroSource(u) && workspace.passages.getPassagesInDocument(u).length > 0,
+  );
+}
+
+/** Whether any ordinary passage in the workspace mentions a `$variable`. */
+function workspaceUsesVariables(workspace: WorkspaceModel): boolean {
+  const excluded = new Set(['StoryVariables', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface']);
+  for (const u of workspace.documents.getUris()) {
+    if (isMacroSource(u)) continue;
+    const text = workspace.documents.getText(u);
+    if (!text || !/\$[A-Za-z_$]/.test(text)) continue;
+    if (workspace.passages.getPassagesInDocument(u).some(
+      p => !excluded.has(p.name) && !p.tags?.includes('script') && !p.tags?.includes('stylesheet'),
+    )) return true;
+  }
+  return false;
 }
 
 const WILL_NOT_START = 'Spindle will not start the story.';

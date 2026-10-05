@@ -480,3 +480,27 @@ describe('CLI check on a story in another format', () => {
     expect(errors).toBe('');
   });
 });
+
+describe('CLI check: missing StoryVariables (#78)', () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  function project(files: Record<string, string>): string {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'spindle-lsp-sp202-')));
+    dirs.push(root);
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
+    return root;
+  }
+
+  it('D78: an explicit Spindle story without StoryVariables exits 1', async () => {
+    const root = project({ 'story.tw': ':: StoryData\n{"format":"Spindle"}\n:: Start\nhello\n' });
+    const { exitCode, output } = await captureStdout(() => runCheck([join(root, 'story.tw')]));
+    expect(exitCode).toBe(1);
+    expect(output).toContain('SP202');
+  });
+
+  it('C-D78: an empty StoryVariables passage exits 0', async () => {
+    const root = project({ 'story.tw': ':: StoryData\n{"format":"Spindle"}\n:: StoryVariables\n:: Start\nhello\n' });
+    const { exitCode } = await captureStdout(() => runCheck([join(root, 'story.tw')]));
+    expect(exitCode).toBe(0);
+  });
+});
