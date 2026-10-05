@@ -56,6 +56,18 @@ describe('computeSemanticTokensAbsolute', () => {
     expect(nsTokens.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('covers escaped brackets and braces in the passage name token', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: A\\[B\ntext\n\n:: C\\{D\\} [tag] {"x": 1}\ntext',
+    });
+    const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
+    const nameTokens = tokens
+      .filter(t => t.tokenType === typeIdx('namespace') && (t.tokenModifiers & modBit('declaration')) !== 0)
+      .map(t => [t.line, t.startChar, t.length]);
+    expect(nameTokens).toEqual([[0, 3, 4], [3, 3, 6]]);
+  });
+
   it('emits tokens for sugar keywords', () => {
     const ws = createWorkspace({
       name: 'test.tw',

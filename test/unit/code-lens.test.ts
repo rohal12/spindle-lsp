@@ -79,6 +79,15 @@ describe('computeCodeLenses', () => {
     expect(varLens).toBeDefined();
   });
 
+  it('counts references to a passage whose name has escaped brackets', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: A\\[B\\] [tag]\ntext\n\n:: Start\n{goto "A[B]"}\n{include "A[B]"}',
+    });
+    const lens = computeCodeLenses('file:///test.tw', ws).find(l => l.range.start.line === 0);
+    expect(lens?.command.title).toBe('2 references');
+  });
+
   it('skips StoryData passage', () => {
     const ws = createWorkspace({
       name: 'test.tw',

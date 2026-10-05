@@ -3,6 +3,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { findPassageRefAt, parseLinks, parseMacroPassageRefs } from '../core/parsing/link-parser.js';
 import { parseMacros } from '../core/parsing/macro-parser.js';
+import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
@@ -36,16 +37,11 @@ export function findReferences(
   const line = lines[position.line];
 
   // --- Passage header ---
-  const passageHeaderRegex = /^::\s*(\S.*?)(?:\s*\[|\s*\{|\s*$)/;
-  if (line.trimStart().startsWith('::')) {
-    const headerMatch = passageHeaderRegex.exec(line);
-    if (headerMatch) {
-      const passageName = headerMatch[1].trim();
-      const nameStart = line.indexOf(passageName);
-      const nameEnd = nameStart + passageName.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        return findPassageReferences(passageName, workspace, includeDeclaration);
-      }
+  const header = parsePassageHeader(line, position.line);
+  if (header) {
+    const { start, end } = header.nameRange;
+    if (position.character >= start.character && position.character <= end.character) {
+      return findPassageReferences(header.name, workspace, includeDeclaration);
     }
   }
 

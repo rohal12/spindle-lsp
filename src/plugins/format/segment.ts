@@ -1,3 +1,5 @@
+import { parsePassageHeader } from '../../core/parsing/passage-parser.js';
+
 export interface Passage {
   header: string;
   body: string;
@@ -63,13 +65,24 @@ export function splitPassages(text: string): Passage[] {
  * Classify a passage by its tags.
  */
 export function classifyPassage(header: string): 'script' | 'stylesheet' | 'normal' {
-  const tagMatch = header.match(/\[([^\]]*)\]/g);
-  if (!tagMatch) return 'normal';
-  // A bracket holds a whitespace-separated tag list: `[script extra]`
-  const tags = tagMatch.flatMap(t => t.slice(1, -1).toLowerCase().split(/\s+/));
+  const tags = headerTags(header).map(t => t.toLowerCase());
   if (tags.includes('script')) return 'script';
   if (tags.includes('stylesheet')) return 'stylesheet';
   return 'normal';
+}
+
+/**
+ * The tags of a passage header. Uses the passage parser, so escaped `\[`
+ * in the name and brackets inside the metadata are not tags. For a header
+ * the parser rejects (e.g. invalid metadata JSON), fall back to the
+ * bracketed lists outside backslash escapes.
+ */
+function headerTags(header: string): string[] {
+  const parsed = parsePassageHeader(header, 0);
+  if (parsed) return parsed.tags;
+  const unescaped = header.replace(/\\./g, 'ec');
+  // A bracket holds a whitespace-separated tag list: `[script extra]`
+  return (unescaped.match(/\[[^\]]*\]/g) ?? []).flatMap(t => t.slice(1, -1).split(/\s+/));
 }
 
 /**

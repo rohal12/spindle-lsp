@@ -84,6 +84,13 @@ describe('formatDocument', () => {
     expect(parsed?.meta).toEqual({ position: '100,200' });
   });
 
+  it('formats a passage named with an escaped [script] as story markup', async () => {
+    const input = ':: A\\[script\\]\n{if true}\nsome prose\n{/if}\n';
+    expect(await formatDocument(input)).toBe(':: A\\[script\\]\n{if true}\n  some prose\n{/if}\n');
+    const unclosed = ':: A\\[script]\n{if true}\nsome prose\n{/if}\n';
+    expect(await formatDocument(unclosed)).toBe(':: A\\[script]\n{if true}\n  some prose\n{/if}\n');
+  });
+
   it('returns already-formatted document unchanged', async () => {
     const input = ':: Start\n{if $x}\n  {set $y = 1}\n{/if}\n';
     const result = await formatDocument(input);

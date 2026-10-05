@@ -39,6 +39,18 @@ describe('prepareRename', () => {
     expect(result!.placeholder).toBe('MyPassage');
   });
 
+  it('returns the whole escaped name of a passage header', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: A\\[B\\] [tag]\nContent here',
+    });
+    const result = prepareRename('file:///test.tw', { line: 0, character: 7 }, ws);
+    expect(result).toEqual({
+      range: { start: { line: 0, character: 3 }, end: { line: 0, character: 9 } },
+      placeholder: 'A[B]',
+    });
+  });
+
   it('returns range and placeholder for $variable', () => {
     const ws = createWorkspace({
       name: 'test.tw',
@@ -100,6 +112,15 @@ describe('computeRename', () => {
     // Should have at least the header declaration + the link reference
     expect(allEdits.length).toBeGreaterThanOrEqual(2);
     expect(allEdits.every(e => e.newText === 'Renamed')).toBe(true);
+  });
+
+  it('renames a passage whose name has escaped brackets, escaping the new header name', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: A\\[B\\] [tag]\ntext\n\n:: Start\n{goto "A[B]"}',
+    });
+    const result = applyRename(ws, 'file:///test.tw', { line: 0, character: 5 }, 'C{D}');
+    expect(result.get('file:///test.tw')).toBe(':: C\\{D\\} [tag]\ntext\n\n:: Start\n{goto "C{D}"}');
   });
 
   it('renames variable across documents', () => {
