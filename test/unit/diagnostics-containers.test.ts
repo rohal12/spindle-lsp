@@ -71,6 +71,55 @@ describe('{next} branches of {timed}', () => {
   });
 });
 
+describe('branch macros sit directly inside their parent', () => {
+  // Spindle's buildAST only accepts a branch macro when its parent is the
+  // innermost open block: "{next} without matching {timed}".
+  const vars = ':: StoryVariables\n$x = 1\n';
+
+  it('flags {next} inside an {if} within {timed}', () => {
+    const diags = diagnose(`${vars}:: Start\n{timed 1s}\nA\n{if $x}\n{next 1s}\n{/if}\n{/timed}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('{timed}');
+    expect(diags[0].message).toContain('{if}');
+    expect(diags[0].range.start.line).toBe(6);
+  });
+
+  it('flags {else} and {elseif} inside a {for} within {if}', () => {
+    const diags = diagnose(`${vars}:: Start\n{if $x}\n{for @i of [1]}\n{elseif $x}\n{else}\n{/for}\n{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107', 'SP107']);
+    expect(diags.every(d => d.message.includes('{for}'))).toBe(true);
+  });
+
+  it('flags {case} and {default} nested in another container within {switch}', () => {
+    const diags = diagnose(`${vars}:: Start\n{switch $x}\n{case 1}\none\n{do}\n{case 2}\n{default}\n{/do}\n{/switch}\n`);
+    expect(codes(diags)).toEqual(['SP107', 'SP107']);
+  });
+
+  it('flags a branch inside a block widget invocation', () => {
+    const widgets = ':: Widgets [widget]\n{widget "box"}\n<div>{@children}</div>\n{/widget}\n';
+    const diags = diagnose(`${vars}${widgets}:: Start\n{if $x}\n{box}\n{else}\n{/box}\n{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('{box}');
+  });
+
+  it('accepts branches of nested blocks of the same kind', () => {
+    expect(diagnose(`${vars}:: Start\n{if $x}\n{if $x}\na\n{else}\nb\n{/if}\n{else}\nc\n{/if}\n`)).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n{timed 1s}\nA\n{timed 1s}\nB\n{next 1s}\nC\n{/timed}\n{next 1s}\nD\n{/timed}\n`)).toEqual([]);
+  });
+
+  it('accepts branches after a closed nested block', () => {
+    expect(diagnose(`${vars}:: Start\n{if $x}\n{for @i of [1]}\n{@i}\n{/for}\n{elseif $x}\n{do}d{/do}\n{else}\nc\n{/if}\n`)).toEqual([]);
+    expect(diagnose(`${vars}:: Start\n{switch $x}\n{case 1}\n{if $x}a{else}b{/if}\n{default}\nc\n{/switch}\n`)).toEqual([]);
+  });
+
+  it('flags {option} inside another block within {listbox}, which Spindle ignores', () => {
+    // Spindle's extractOptions only reads the listbox's direct children.
+    const diags = diagnose(`${vars}:: Start\n{listbox "$x"}\n{option "a"}\n{if $x}\n{option "b"}\n{/if}\n{/listbox}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].range.start.line).toBe(6);
+  });
+});
+
 describe('container child constraints ignore capitalization', () => {
   it('counts an upper-case {CASE} towards {switch}\'s minimum', () => {
     expect(diagnose(':: Start\n{switch 1}\n{CASE 1}\none\n{/switch}\n')).toEqual([]);

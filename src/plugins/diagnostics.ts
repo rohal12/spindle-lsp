@@ -207,8 +207,19 @@ function validateMacros(
 
     // SP107: parents constraint
     if (info?.parents && info.parents.length > 0 && macro.open) {
-      if (!isInsideParent(macros, curIndex, info.parents, workspace)) {
-        const parentList = info.parents.join(', ');
+      const parentList = info.parents.join(', ');
+      if (DIRECT_CHILD_MACROS.has(macro.name.toLowerCase())) {
+        const enclosing = innermostContainer(macros, curIndex, workspace);
+        const parentSet = new Set(info.parents.map(p => p.toLowerCase()));
+        if (!enclosing || !parentSet.has(enclosing.name.toLowerCase())) {
+          const where = enclosing ? `, not inside {${enclosing.name}}` : '';
+          diagnostics.push(makeDiag(
+            macro.range,
+            DiagnosticCode.InvalidChildren,
+            `Invalid: {${macro.name}} can only be directly inside {${parentList}}${where}`,
+          ));
+        }
+      } else if (!isInsideParent(macros, curIndex, info.parents, workspace)) {
         diagnostics.push(makeDiag(
           macro.range,
           DiagnosticCode.InvalidChildren,
@@ -217,6 +228,40 @@ function validateMacros(
       }
     }
   }
+}
+
+/**
+ * Macros that only work as direct children of their parent container.
+ *
+ * Spindle's AST builder attaches a branch ({elseif}/{else}, {case}/{default},
+ * {next}) to the block on top of its stack and throws when that block is
+ * not the branch's parent, so a branch nested in another container inside
+ * its parent is an error. {listbox} and {cycle} read their {option}s from
+ * their direct children only, so a nested {option} is silently dropped.
+ *
+ * Other children, such as {stop}, reach their parent through React context
+ * and may sit anywhere inside it.
+ */
+const DIRECT_CHILD_MACROS = new Set(['elseif', 'else', 'case', 'default', 'next', 'option']);
+
+/**
+ * The innermost container enclosing the macro at `index`, as on Spindle's
+ * AST stack: built-in and custom block macros as well as block widgets.
+ * Containers without a closing tag are skipped; SP101 reports them.
+ */
+function innermostContainer(
+  macros: MacroNode[],
+  index: number,
+  workspace: WorkspaceModel,
+): MacroNode | undefined {
+  // Containers are paired with a stack, so the nearest opener whose closing
+  // tag lies past `index` is the innermost one.
+  for (let i = index - 1; i >= 0; i--) {
+    const candidate = macros[i];
+    if (!candidate.open || candidate.pair <= index) continue;
+    if (workspace.isContainer(candidate.name)) return candidate;
+  }
+  return undefined;
 }
 
 /**
