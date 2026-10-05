@@ -3,7 +3,7 @@ import {
   parseMacros,
   pairMacros,
   scanBalancedBrace,
-  createBraceScanner,
+  createCodeScanner,
 } from '../../src/core/parsing/macro-parser.js';
 
 describe('parseMacros', () => {
@@ -253,6 +253,28 @@ function referenceScan(input: string, i: number): number {
   return -1;
 }
 
+describe('createCodeScanner literalEnd', () => {
+  it('finds the end of string and template literals', () => {
+    const text = 'x = "a}b" + \'c\' + `d${ {e: "`"} }f` + "g\\"h"';
+    const scanner = createCodeScanner(text);
+    expect(scanner.literalEnd(4)).toBe(9);
+    expect(scanner.literalEnd(12)).toBe(15);
+    expect(scanner.literalEnd(18)).toBe(35);
+    expect(scanner.literalEnd(38)).toBe(text.length);
+    expect(scanner.literalEnd(0)).toBe(-1);
+  });
+
+  it('treats apostrophes, escaped quotes and unclosed literals as text', () => {
+    const text = `don't \\"x" "open\n"a\nb" \`never`;
+    const scanner = createCodeScanner(text);
+    expect(scanner.literalEnd(3)).toBe(-1);
+    expect(scanner.literalEnd(7)).toBe(-1);
+    expect(scanner.literalEnd(11)).toBe(-1);
+    expect(scanner.literalEnd(17)).toBe(-1);
+    expect(scanner.literalEnd(text.indexOf('`'))).toBe(-1);
+  });
+});
+
 describe('scanBalancedBrace performance', () => {
   it('handles deeply nested unclosed template interpolations in linear time', () => {
     // Each unclosed `${ used to make the enclosing scan redo the inner scan,
@@ -281,11 +303,11 @@ describe('scanBalancedBrace performance', () => {
     const rand = seededRandom(42);
     for (let n = 0; n < 2000; n++) {
       const text = randomText(rand, 30);
-      const scan = createBraceScanner(text);
+      const scanner = createCodeScanner(text);
       for (let i = 0; i <= text.length; i++) {
         const expected = referenceScan(text, i);
         expect(scanBalancedBrace(text, i), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
-        expect(scan(i), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
+        expect(scanner.closeBrace(i), `${JSON.stringify(text)} @ ${i}`).toBe(expected);
       }
     }
   });

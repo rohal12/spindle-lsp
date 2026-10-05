@@ -1,5 +1,6 @@
 import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
 import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
+import { createCodeScanner, type CodeScanner } from '../parsing/macro-parser.js';
 
 /** Regex to match $variable references including dot notation. */
 const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
@@ -25,12 +26,59 @@ const COMMENT_PATTERNS = [
   /<style>[\s\S]*?<\/style>/gi,                  // style tags
 ];
 
-/** String literals: literal text, apart from the interpolations Spindle evaluates. */
-const STRING_PATTERNS = [
-  /`(?:\\.|[^`\\])*`/g,                          // backtick strings
-  /"(?:\\.|[^"\\])*"/g,                          // double-quoted strings
-  /'(?:\\.|[^'\\])*'/g,                          // single-quoted strings
-];
+/**
+ * Replace the string and template literals in the code of a passage: its
+ * macros and `{…}` expressions, delimited the way Spindle's tokenizer does.
+ * Literals are literal text, apart from the interpolations Spindle evaluates.
+ *
+ * Quotes in prose are just text to Spindle (dialogue, apostrophes) and never
+ * hide the macros between them, so prose is left alone. Inside code, a
+ * quote right after a word character or backslash is not a string, and
+ * '…' / "…" strings end at the line end, as in the macro parser.
+ */
+function replaceCodeLiterals(text: string, replace: (literal: string) => string): string {
+  const scanner = createCodeScanner(text);
+  let result = '';
+  let copied = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\' && (text[i + 1] === '{' || text[i + 1] === '}')) {
+      i++;
+      continue;
+    }
+    if (text[i] !== '{') continue;
+    const close = scanner.closeBrace(i + 1);
+    if (close === -1) continue;
+    result += text.slice(copied, i + 1) + replaceLiterals(text, scanner, i + 1, close, replace);
+    copied = close;
+    i = close;
+  }
+  return result + text.slice(copied);
+}
+
+/** text.slice(from, to) of code, with each literal in it replaced. */
+function replaceLiterals(
+  text: string,
+  scanner: CodeScanner,
+  from: number,
+  to: number,
+  replace: (literal: string) => string,
+): string {
+  let result = '';
+  let copied = from;
+  for (let j = from; j < to; j++) {
+    const end = scanner.literalEnd(j);
+    if (end === -1) continue;
+    let literal = replace(text.slice(j, end));
+    // Interpolations kept by the replacement are code: replace their literals too.
+    if (literal.trim() !== '') {
+      literal = replaceLiterals(literal, createCodeScanner(literal), 0, literal.length, replace);
+    }
+    result += text.slice(copied, j) + literal;
+    copied = end;
+    j = end - 1;
+  }
+  return result + text.slice(copied, to);
+}
 
 /**
  * Built-in input macros whose first argument names the bound story variable,
@@ -392,12 +440,8 @@ export class VariableTracker {
       for (const pattern of COMMENT_PATTERNS) {
         uncommented = uncommented.replace(pattern, blank);
       }
-      let cleaned = uncommented;
-      let referenced = uncommented;
-      for (const pattern of STRING_PATTERNS) {
-        cleaned = cleaned.replace(pattern, blank);
-        referenced = referenced.replace(pattern, blankLiteralText);
-      }
+      const cleaned = replaceCodeLiterals(uncommented, blank);
+      let referenced = replaceCodeLiterals(uncommented, blankLiteralText);
 
       // Quoted input macro receivers (`{textbox "$name"}`) bind a variable too
       for (const m of uncommented.matchAll(QUOTED_RECEIVER_RE)) {

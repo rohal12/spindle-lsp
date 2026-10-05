@@ -8,7 +8,7 @@ const variableInterpolationRegex = /(?<!\\)\{([$_@%][A-Za-z_$][\w$.]*)\}/g;
 
 /**
  * Spindle macro head: the opening brace up to the end of the macro name.
- * The arguments and the closing brace are found by createBraceScanner().
+ * The arguments and the closing brace are found by createCodeScanner().
  * Groups:
  *   1 = closing slash (/) — present for closing macros
  *   2 = CSS prefix (e.g. ".red#alert ")
@@ -21,6 +21,18 @@ const macroHeadRegex = /(?<!\\)\{(\/)?(?:((?:[#.][a-zA-Z][\w-]*\s*)*)([A-Za-z][\
  * string; after a backslash it is an escaped attribute delimiter (\").
  */
 const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
+
+/** Lookups over one text, following Spindle's tokenizer through code. */
+export interface CodeScanner {
+  /** Index of the } that balances a { just before i, or -1 if it never closes. */
+  closeBrace(i: number): number;
+  /**
+   * If a string or template literal starts at i, the index just past its
+   * end; otherwise -1. A quote that can't start a string (apostrophe,
+   * escaped) and a literal that never closes are text, as in Spindle.
+   */
+  literalEnd(i: number): number;
+}
 
 /**
  * Precompute Spindle's balanced-brace scan for every position from `from` on.
@@ -35,11 +47,8 @@ const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
  * right to left therefore costs O(n), where re-scanning from every opening
  * brace or backtick is quadratic and an unclosed `${ inside a template
  * doubled the work per nesting level.
- *
- * The returned table maps i (just past a {) to the index of its closing },
- * or -1 if it never closes.
  */
-function buildBraceTable(input: string, from: number): Int32Array {
+function buildCodeScanner(input: string, from: number): CodeScanner {
   const n = input.length;
   // close[i]: the } closing a { just before i, or -1.
   const close = new Int32Array(n + 2).fill(-1);
@@ -50,6 +59,14 @@ function buildBraceTable(input: string, from: number): Int32Array {
   // past the closing quote, or -1 if not closed on the same line.
   const single = new Int32Array(n + 2).fill(-1);
   const double = new Int32Array(n + 2).fill(-1);
+
+  const literalEnd = (i: number): number => {
+    const c = input[i];
+    if (c === '`') return template[i + 1];
+    if (c !== '"' && c !== "'") return -1;
+    if (i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1])) return -1;
+    return (c === '"' ? double : single)[i + 1];
+  };
 
   for (let i = n - 1; i >= from; i--) {
     const c = input[i];
@@ -78,29 +95,24 @@ function buildBraceTable(input: string, from: number): Int32Array {
       const inner = close[i + 1];
       close[i] = inner === -1 ? -1 : close[inner + 1];
     } else {
-      let next = i + 1;
-      if ((c === '"' || c === "'") && !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]))) {
-        const end = (c === '"' ? double : single)[i + 1];
-        if (end !== -1) next = end;
-      } else if (c === '`') {
-        const end = template[i + 1];
-        if (end !== -1) next = end;
-      }
-      close[i] = close[next];
+      const end = literalEnd(i);
+      close[i] = close[end === -1 ? i + 1 : end];
     }
   }
-  return close;
+
+  const inRange = (i: number) => i >= from && i < n;
+  return {
+    closeBrace: (i) => (inRange(i) ? close[i] : -1),
+    literalEnd: (i) => (inRange(i) ? literalEnd(i) : -1),
+  };
 }
 
 /**
- * Prepare balanced-brace scans over the whole input. The returned function
- * gives the index of the } that balances a { just before position i, or -1.
- * Use this instead of scanBalancedBrace() when scanning the same text more
- * than once.
+ * Prepare balanced-brace and literal scans over the whole input. Use this
+ * instead of scanBalancedBrace() when scanning the same text more than once.
  */
-export function createBraceScanner(input: string): (i: number) => number {
-  const close = buildBraceTable(input, 0);
-  return (i) => (i >= 0 && i < input.length ? close[i] : -1);
+export function createCodeScanner(input: string): CodeScanner {
+  return buildCodeScanner(input, 0);
 }
 
 /**
@@ -112,7 +124,7 @@ export function createBraceScanner(input: string): (i: number) => number {
  */
 export function scanBalancedBrace(input: string, i: number): number {
   if (i < 0 || i >= input.length) return -1;
-  return buildBraceTable(input, i)[i];
+  return buildCodeScanner(input, i).closeBrace(i);
 }
 
 /**
@@ -165,7 +177,7 @@ export function parseMacros(text: string): MacroNode[] {
   });
 
   const lineStarts = buildLineStarts(text);
-  const scanBrace = createBraceScanner(cleaned);
+  const scanner = createCodeScanner(cleaned);
   const macros: MacroNode[] = [];
   let id = 0;
 
@@ -175,7 +187,7 @@ export function parseMacros(text: string): MacroNode[] {
 
   while ((match = macroHeadRegex.exec(cleaned)) !== null) {
     const matchStart = match.index;
-    const closeIdx = scanBrace(matchStart + 1);
+    const closeIdx = scanner.closeBrace(matchStart + 1);
     if (closeIdx === -1) {
       // Unclosed macro — treat as text
       macroHeadRegex.lastIndex = matchStart + 1;
