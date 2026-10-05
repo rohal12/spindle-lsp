@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { conditionalExpression, findUnevaluatedBlocks } from '../../src/core/parsing/attribute-blocks.js';
+import { conditionalExpression, findUnevaluatedBlocks, printExpression } from '../../src/core/parsing/attribute-blocks.js';
 
 const MACROS = new Set(['if', 'else', 'elseif', 'for', 'print', 'set', 'switch', 'case']);
 const CONTAINERS = new Set(['if', 'for', 'switch']);
@@ -139,5 +139,57 @@ describe('conditionalExpression', () => {
     expect(conditionalExpression('{.c if $a}x{/if}')).toBeNull();
     expect(conditionalExpression('{for _i range 3}x{/for}')).toBeNull();
     expect(conditionalExpression('{if $a}x{else}y{else}z{/if}')).toBeNull();
+  });
+});
+
+describe('printExpression', () => {
+  it('rewrites {print E} as {E}', () => {
+    expect(printExpression("{print @delta > 0 ? 'delta-positive' : 'delta-negative'}"))
+      .toBe("{@delta > 0 ? 'delta-positive' : 'delta-negative'}");
+    expect(printExpression('{print $x}')).toBe('{$x}');
+    expect(printExpression('{print   _t  }')).toBe('{_t}');
+    expect(printExpression('{print %t * 2}')).toBe('{%t * 2}');
+  });
+
+  it("keeps a dotted path off interpolate()'s shortcut, which 0.45.1 resolves differently", () => {
+    // interpolate() reads {$o.k} without the expression evaluator; 0.45.1
+    // then gives "" for a property of a primitive ({$s.length}).
+    expect(printExpression('{print $s.length}')).toBe("{$s.length ?? ''}");
+    expect(printExpression('{print @d.delta}')).toBe("{@d.delta ?? ''}");
+  });
+
+  it('accepts commas and semicolons inside strings and brackets', () => {
+    expect(printExpression('{print $a.slice(0, 2).join(", ")}')).toBe('{$a.slice(0, 2).join(", ")}');
+    expect(printExpression("{print $a + ';'}")).toBe("{$a + ';'}");
+    expect(printExpression('{print $m[1, 2]}')).toBe('{$m[1, 2]}');
+  });
+
+  it('declines an expression that does not start with a sigil and a word character', () => {
+    expect(printExpression('{print !$x}')).toBeNull();
+    expect(printExpression('{print ($x)}')).toBeNull();
+    expect(printExpression('{print "a" + $x}')).toBeNull();
+    expect(printExpression('{print $ x}')).toBeNull();
+    expect(printExpression('{print 1 + $x}')).toBeNull();
+  });
+
+  it('declines several arguments and statements', () => {
+    expect(printExpression('{print $a, $b}')).toBeNull();
+    expect(printExpression('{print $a; $b}')).toBeNull();
+  });
+
+  it('declines braces, also inside strings, and line breaks', () => {
+    // 0.45.1 ends {$x + "}"} at the first }, inside the string
+    expect(printExpression('{print $x + "}"}')).toBeNull();
+    expect(printExpression("{print $x + '{'}")).toBeNull();
+    expect(printExpression('{print $o[{a: 1}.a]}')).toBeNull();
+    expect(printExpression('{print `${$x}`}')).toBeNull();
+    expect(printExpression('{print $a +\n $b}')).toBeNull();
+  });
+
+  it('declines other shapes', () => {
+    expect(printExpression('{print}')).toBeNull();
+    expect(printExpression('{.c print $x}')).toBeNull();
+    expect(printExpression('{#i print $x}')).toBeNull();
+    expect(printExpression('{if $x}a{/if}')).toBeNull();
   });
 });

@@ -182,7 +182,16 @@ describe('computeCodeActions for SP103 (macro in an HTML attribute)', () => {
     expect(actions.map(a => a.edits[0].newText)).toEqual([`{$s == "a" ? 'active' : ''}`]);
   });
 
+  it('rewrites {print E} as {E}', () => {
+    const { diags, actions } = fixes(`<span class="d {print $n > 0 ? 'pos' : 'neg'}">x</span>`);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ title: "Rewrite as {$n > 0 ? 'pos' : 'neg'}", diagnosticCodes: ['SP103'] });
+    expect(actions[0].edits).toEqual([{ uri: 'file:///test.tw', range: diags[0].range, newText: "{$n > 0 ? 'pos' : 'neg'}" }]);
+  });
+
   it('offers no fix for other blocks', () => {
+    expect(fixes('<span class="{print !$n}">x</span>').actions).toEqual([]);
+    expect(fixes('<span class="{print $s + \'}\'}">x</span>').actions).toEqual([]);
     expect(fixes('<span class="{if !$n}a{/if}">x</span>').actions).toEqual([]);
     expect(fixes('<span class="{if $n}a{elseif $s}b{/if}">x</span>').actions).toEqual([]);
     expect(fixes('<span class="{for _i range 3}a{/for}">x</span>').actions).toEqual([]);

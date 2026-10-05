@@ -1,12 +1,13 @@
 /**
- * Checks SP103 and its quick fix against Spindle's own tokenizer and
+ * Checks SP103 and its quick fixes against Spindle's own tokenizer and
  * interpolate(), imported from the installed runtime's source. The store is
  * stubbed: interpolate() only reads it for visited() and similar functions.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { hasInterpolation, interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
 import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
-import { conditionalExpression, findUnevaluatedBlocks } from '../../src/core/parsing/attribute-blocks.js';
+import { evaluate } from '../../node_modules/@rohal12/spindle/src/expression.js';
+import { conditionalExpression, findUnevaluatedBlocks, printExpression } from '../../src/core/parsing/attribute-blocks.js';
 import { scanHtmlTags } from '../../src/core/parsing/html-scanner.js';
 
 vi.mock('../../node_modules/@rohal12/spindle/src/store.ts', () => ({
@@ -139,5 +140,78 @@ describe('SP103 quick fix against Spindle', () => {
       // The fixed value has nothing left to report
       expect(findUnevaluatedBlocks(fixed, lookup)).toEqual([]);
     }
+  });
+});
+
+describe('SP103 {print} quick fix against Spindle', () => {
+  /** What {print E} displays (Print.tsx): String(evaluate(E)), '' for null and undefined. */
+  function printDisplay(expr: string, scope: Scope): string {
+    try {
+      const value = evaluate(expr, scope.variables ?? {}, scope.temporary ?? {}, scope.locals ?? {}, scope.transient ?? {});
+      return value == null ? '' : String(value);
+    } catch {
+      return 'ERROR';
+    }
+  }
+
+  function rendered(markup: string, scope: Scope): string {
+    try {
+      return renderAttributes(markup, scope).class;
+    } catch {
+      return 'ERROR';
+    }
+  }
+
+  // [attribute quote, value, scopes to render it in]
+  const cases: Array<[string, string, Scope[]]> = [
+    ['"', "d {print @delta > 0 ? 'delta-positive' : 'delta-negative'}",
+      [{ locals: { delta: 1 } }, { locals: { delta: -1 } }]],
+    ['"', '{print $x}', [0, false, null, undefined, '', 'str', [1, 2], { a: 1 }].map(x => ({ variables: { x } }))],
+    ['"', 'n-{print $s.length}', [{ variables: { s: 'abc' } }, { variables: { s: [1] } }]],
+    ['"', '{print $o.k}', [{ variables: { o: { k: null } } }, { variables: { o: { k: 0 } } }, { variables: { o: {} } }]],
+    ['"', '{print @d.delta}', [{ locals: { d: { delta: 2 } } }]],
+    ['"', '{print _t} {print %t * 2}', [{ temporary: { t: 'T' }, transient: { t: 3 } }]],
+    ['"', '{print $a.slice(0, 2).join(", ")}', [{ variables: { a: [1, 2, 3] } }]],
+    ["'", `{print $s == "a" ? 'yes' : 'no'}`, [{ variables: { s: 'a' } }, { variables: { s: 'b' } }]],
+    ['"', "{print $a + ';'}", [{ variables: { a: 'x' } }]],
+    ['"', '{print $m[1, 2]}', [{ variables: { m: [10, 20, 30] } }]],
+  ];
+
+  it('produces blocks Spindle evaluates to what {print} displays', () => {
+    let checked = 0;
+    for (const [quote, value, scopes] of cases) {
+      let fixed = value;
+      // Rewrite each {print} block, from the last one back
+      const blocks = findUnevaluatedBlocks(value, lookup);
+      expect(blocks.length, value).toBeGreaterThan(0);
+      const parts: Array<(scope: Scope) => string> = [];
+      let rest = value;
+      for (const { start, end } of [...blocks].reverse()) {
+        const source = rest.slice(start, end);
+        const fix = printExpression(source);
+        expect(fix, source).not.toBeNull();
+        const expr = /^\{print\s+(.*)\}$/.exec(source)![1];
+        const tail = rest.slice(end);
+        parts.unshift(scope => printDisplay(expr, scope) + tail);
+        fixed = fixed.slice(0, start) + fix + fixed.slice(end);
+        rest = rest.slice(0, start);
+      }
+      const head = rest;
+      const expected = (scope: Scope) => head + parts.map(p => p(scope)).join('');
+      for (const scope of scopes) {
+        const markup = `<span class=${quote}${fixed}${quote}>t</span>`;
+        expect({ fixed, scope, rendered: rendered(markup, scope) })
+          .toEqual({ fixed, scope, rendered: expected(scope) });
+        checked++;
+      }
+      expect(findUnevaluatedBlocks(fixed, lookup)).toEqual([]);
+    }
+    expect(checked).toBe(22);
+  });
+
+  it("needs {E ?? ''} for a dotted path: 0.45.1 reads a primitive's property as ''", () => {
+    // resolveSimple() handles {$s.length} without the evaluator; upstream
+    // main boxes primitives and renders 3.
+    expect(renderAttributes('<span class="{$s.length}">t</span>', { variables: { s: 'abc' } }).class).toBe('');
   });
 });

@@ -214,3 +214,49 @@ export function conditionalExpression(source: string): string | null {
   const quote = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
   return `{${condition} ? ${quote(whenTrue)} : ${quote(whenFalse)}}`;
 }
+
+/** A path interpolate() reads without the expression evaluator. */
+const SIMPLE_PATH = /^[$_@%][\w.]+$/;
+
+/**
+ * Rewrite a `{print E}` written in an HTML attribute as `{E}`, which
+ * Spindle evaluates there. {print} displays String(evaluate(E)), or ''
+ * for null and undefined; interpolate() gives the same for a block whose
+ * text is not a simple path. A simple path with a dot (`$o.k`) is read by
+ * resolveSimple() instead, which in 0.45.1 gives '' for a property of a
+ * primitive (`$s.length`), so it becomes `{E ?? ''}`, which is evaluated
+ * and displays the same. Returns null unless:
+ *  - the block is exactly `{print E}`, without selectors;
+ *  - E starts with a sigil and a word character (INTERP_TEST in
+ *    interpolation.ts), so it is not parenthesized;
+ *  - E holds no braces, also not inside strings (Spindle 0.45.1 ends the
+ *    block at the first balancing `}`, while {print} skips strings), and
+ *    no line breaks;
+ *  - E is one expression: no `,` outside brackets and strings (several
+ *    arguments) and no `;` outside strings.
+ * When E throws, {print} shows an error and the attribute does not render;
+ * no value differs.
+ */
+export function printExpression(source: string): string | null {
+  const match = /^\{print\s+([^{}\r\n]*)\}$/.exec(source);
+  if (!match) return null;
+  const expr = match[1].trim();
+  if (!/^[$_@%]\w/.test(expr)) return null;
+
+  const code = createCodeScanner(expr);
+  let depth = 0;
+  for (let i = 0; i < expr.length; ) {
+    const literal = code.literalEnd(i);
+    if (literal !== -1) {
+      i = literal;
+      continue;
+    }
+    const c = expr[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === ';' || (c === ',' && depth <= 0)) return null;
+    i++;
+  }
+
+  return SIMPLE_PATH.test(expr) && expr.includes('.') ? `{${expr} ?? ''}` : `{${expr}}`;
+}
