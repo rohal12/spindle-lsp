@@ -229,13 +229,14 @@ describe('receiver parameter type', () => {
   const params = new Parameters(['receiver |+ text']);
 
   it('accepts quoted and unquoted story variables', () => {
-    for (const raw of ['"$name"', "'$name'", '$name', '"$player.name" "Your name"', '"name"']) {
+    // Spindle's parseVarArgs() reads the receiver as `\$[\w.]+`: `$5` is one too
+    for (const raw of ['"$name"', "'$name'", '$name', '"$player.name" "Your name"', '"name"', '"$5"', '$5']) {
       expect(params.validate(lexArguments(raw)).errors, raw).toEqual([]);
     }
   });
 
   it('rejects values that cannot name a variable', () => {
-    for (const raw of ['42', 'true', '"$"', '"not a var"']) {
+    for (const raw of ['42', 'true', '"$"', '"not a var"', '"5"']) {
       expect(params.validate(lexArguments(raw)).errors.length, raw).toBeGreaterThan(0);
     }
   });

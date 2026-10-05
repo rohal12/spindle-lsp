@@ -8,6 +8,7 @@ import {
   findVariableReferences,
   findTransientReferences,
   findWidgetReferences,
+  isTransientAt,
 } from './references.js';
 
 // ---------------------------------------------------------------------------
@@ -149,7 +150,7 @@ function resolveSymbolAtCursor(
 
   // --- $variable ---
   {
-    const varRegex = /\$([A-Za-z_$][\w$]*)/g;
+    const varRegex = /\$([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = varRegex.exec(line)) !== null) {
       const start = match.index;
@@ -170,12 +171,13 @@ function resolveSymbolAtCursor(
 
   // --- %transient ---
   {
-    const transRegex = /(?<!\w)%([A-Za-z_$][\w$]*)/g;
+    const transRegex = /(?<!\w)%([\w$]+)/g;
     let match: RegExpExecArray | null;
     while ((match = transRegex.exec(line)) !== null) {
       const start = match.index;
       const end = start + match[0].length;
       if (position.character >= start && position.character <= end) {
+        if (!isTransientAt(match[1], uri, position.line, start, workspace)) break;
         return {
           kind: 'variable',
           name: match[1],

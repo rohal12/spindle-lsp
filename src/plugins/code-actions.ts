@@ -307,8 +307,6 @@ function fixUndeclaredVariable(
   if (!match) return null;
 
   const varName = match[1];
-  // `$5` is usually a price in prose, not a variable: declaring it is no fix
-  if (/^\d/.test(varName)) return null;
 
   const storyVars = workspace.passages.getStoryVariables();
   if (!storyVars) return null;

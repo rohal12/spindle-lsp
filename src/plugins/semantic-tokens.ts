@@ -1,6 +1,7 @@
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parseMacros } from '../core/parsing/macro-parser.js';
+import { isTransientAt } from './references.js';
 
 // ---------------------------------------------------------------------------
 // Token legend
@@ -124,10 +125,10 @@ export function computeSemanticTokensAbsolute(
   }
 
   // Variable and keyword tokens
-  const storyVarRegex = /(?<!\w)\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+  const storyVarRegex = /(?<!\w)\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
   const tempVarRegex = /(?<!\w)_([A-Za-z_$][\w$]*)/g;
   const localVarRegex = /(?<!\w)@([A-Za-z_$][\w$]*)/g;
-  const transientVarRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+  const transientVarRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
   const sugarKeywordRegex = /\b(to|is|isnot|eq|neq|gt|gte|lt|lte|and|or|not|def|ndef)\b/g;
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -174,6 +175,7 @@ export function computeSemanticTokensAbsolute(
     // Transient vars (%var)
     transientVarRegex.lastIndex = 0;
     while ((m = transientVarRegex.exec(line)) !== null) {
+      if (!isTransientAt(m[1].split('.')[0], uri, lineIndex, m.index, workspace)) continue;
       tokens.push({
         line: lineIndex,
         startChar: m.index,

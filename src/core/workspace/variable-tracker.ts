@@ -3,11 +3,20 @@ import { parsePassageHeader, isScriptOrStylesheetPassage } from '../parsing/pass
 import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
 import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
 
-/** Regex to match $variable references including dot notation. */
-const varRefRegex = /\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+/**
+ * Regex to match $variable references including dot notation. A name may
+ * start with a digit: Spindle's expression transform reads `$5` as a variable.
+ */
+const varRefRegex = /\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
 
 /** Regex to match %transient variable references including dot notation. */
-const transientRefRegex = /(?<!\w)%([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+const transientRefRegex = /(?<!\w)%([\w$]+(?:\.[A-Za-z_$][\w$]*)*)/g;
+
+/**
+ * A StoryVariables / StoryTransients declaration line, as Spindle's
+ * parseStoryVariables() reads it: any `\w+` name, a digit first included.
+ */
+const DECLARATION_RE = { '$': /^\$(\w+)\s*=\s*(.*)$/, '%': /^%(\w+)\s*=\s*(.*)$/ } as const;
 
 /** Passages excluded from variable scanning. */
 const EXCLUDED_PASSAGES = new Set([
@@ -52,6 +61,19 @@ function replaceCodeLiterals(text: string, replace: (literal: string) => string)
   const scanner = createCodeScanner(text);
   let result = '';
   let copied = 0;
+  for (const [open, close] of codeBlocks(text, scanner)) {
+    result += text.slice(copied, open + 1) + replaceLiterals(text, scanner, open + 1, close, replace);
+    copied = close;
+  }
+  return result + text.slice(copied);
+}
+
+/**
+ * The outermost `{…}` blocks of a passage (macros, displays, expressions)
+ * as [open brace, close brace] offsets: the code Spindle evaluates.
+ */
+function codeBlocks(text: string, scanner: CodeScanner): Array<[number, number]> {
+  const blocks: Array<[number, number]> = [];
   for (let i = 0; i < text.length; i++) {
     if (text[i] === '\\' && (text[i + 1] === '{' || text[i + 1] === '}')) {
       i++;
@@ -60,11 +82,10 @@ function replaceCodeLiterals(text: string, replace: (literal: string) => string)
     if (text[i] !== '{') continue;
     const close = scanner.closeBrace(i + 1);
     if (close === -1) continue;
-    result += text.slice(copied, i + 1) + replaceLiterals(text, scanner, i + 1, close, replace);
-    copied = close;
+    blocks.push([i, close]);
     i = close;
   }
-  return result + text.slice(copied);
+  return blocks;
 }
 
 /** text.slice(from, to) of code, with each literal in it replaced. */
@@ -105,7 +126,7 @@ export const BUILTIN_STORE_VAR_MACROS: ReadonlySet<string> = new Set([
  * the opening quote, group 2 is the macro name, group 4 the variable path.
  */
 const QUOTED_RECEIVER_RE = new RegExp(
-  String.raw`(?<!\\)(\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+(["']))\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])`,
+  String.raw`(?<!\\)(\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+(["']))\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])`,
   'g',
 );
 
@@ -123,7 +144,7 @@ function blankLiteralText(literal: string): string {
   for (let i = 1; i < literal.length - 1; i++) {
     if (literal[i] !== '{') continue;
     const templateCode = literal[0] === '`' && literal[i - 1] === '$' && literal[i - 2] !== '\\';
-    if (!templateCode && !/^[$%][A-Za-z_$]/.test(literal.slice(i + 1, i + 3))) continue;
+    if (!templateCode && !/^[$%][\w$]/.test(literal.slice(i + 1, i + 3))) continue;
 
     let depth = 0;
     for (let j = i; j < literal.length - 1; j++) {
@@ -352,7 +373,7 @@ export class VariableTracker {
       const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
 
-      const match = /^\$([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(trimmed);
+      const match = DECLARATION_RE.$.exec(trimmed);
       if (!match) continue;
 
       const name = match[1];
@@ -427,7 +448,7 @@ export class VariableTracker {
       const trimmed = lines[i].trim();
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
 
-      const match = /^%([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(trimmed);
+      const match = DECLARATION_RE['%'].exec(trimmed);
       if (!match) continue;
 
       const name = match[1];
@@ -538,11 +559,16 @@ export class VariableTracker {
         if (cleaned[i] === '\n') lineOffsets.push(i + 1);
       }
 
-      const scans: Array<[RegExp, VariableUsage[]]> = [
-        [varRefRegex, usages],
-        [transientRefRegex, transientUsages],
+      // Spindle evaluates `%` only in code and never validates it, so `%20`
+      // outside a `{…}` block is text (URL encoding), not a transient.
+      const blocks = codeBlocks(uncommented, createCodeScanner(uncommented));
+      const inCode = (offset: number) => blocks.some(([open, close]) => open < offset && offset < close);
+
+      const scans: Array<[RegExp, VariableUsage[], boolean]> = [
+        [varRefRegex, usages, false],
+        [transientRefRegex, transientUsages, true],
       ];
-      for (const [regex, out] of scans) {
+      for (const [regex, out, digitsOnlyInCode] of scans) {
         const seen = new Set<number>();
         for (const source of [cleaned, referenced]) {
           const re = new RegExp(regex.source, 'g');
@@ -554,6 +580,7 @@ export class VariableTracker {
 
             const fullName = match[1];
             const baseName = fullName.split('.')[0];
+            if (digitsOnlyInCode && /^\d/.test(baseName) && !inCode(charOffset)) continue;
 
             // Convert offset to line/character within content block
             let localLine = 0;

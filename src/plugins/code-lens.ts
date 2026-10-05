@@ -81,7 +81,7 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
 
     // --- StoryVariables declarations ---
     if (isStoryVarsFile) {
-      const varDeclMatch = line.match(/^\$([A-Za-z_$][\w$]*)\s*=/);
+      const varDeclMatch = line.match(/^\$(\w+)\s*=/);
       if (varDeclMatch) {
         const varName = varDeclMatch[1];
         const refs = findVariableReferences(varName, workspace, true);

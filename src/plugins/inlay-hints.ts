@@ -100,7 +100,7 @@ function addVariableTypeHints(
 
   for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
     const line = lines[lineNum];
-    const declMatch = line.match(/^\$([A-Za-z_$][\w$]*)\s*=\s*(.+)$/);
+    const declMatch = line.match(/^\$(\w+)\s*=\s*(.+)$/);
     if (!declMatch) continue;
 
     const valueStr = declMatch[2].trim();
@@ -137,7 +137,7 @@ function addTransientTypeHints(
 
   for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
     const line = lines[lineNum];
-    const declMatch = line.match(/^%([A-Za-z_$][\w$]*)\s*=\s*(.+)$/);
+    const declMatch = line.match(/^%(\w+)\s*=\s*(.+)$/);
     if (!declMatch) continue;
 
     const valueStr = declMatch[2].trim();
