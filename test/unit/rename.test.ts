@@ -279,6 +279,88 @@ describe('computeRename', () => {
   });
 });
 
+describe('rename from a passage reference', () => {
+  const content = [
+    ':: Start',
+    '[[Next]] [[Go on|Next]] [[Go on->Next]] [[Next<-Go on]]',
+    `{goto "Next"} {include 'Next'} {link "Go on" "Next"} {goto Next}`,
+    '',
+    ':: Next',
+    'Hello',
+  ].join('\n');
+  const renamed = [
+    ':: Start',
+    '[[After]] [[Go on|After]] [[Go on->After]] [[After<-Go on]]',
+    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto After}`,
+    '',
+    ':: After',
+    'Hello',
+  ].join('\n');
+  const lines = content.split('\n');
+
+  // Every occurrence of `Next` on the reference lines is a link or macro target
+  const refPositions: Array<{ line: number; character: number }> = [];
+  for (const line of [1, 2]) {
+    let i = -1;
+    while ((i = lines[line].indexOf('Next', i + 1)) !== -1) {
+      refPositions.push({ line, character: i });
+    }
+  }
+
+  it('covers every link and macro form', () => {
+    expect(refPositions).toHaveLength(8);
+  });
+
+  it('prepareRename returns the target range only, not the link label', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    for (const pos of refPositions) {
+      for (const character of [pos.character, pos.character + 2, pos.character + 4]) {
+        const result = prepareRename('file:///test.tw', { line: pos.line, character }, ws);
+        expect(result, `line ${pos.line} char ${character}`).toEqual({
+          placeholder: 'Next',
+          range: {
+            start: { line: pos.line, character: pos.character },
+            end: { line: pos.line, character: pos.character + 4 },
+          },
+        });
+      }
+    }
+  });
+
+  it('prepareRename returns null on a link label', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const label = lines[1].indexOf('Go on');
+    expect(prepareRename('file:///test.tw', { line: 1, character: label + 1 }, ws)).toBeNull();
+  });
+
+  it('renames the declaration and all references from any reference', () => {
+    const ws = createWorkspace({ name: 'test.tw', content });
+    for (const pos of refPositions) {
+      const result = applyRename(ws, 'file:///test.tw', pos, 'After');
+      expect(result.get('file:///test.tw'), `line ${pos.line} char ${pos.character}`).toBe(renamed);
+    }
+  });
+
+  it('renames across documents from a reference', () => {
+    const files = {
+      'start.tw': ':: Start\n[[Next]]',
+      'next.tw': ':: Next\nHello {goto "Start"}',
+    };
+    const ws = createWorkspace(
+      ...Object.entries(files).map(([name, content]) => ({ name, content })),
+    );
+    expect(applyRenameToFiles(files, computeRename('file:///start.tw', { line: 1, character: 3 }, 'After', ws)))
+      .toEqual({ 'start.tw': ':: Start\n[[After]]', 'next.tw': ':: After\nHello {goto "Start"}' });
+  });
+
+  it('does not rename a reference to an unknown passage', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n[[Missing]] {goto "Missing"}' });
+    expect(prepareRename('file:///test.tw', { line: 1, character: 3 }, ws)).toBeNull();
+    expect(prepareRename('file:///test.tw', { line: 1, character: 19 }, ws)).toBeNull();
+    expect(computeRename('file:///test.tw', { line: 1, character: 3 }, 'Found', ws).size).toBe(0);
+  });
+});
+
 function applyRenameToFiles(
   files: Record<string, string>,
   edits: Map<string, RenameEdit[]>,
