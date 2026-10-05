@@ -888,4 +888,31 @@ describe('Integration: LSP server over stdio', () => {
       expect(codesOf(p.diagnostics)).not.toContain('SP300');
     }
   });
+
+  // -----------------------------------------------------------------------
+  // #30: per-code diagnostic disable settings
+  // -----------------------------------------------------------------------
+
+  it('honors diagnostics: {SP100: false} from initializationOptions (#30)', async () => {
+    const story = ':: Start\n{newmacro}\n[[Missing]]\n';
+    const dir = makeTempWorkspace({ 'story.twee': story });
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir, { diagnostics: { SP100: false } });
+
+    // modelReady path: other codes stay enabled, SP100 is filtered
+    const ready = await session.waitForDiagnostics(uri, hasCode('SP300'));
+    expect(codesOf(ready)).not.toContain('SP100');
+
+    // Immediate (documentChanged) path
+    const mark = session.publishes.length;
+    await didOpen(session, uri, story);
+    await didChangeFull(session, uri, 2, story + '{othermacro}\n');
+    await sleep(400);
+    const later = session.publishes.slice(mark).filter(p => p.uri === uri);
+    expect(later.length).toBeGreaterThan(0);
+    for (const p of later) {
+      expect(codesOf(p.diagnostics)).toContain('SP300');
+      expect(codesOf(p.diagnostics)).not.toContain('SP100');
+    }
+  });
 });

@@ -989,23 +989,22 @@ export const diagnosticsPlugin: SpindlePlugin = {
   id: 'diagnostics',
   capabilities: {},
   initialize(ctx: PluginContext) {
-    const publishDiagnostics = () => {
-      for (const uri of ctx.workspace.documents.getUris()) {
-        const diags = computeDiagnostics(uri, ctx.workspace);
-        ctx.connection.sendDiagnostics({
-          uri,
-          diagnostics: diags.map(d => toLspDiagnostic(d)),
-        });
-      }
-    };
+    // Per-code enable/disable map, e.g. { SP100: false }
+    const isEnabled = (d: Diagnostic) => ctx.config.diagnostics?.[d.code] !== false;
 
-    ctx.workspace.on('modelReady', publishDiagnostics);
-    ctx.workspace.on('documentChanged', (uri: string) => {
+    const publishFor = (uri: string) => {
       const diags = computeDiagnostics(uri, ctx.workspace);
       ctx.connection.sendDiagnostics({
         uri,
-        diagnostics: diags.map(d => toLspDiagnostic(d)),
+        diagnostics: diags.filter(isEnabled).map(d => toLspDiagnostic(d)),
       });
+    };
+
+    ctx.workspace.on('modelReady', () => {
+      for (const uri of ctx.workspace.documents.getUris()) {
+        publishFor(uri);
+      }
     });
+    ctx.workspace.on('documentChanged', publishFor);
   },
 };
