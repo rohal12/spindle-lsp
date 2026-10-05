@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { join } from 'node:path';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { runCheck } from '../../src/cli/check.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
@@ -16,6 +18,21 @@ async function captureStdout(fn: () => Promise<number>): Promise<{ exitCode: num
     return { exitCode, output: writes.join('\n') };
   } finally {
     console.log = originalLog;
+  }
+}
+
+// Helper: capture stdout and stderr during a function call
+async function captureOutput(fn: () => Promise<number>): Promise<{ exitCode: number; output: string; errors: string }> {
+  const errors: string[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args.map(String).join(' '));
+  };
+  try {
+    const result = await captureStdout(fn);
+    return { ...result, errors: errors.join('\n') };
+  } finally {
+    console.error = originalError;
   }
 }
 
@@ -114,4 +131,67 @@ describe('CLI check command', () => {
     expect(codes).not.toContain('SP303');
     expect(codes).toEqual(expect.arrayContaining(['SP205', 'SP206', 'SP302']));
   });
+});
+
+describe('CLI check --config', () => {
+  function withProject(files: Record<string, string>, fn: (dir: string) => Promise<void>): Promise<void> {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-config-'));
+    for (const [name, content] of Object.entries(files)) {
+      writeFileSync(join(dir, name), content);
+    }
+    return fn(dir).finally(() => rmSync(dir, { recursive: true, force: true }));
+  }
+
+  const sp100For = (output: string): string[] =>
+    JSON.parse(output).files.flatMap((f: { diagnostics: Array<{ code: string; message: string }> }) =>
+      f.diagnostics.filter(d => d.code === 'SP100').map(d => d.message));
+
+  it('loads a config file with a nonstandard name', () =>
+    withProject({
+      'custom.json': '{"macros":{"custom":{"parameters":[]}}}',
+      'story.twee': ':: Start\n{custom}\n',
+    }, async (dir) => {
+      const { exitCode, output } = await captureStdout(() =>
+        runCheck(['--config', join(dir, 'custom.json'), '--format', 'json', join(dir, 'story.twee')]),
+      );
+      expect(exitCode).toBe(0);
+      expect(sp100For(output)).toEqual([]);
+    }));
+
+  it('prefers the explicit file over a standard config in the same directory', () =>
+    withProject({
+      'custom.yaml': 'macros:\n  custom:\n    parameters: []\n',
+      'spindle.config.yaml': 'macros:\n  other:\n    parameters: []\n',
+      'story.twee': ':: Start\n{custom}\n{other}\n',
+    }, async (dir) => {
+      const { output } = await captureStdout(() =>
+        runCheck(['--config', join(dir, 'custom.yaml'), '--format', 'json', join(dir, 'story.twee')]),
+      );
+      expect(sp100For(output)).toEqual(['Unrecognized macro: {other}']);
+    }));
+
+  it('fails with a clear error for a missing config file', () =>
+    withProject({
+      'spindle.config.json': '{"macros":{"custom":{}}}',
+      'story.twee': ':: Start\n{custom}\n',
+    }, async (dir) => {
+      const missing = join(dir, 'missing.json');
+      const { exitCode, errors } = await captureOutput(() =>
+        runCheck(['--config', missing, '--format', 'json', join(dir, 'story.twee')]),
+      );
+      expect(exitCode).toBe(2);
+      expect(errors).toContain(missing);
+    }));
+
+  it('fails with a clear error for an invalid config file', () =>
+    withProject({
+      'custom.json': '{"macros": {',
+      'story.twee': ':: Start\n',
+    }, async (dir) => {
+      const { exitCode, errors } = await captureOutput(() =>
+        runCheck(['--config', join(dir, 'custom.json'), join(dir, 'story.twee')]),
+      );
+      expect(exitCode).toBe(2);
+      expect(errors).toContain('custom.json');
+    }));
 });

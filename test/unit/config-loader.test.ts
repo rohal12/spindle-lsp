@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseConfig, loadConfigFromDisk, findConfigFile } from '../../src/core/workspace/config-loader.js';
+import { parseConfig, loadConfigFromDisk, loadConfigFile, findConfigFile } from '../../src/core/workspace/config-loader.js';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -133,6 +133,50 @@ describe('loadConfigFromDisk', () => {
       writeFileSync(join(dir, 'spindle.config.json'), '{"macros":{"test":{"block":false}}}');
       const result = loadConfigFromDisk(dir);
       expect(result.macros.test).toEqual({ block: false });
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+});
+
+describe('loadConfigFile', () => {
+  it('loads exactly the given file regardless of its name', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-test-'));
+    try {
+      writeFileSync(join(dir, 'spindle.config.yaml'), 'macros:\n  standard: {}\n');
+      writeFileSync(join(dir, 'my-macros.yml'), 'macros:\n  custom:\n    container: true\n');
+      expect(loadConfigFile(join(dir, 'my-macros.yml')).macros).toEqual({ custom: { container: true } });
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it('parses .json files as JSON', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-test-'));
+    try {
+      writeFileSync(join(dir, 'custom.json'), '{"macros":{"custom":{"parameters":[]}}}');
+      expect(loadConfigFile(join(dir, 'custom.json')).macros).toEqual({ custom: { parameters: [] } });
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it('throws an error naming the path when the file is missing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-test-'));
+    try {
+      const missing = join(dir, 'missing.yaml');
+      expect(() => loadConfigFile(missing)).toThrow(`Cannot read config file '${missing}': file not found`);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it('throws an error naming the path when the file is invalid', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-test-'));
+    try {
+      const bad = join(dir, 'bad.json');
+      writeFileSync(bad, '{"macros":');
+      expect(() => loadConfigFile(bad)).toThrow(`Invalid JSON in config file '${bad}'`);
     } finally {
       rmSync(dir, { recursive: true });
     }
