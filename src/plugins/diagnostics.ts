@@ -307,7 +307,14 @@ function validateArguments(
     const rawArgs = macro.rawArgs ?? '';
     const args = lexArguments(rawArgs);
 
-    const params = new Parameters(info.parameters);
+    // A malformed parameter schema (e.g. from a project config) only
+    // disables argument checks for its own macro.
+    let params: Parameters;
+    try {
+      params = new Parameters(info.parameters);
+    } catch {
+      continue;
+    }
 
     // SP108: empty parameters but received args
     if (params.isEmpty()) {

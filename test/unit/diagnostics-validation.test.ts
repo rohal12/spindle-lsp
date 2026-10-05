@@ -41,3 +41,40 @@ describe('SP101: container nesting and passage boundaries', () => {
     expect(sp101).toHaveLength(0);
   });
 });
+
+describe('argument validation with receiver parameters', () => {
+  it('validates macros that follow a receiver macro', () => {
+    const sp109 = codes(':: Start\n{textbox "$x" ""}\n{goto}', 'SP109');
+    expect(sp109).toHaveLength(1);
+    expect(sp109[0].message).toContain('{goto}');
+  });
+
+  it('accepts the documented form controls', () => {
+    const text = [
+      ':: Start',
+      '{textbox $name}',
+      '{textbox "$name" "Enter your name"}',
+      '{numberbox $health}',
+      '{textarea $notes "Enter notes here"}',
+      '{checkbox $has_key "Take the key?"}',
+      '{radiobutton $class "warrior" "Warrior"}',
+      '{listbox "$weapon"}{option "Sword"}{/listbox}',
+      '{cycle $stance}{option "Offensive"}{/cycle}',
+    ].join('\n');
+    const argDiags = diagnose(text).filter(d => ['SP108', 'SP109', 'SP111'].includes(d.code));
+    expect(argDiags).toEqual([]);
+  });
+
+  it('rejects a receiver that is not a variable', () => {
+    const sp109 = codes(':: Start\n{textbox 42 "x"}', 'SP109');
+    expect(sp109).toHaveLength(1);
+    expect(sp109[0].message).toContain('receiver');
+  });
+
+  it('isolates a malformed custom parameter schema to its own macro', () => {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: ':: Start\n{broken 1}\n{goto}' });
+    workspace.macros.loadSupplements({ broken: { name: 'broken', parameters: ['nosuchtype'] } });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    expect(diags.filter(d => d.code === 'SP109' && d.message.includes('{goto}'))).toHaveLength(1);
+  });
+});

@@ -194,28 +194,28 @@
   },
   "textbox": {
     "name": "textbox",
-    "description": "Creates a text input box.\n\nUsage: `{textbox \"$receiver\" defaultValue}`",
-    "parameters": ["receiver &+ text"]
+    "description": "Creates a text input box bound to a story variable.\n\nUsage: `{textbox $receiver}` or `{textbox $receiver \"placeholder\"}`",
+    "parameters": ["receiver |+ text"]
   },
   "numberbox": {
     "name": "numberbox",
-    "description": "Creates a number input box.\n\nUsage: `{numberbox \"$receiver\" defaultValue}`",
-    "parameters": ["receiver &+ text"]
+    "description": "Creates a number input box bound to a story variable.\n\nUsage: `{numberbox $receiver}` or `{numberbox $receiver \"placeholder\"}`",
+    "parameters": ["receiver |+ text"]
   },
   "textarea": {
     "name": "textarea",
-    "description": "Creates a multi-line text input area.\n\nUsage: `{textarea \"$receiver\" defaultValue}`",
-    "parameters": ["receiver &+ text"]
+    "description": "Creates a multi-line text input area bound to a story variable.\n\nUsage: `{textarea $receiver}` or `{textarea $receiver \"placeholder\"}`",
+    "parameters": ["receiver |+ text"]
   },
   "checkbox": {
     "name": "checkbox",
-    "description": "Creates a checkbox input.\n\nUsage: `{checkbox \"$receiver\" uncheckedValue checkedValue}`",
-    "parameters": ["receiver &+ text"]
+    "description": "Creates a checkbox that toggles a boolean story variable.\n\nUsage: `{checkbox $receiver \"label\"}`",
+    "parameters": ["receiver |+ text"]
   },
   "radiobutton": {
     "name": "radiobutton",
-    "description": "Creates a radio button input.\n\nUsage: `{radiobutton \"$receiver\" value}`",
-    "parameters": ["receiver &+ text &+ text"]
+    "description": "Creates a radio button that sets a story variable to its value. Use the same variable for every option in a group.\n\nUsage: `{radiobutton $receiver \"value\" \"label\"}`",
+    "parameters": ["receiver &+ text |+ text"]
   },
   "quicksave": {
     "name": "quicksave",
