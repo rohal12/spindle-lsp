@@ -159,3 +159,33 @@ describe('W74: widget spelling shared by navigation and edits (#74)', () => {
     });
   });
 });
+
+describe('N-widget-sigil: widget names starting with a sigil are not invocable (control)', () => {
+  const declUri = 'file:///widgets.tw';
+  const names = ['_w', '$w', '@w', '%w'];
+
+  for (const name of names) {
+    for (const prefix of ['', '.cls ']) {
+      it(`N-widget-sigil: Spindle 0.45.1 tokenizes {${prefix}${name} 1} as an expression, never a macro`, () => {
+        const tokens = tokenize(`{${prefix}${name} 1}`);
+        expect(tokens.map(t => t.type)).toEqual(['expression']);
+        // the LSP agrees: no macro head, so no widget call in definition/references/rename
+        const model = workspace(`:: StoryVariables\n:: Start\n{${prefix}${name} 1}`, [[declUri, `:: Widgets [widget]\n{widget "${name}" @x}\n{@x}\n{/widget}`]]);
+        const position = { line: 2, character: prefix.length + 2 };
+        expect(findWidgetReferences(name, model, false)).toHaveLength(0);
+        // a sigil-initial head may be a variable read, never the widget declaration
+        expect(getDefinition(uri, position, model)?.uri).not.toBe(declUri);
+        expect(prepareRename(uri, position, model)?.placeholder).not.toBe(name);
+        const edits = computeRename(uri, position, 'renamed', model);
+        expect(edits.get(declUri) ?? []).toEqual([]);
+      });
+    }
+  }
+
+  it('C-N-widget-sigil: a letter-initial widget (underscore later in the name) is still a call', () => {
+    const model = workspace(':: StoryVariables\n:: Start\n{a_w 1}', [[declUri, ':: Widgets [widget]\n{widget "a_w" @x}\n{@x}\n{/widget}']]);
+    expect(tokenize('{a_w 1}').map(t => t.type)).toEqual(['macro']);
+    expect(findWidgetReferences('a_w', model, false)).toHaveLength(1);
+    expect(getDefinition(uri, { line: 2, character: 2 }, model)?.uri).toBe(declUri);
+  });
+});
