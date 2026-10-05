@@ -82,6 +82,99 @@ describe('parseMacros', () => {
   });
 });
 
+describe('parseMacros balanced braces', () => {
+  it('keeps an object literal argument and its closing brace', () => {
+    const text = '{set $x = { a: 1, b: 2 }}';
+    const macros = parseMacros(text);
+    expect(macros).toHaveLength(1);
+    expect(macros[0].name).toBe('set');
+    expect(macros[0].rawArgs).toBe('$x = { a: 1, b: 2 }');
+    expect(macros[0].range.end).toEqual({ line: 0, character: text.length });
+  });
+
+  it('keeps every assignment of a comma-separated set with objects', () => {
+    const text = '{set $x = {a: 1}, $y = {toString}}after';
+    const macros = parseMacros(text);
+    expect(macros).toHaveLength(1);
+    expect(macros[0].name).toBe('set');
+    expect(macros[0].rawArgs).toBe('$x = {a: 1}, $y = {toString}');
+    expect(macros[0].range.end).toEqual({ line: 0, character: text.length - 'after'.length });
+  });
+
+  it('keeps an object literal passed to a widget invocation', () => {
+    const text = '{echo {a: 1}} after';
+    const macros = parseMacros(text);
+    expect(macros).toHaveLength(1);
+    expect(macros[0].name).toBe('echo');
+    expect(macros[0].rawArgs).toBe('{a: 1}');
+    expect(macros[0].range.end).toEqual({ line: 0, character: 13 });
+  });
+
+  it('matches deeply nested objects and continues after the macro', () => {
+    const text = '{set $x = {a: {b: {c: 1}}}}\n{if $x.a.b.c}yes{/if}';
+    const macros = parseMacros(text);
+    expect(macros.map(m => m.name)).toEqual(['set', 'if', 'if']);
+    expect(macros[0].rawArgs).toBe('$x = {a: {b: {c: 1}}}');
+    expect(macros[0].range.end).toEqual({ line: 0, character: 27 });
+    expect(macros[1].range.start).toEqual({ line: 1, character: 0 });
+  });
+
+  it('matches objects spanning several lines', () => {
+    const text = '{set $x = {\n  a: 1,\n  b: {c: 2}\n}}';
+    const macros = parseMacros(text);
+    expect(macros).toHaveLength(1);
+    expect(macros[0].rawArgs).toBe('$x = {\n  a: 1,\n  b: {c: 2}\n}');
+    expect(macros[0].range.end).toEqual({ line: 3, character: 2 });
+  });
+
+  it('keeps nested braces after a CSS prefix', () => {
+    const macros = parseMacros('{.red button {a: 1}}');
+    expect(macros).toHaveLength(1);
+    expect(macros[0].cssPrefix).toBe('.red');
+    expect(macros[0].rawArgs).toBe('{a: 1}');
+  });
+
+  it('ignores braces inside string literals', () => {
+    const macros = parseMacros(`{set $x = "}", $y = '{'}{/set}`);
+    expect(macros).toHaveLength(2);
+    expect(macros[0].rawArgs).toBe(`$x = "}", $y = '{'`);
+  });
+
+  it('ignores braces inside template literals and their interpolations', () => {
+    const macros = parseMacros('{set $x = `}${ {a: 1}.a }{`}after{b}');
+    expect(macros.map(m => m.name)).toEqual(['set', 'b']);
+    expect(macros[0].rawArgs).toBe('$x = `}${ {a: 1}.a }{`');
+  });
+
+  it('treats an apostrophe after a word character as text, not a string', () => {
+    // Spindle: the quote in "name's" cannot start a string literal, so the
+    // macro ends at the first balanced brace and {b} is a macro of its own.
+    const macros = parseMacros(`{print $name's} and 'x' {b}`);
+    expect(macros.map(m => m.name)).toEqual(['print', 'b']);
+    expect(macros[0].rawArgs).toBe(`$name's`);
+  });
+
+  it('treats a string not closed on its line as text', () => {
+    const macros = parseMacros('{print "a}\nb"}');
+    expect(macros).toHaveLength(1);
+    expect(macros[0].rawArgs).toBe('"a');
+  });
+
+  it('treats a macro without a balanced closing brace as text', () => {
+    // {set …} never closes; Spindle renders it as text and resumes scanning
+    // at the next character, so only {b} is a macro.
+    const macros = parseMacros('{set $x = {a: 1}\n{b}');
+    expect(macros.map(m => m.name)).toEqual(['b']);
+    expect(macros[0].range.start).toEqual({ line: 1, character: 0 });
+  });
+
+  it('still skips variable interpolation inside arguments', () => {
+    const macros = parseMacros('{set $x = {a: {$y}}}');
+    expect(macros).toHaveLength(1);
+    expect(macros[0].name).toBe('set');
+  });
+});
+
 describe('pairMacros', () => {
   it('pairs matching open/close', () => {
     const macros = parseMacros('{if $x}text{/if}');

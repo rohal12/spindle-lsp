@@ -43,6 +43,37 @@ describe('computeDiagnostics', () => {
     expect(sp100[0].message).toContain('unknownMacro');
   });
 
+  it('does not report identifiers inside object literal arguments as macros', () => {
+    const text = [
+      ':: StoryVariables',
+      '$x = {}',
+      '$y = {}',
+      ':: Start',
+      '{set $x = {a: 1}, $y = {toString}}',
+    ].join('\n');
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', workspace);
+    expect(diags.filter(d => d.code === 'SP100')).toHaveLength(0);
+  });
+
+  it('reports a widget invocation with an object literal over its whole range', () => {
+    const widgetFile = ':: Widgets [widget]\n{widget "echo"}echo{/widget}';
+    const storyFile = ':: Start\n{echo {a: 1}}';
+    const workspace = createWorkspaceFrom(
+      { name: 'widgets.tw', content: widgetFile },
+      { name: 'story.tw', content: storyFile },
+    );
+    const diags = computeDiagnostics('file:///story.tw', workspace);
+    expect(diags.filter(d => d.code === 'SP100')).toHaveLength(0);
+    const sp301 = diags.filter(d => d.code === 'SP301');
+    expect(sp301).toHaveLength(1);
+    expect(sp301[0].message).toContain('{echo} expects 0 argument(s)');
+    expect(sp301[0].range).toEqual({
+      start: { line: 1, character: 0 },
+      end: { line: 1, character: 13 },
+    });
+  });
+
   it('produces SP101 for unmatched container', () => {
     const workspace = createWorkspaceFromFixture('errors.tw');
     const diags = computeDiagnostics('file:///errors.tw', workspace);
@@ -414,6 +445,21 @@ describe('SP205: temporary assigned inside {for}', () => {
     expect(diags).toHaveLength(2);
     expect(diags[0].range.start.character).toBe(5);
     expect(diags[1].range.start.character).toBe(19);
+  });
+
+  it('flags a temporary assigned after an object literal in the same {set}', () => {
+    const diags = sp205([
+      ':: Start',
+      '{for @item of $list}',
+      '{set $o = {a: {b: 1}}, _t = @item}',
+      '{_t}',
+      '{/for}',
+    ].join('\n'));
+    expect(diags).toHaveLength(1);
+    expect(diags[0].range).toEqual({
+      start: { line: 2, character: 23 },
+      end: { line: 2, character: 25 },
+    });
   });
 
   it('flags a temporary read before its assignment (previous-item pattern)', () => {
