@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { glob } from 'glob';
 
@@ -8,7 +8,7 @@ import { computeDiagnostics } from '../plugins/diagnostics.js';
 import type { DiagnosticOptions } from '../plugins/diagnostics.js';
 import { loadConfigFromDisk, loadConfigFile, findConfigFile } from '../core/workspace/config-loader.js';
 import type { SpindleProjectConfig } from '../core/workspace/config-loader.js';
-import { findMacroSourceFiles } from '../core/workspace/macro-sources.js';
+import { addProjectMacroSources } from '../core/workspace/macro-sources.js';
 import type { Diagnostic } from '../core/types.js';
 import { formatPretty } from './reporters/pretty.js';
 import { formatJson } from './reporters/json.js';
@@ -197,20 +197,10 @@ export async function runCheck(args: string[]): Promise<number> {
   }
 
   // JS/TS files defining custom macros (Story.defineMacro) are loaded for
-  // discovery only — they are not checked. Search the project being
-  // checked: the cwd, unless the files lie outside it.
-  const fromCwd = relative(cwd, commonDir);
-  const sourceRoot = fromCwd.startsWith('..') || isAbsolute(fromCwd) ? commonDir : cwd;
+  // discovery only — they are not checked. Search the project containing
+  // the checked files (independent of the cwd).
   const workspaceContents = new Map(fileContents);
-  for (const filePath of await findMacroSourceFiles(sourceRoot)) {
-    const uri = pathToFileURL(filePath).toString();
-    if (workspaceContents.has(uri)) continue;
-    try {
-      workspaceContents.set(uri, readFileSync(filePath, 'utf-8'));
-    } catch {
-      // Skip unreadable files
-    }
-  }
+  await addProjectMacroSources(workspaceContents, commonDir);
   workspace.initialize(workspaceContents);
 
   // Load user macros from config

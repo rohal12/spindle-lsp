@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { runCheck } from '../../src/cli/check.js';
 
@@ -150,6 +150,7 @@ describe('CLI check custom macro sources (#47)', () => {
   it('discovers macros from JS/TS files in the project, skipping dependencies and build output', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-macros-'));
     const files: Record<string, string> = {
+      'package.json': '{}\n',
       'src/story/Start.twee': ':: Start\n{hello}\n{greet}\n{vendored}\n{bundled}\n',
       'src/assets/app/index.ts': 'Story.defineMacro({ name: "greet", render(): null { return null; } });\n',
       'macros.js': 'Story.defineMacro({ name: "hello", render() { return null; } });\n',
@@ -178,6 +179,80 @@ describe('CLI check custom macro sources (#47)', () => {
       process.chdir(originalCwd);
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe('searches the checked files\' project, regardless of cwd', () => {
+    // <home>/projects/game is the project (package.json); its sibling
+    // projects/other and the stray file in <home> are unrelated to it.
+    const files: Record<string, string> = {
+      'Downloads/stray.js': 'Story.defineMacro({ name: "stray", render() { return null; } });\n',
+      'projects/other/m.js': 'Story.defineMacro({ name: "bye", render() { return null; } });\n',
+      'projects/game/package.json': '{}\n',
+      'projects/game/scripts/macros.js': 'Story.defineMacro({ name: "hello", render() { return null; } });\n',
+      'projects/game/story/a.tw': ':: Start\n{hello}\n{bye}\n{stray}\n',
+    };
+    let home: string;
+    let outside: string;
+    const originalCwd = process.cwd();
+
+    beforeAll(() => {
+      home = realpathSync(mkdtempSync(join(tmpdir(), 'spindle-cli-root-')));
+      outside = realpathSync(mkdtempSync(join(tmpdir(), 'spindle-cli-elsewhere-')));
+      for (const [name, content] of Object.entries(files)) {
+        mkdirSync(join(home, name, '..'), { recursive: true });
+        writeFileSync(join(home, name), content);
+      }
+    });
+
+    afterAll(() => {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    });
+
+    async function checkFrom(cwd: string, file: string): Promise<string> {
+      process.chdir(cwd);
+      try {
+        return (await captureStdout(() => runCheck(['--format', 'json', file]))).output;
+      } finally {
+        process.chdir(originalCwd);
+      }
+    }
+
+    function sp100(output: string): string[] {
+      const parsed = JSON.parse(output);
+      expect(parsed.files).toHaveLength(1);
+      return parsed.files[0].diagnostics
+        .filter((d: { code: string }) => d.code === 'SP100')
+        .map((d: { message: string }) => d.message);
+    }
+
+    const expected = ['Unrecognized macro: {bye}', 'Unrecognized macro: {stray}'];
+
+    it('from the project\'s parent directory', async () => {
+      expect(sp100(await checkFrom(join(home, 'projects'), 'game/story/a.tw'))).toEqual(expected);
+    });
+
+    it('from a subdirectory of the project', async () => {
+      expect(sp100(await checkFrom(join(home, 'projects/game/story'), 'a.tw'))).toEqual(expected);
+    });
+
+    it('from a distant ancestor (e.g. $HOME)', async () => {
+      expect(sp100(await checkFrom(home, 'projects/game/story/a.tw'))).toEqual(expected);
+    });
+
+    it('from an unrelated directory', async () => {
+      expect(sp100(await checkFrom(outside, join(home, 'projects/game/story/a.tw')))).toEqual(expected);
+    });
+
+    it('with identical output from every cwd', async () => {
+      const outputs = [
+        await checkFrom(join(home, 'projects'), 'game/story/a.tw'),
+        await checkFrom(join(home, 'projects/game/story'), 'a.tw'),
+        await checkFrom(home, 'projects/game/story/a.tw'),
+        await checkFrom(outside, join(home, 'projects/game/story/a.tw')),
+      ];
+      expect(new Set(outputs).size).toBe(1);
+    });
   });
 });
 

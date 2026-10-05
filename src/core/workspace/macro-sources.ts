@@ -1,5 +1,9 @@
-import { relative } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { glob } from 'glob';
+
+import { findConfigFile } from './config-loader.js';
 
 /**
  * JavaScript/TypeScript files scanned for `Story.defineMacro({...})` calls.
@@ -44,4 +48,43 @@ export function findMacroSourceFiles(root: string): Promise<string[]> {
     nodir: true,
     ignore: MACRO_SOURCE_IGNORE,
   });
+}
+
+/** Entries (besides a spindle config file) that mark a project's root. */
+const PROJECT_ROOT_MARKERS = ['package.json', '.git'];
+
+/**
+ * The root of the project containing `dir`: the nearest directory, from
+ * `dir` upwards, holding a spindle config file, a package.json or .git.
+ * Falls back to `dir` itself if there is none.
+ */
+export function findProjectRoot(dir: string): string {
+  for (let search = dir; ; search = dirname(search)) {
+    if (findConfigFile(search)
+      || PROJECT_ROOT_MARKERS.some(marker => existsSync(join(search, marker)))) {
+      return search;
+    }
+    if (dirname(search) === search) return dir;
+  }
+}
+
+/**
+ * Add the JS/TS macro sources of the project containing `dir` to
+ * `contents` (file URI to text), keeping documents already present.
+ * Used by one-shot checks (CLI, MCP), which load these files for macro
+ * discovery only.
+ */
+export async function addProjectMacroSources(
+  contents: Map<string, string>,
+  dir: string,
+): Promise<void> {
+  for (const filePath of await findMacroSourceFiles(findProjectRoot(dir))) {
+    const uri = pathToFileURL(filePath).toString();
+    if (contents.has(uri)) continue;
+    try {
+      contents.set(uri, readFileSync(filePath, 'utf-8'));
+    } catch {
+      // Skip unreadable files
+    }
+  }
 }
