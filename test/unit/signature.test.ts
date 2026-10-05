@@ -131,4 +131,19 @@ describe('getSignatureHelp finds the enclosing macro', () => {
   it('does not reach into the previous passage', () => {
     expect(help(':: A\n{counter 5\n:: B\ntext ')).toBeNull();
   });
+
+  it('reads the macro name after CSS selectors (#58)', () => {
+    expect(help(':: Start\n{.cls#id counter 5, ')?.activeParameter).toBe(1);
+  });
+
+  it('does not take the end of a class name as a macro (#58)', () => {
+    // {.my-counter $x …} is a variable display, not a {counter} call
+    expect(help(':: Start\n{.my-counter $x + ')).toBeNull();
+  });
+
+  it('ignores a macro name after selectors Spindle does not accept (#58)', () => {
+    // No whitespace between selectors, one space before the name
+    expect(help(':: Start\n{.red .bold counter 5, ')).toBeNull();
+    expect(help(':: Start\n{.red  counter 5, ')).toBeNull();
+  });
 });

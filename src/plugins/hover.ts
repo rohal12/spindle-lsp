@@ -2,6 +2,7 @@ import type { Hover, Range as LspRange } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
+import { SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core hover function (no LSP dependency)
@@ -57,13 +58,14 @@ function getMacroHover(
   position: Position,
   workspace: WorkspaceModel,
 ): HoverResult | null {
-  // Match macro patterns: {macroName ...} or {/macroName}
-  const macroRegex = /\{(\/)?(?:(?:[#.][a-zA-Z][\w-]*\s*)*)([A-Za-z][\w-]*)/g;
+  // Match macro patterns: {macroName ...}, {.cls#id macroName ...} or {/macroName}
+  const macroRegex = new RegExp(String.raw`\{(?:(\/)|${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)`, 'g');
   let match: RegExpExecArray | null;
 
   while ((match = macroRegex.exec(line)) !== null) {
     const name = match[2];
-    const nameStart = match.index + match[0].indexOf(name);
+    // The name ends the match; the selectors before it may contain it too
+    const nameStart = match.index + match[0].length - name.length;
     const nameEnd = nameStart + name.length;
 
     if (position.character >= nameStart && position.character <= nameEnd) {

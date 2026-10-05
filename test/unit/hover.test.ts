@@ -153,3 +153,32 @@ describe('getHoverInfo', () => {
     expect(result!.contents).toContain('active');
   });
 });
+
+describe('getHoverInfo with CSS selector prefixes (#58)', () => {
+  function hover(body: string, character: number) {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: `:: StoryVariables\n$player = { name: "Ann" }\n\n:: Start\n${body}`,
+    });
+    return getHoverInfo('file:///test.tw', { line: 4, character }, ws);
+  }
+
+  it('shows no macro for a class name ending in a macro name', () => {
+    // {.cls-link $player} is a variable display; "link" is part of the class
+    expect(hover('{.cls-link $player}', 7)).toBeNull();
+  });
+
+  it('shows the variable of a prefixed variable display', () => {
+    const result = hover('{.hero-name $player.name}', 14);
+    expect(result?.contents).toContain('Story variable');
+  });
+
+  it('finds the macro name after selectors that contain it', () => {
+    const result = hover('{.link link "Go" "Next"}', 8);
+    expect(result?.contents).toContain('**link**');
+    expect(result?.range).toEqual({
+      start: { line: 4, character: 7 },
+      end: { line: 4, character: 11 },
+    });
+  });
+});
