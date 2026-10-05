@@ -159,6 +159,8 @@ export class WorkspaceModel extends EventEmitter {
         const content = lines.slice(contentStart, contentEnd).join('\n');
         this.variables.parseStoryVariables(content, contentStart, storyVars.uri);
       }
+    } else {
+      this.variables.clearStoryVariables();
     }
 
     // Rescan StoryTransients
@@ -178,6 +180,8 @@ export class WorkspaceModel extends EventEmitter {
         const content = lines.slice(contentStart, contentEnd).join('\n');
         this.variables.parseStoryTransients(content, contentStart, storyTransients.uri);
       }
+    } else {
+      this.variables.clearStoryTransients();
     }
 
     // Rescan variable usages and macro invocations across all documents

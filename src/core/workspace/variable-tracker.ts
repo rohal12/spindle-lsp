@@ -215,6 +215,20 @@ export class VariableTracker {
     }
   }
 
+  /** Forget StoryVariables declarations, e.g. after the passage was removed. */
+  clearStoryVariables(): void {
+    this.declared.clear();
+    this._hasStoryVariables = false;
+    this._nullDeclarations = [];
+  }
+
+  /** Forget StoryTransients declarations, e.g. after the passage was removed. */
+  clearStoryTransients(): void {
+    this.declaredTransient.clear();
+    this._hasStoryTransients = false;
+    this._nullTransientDeclarations = [];
+  }
+
   /**
    * Parse the StoryTransients passage content for declarations.
    * Each line like `%name = value` becomes a declaration.

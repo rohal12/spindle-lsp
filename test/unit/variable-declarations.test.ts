@@ -3,6 +3,7 @@ import { SymbolKind } from 'vscode-languageserver';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { findVariableReferences, findTransientReferences } from '../../src/plugins/references.js';
 import { searchWorkspaceSymbols } from '../../src/plugins/workspace-symbol.js';
+import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -94,5 +95,51 @@ describe('variable declaration locations', () => {
         range: { start: { line: 3, character: 0 }, end: { line: 3, character: 2 } },
       },
     ]);
+  });
+});
+
+describe('declaration reset when a special passage disappears', () => {
+  const declarations = ':: StoryVariables\n$x = 0\n\n:: StoryTransients\n%y = 0\n\n';
+  const start = ':: Start\n{$x} {%y}\n';
+
+  function expectNoDeclarations(ws: WorkspaceModel): void {
+    expect(ws.variables.hasStoryVariables()).toBe(false);
+    expect(ws.variables.hasStoryTransients()).toBe(false);
+    expect(ws.variables.getDeclared().size).toBe(0);
+    expect(ws.variables.getDeclaredTransient().size).toBe(0);
+  }
+
+  it('clears declarations when the passages are deleted', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: declarations + start });
+    expect(ws.variables.hasStoryVariables()).toBe(true);
+    expect(ws.variables.hasStoryTransients()).toBe(true);
+
+    ws.documents.update('file:///test.tw', start);
+    expectNoDeclarations(ws);
+    expect(computeDiagnostics('file:///test.tw', ws).map(d => d.code)).toContain('SP202');
+  });
+
+  it('clears declarations when the passages are renamed', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: declarations + start });
+    ws.documents.update(
+      'file:///test.tw',
+      declarations.replace('StoryVariables', 'OldVariables').replace('StoryTransients', 'OldTransients') + start,
+    );
+    expectNoDeclarations(ws);
+  });
+
+  it('clears declarations when the declaring files are removed', () => {
+    const ws = createWorkspace(
+      { name: 'vars.tw', content: ':: StoryVariables\n$x = 0\n' },
+      { name: 'transients.tw', content: ':: StoryTransients\n%y = 0\n' },
+      { name: 'start.tw', content: start },
+    );
+    ws.documents.close('file:///vars.tw');
+    expect(ws.variables.hasStoryVariables()).toBe(false);
+    expect(ws.variables.getDeclared().size).toBe(0);
+    expect(ws.variables.hasStoryTransients()).toBe(true);
+
+    ws.documents.close('file:///transients.tw');
+    expectNoDeclarations(ws);
   });
 });
