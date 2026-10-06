@@ -10,6 +10,7 @@
 import { tokenize, type Token } from '../../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
 import { runtimeBracketLink, runtimeLinkMacro } from '../../helpers/link-macro-oracle.js';
 import { INSTALLED_CAPABILITIES } from '../../helpers/spindle-version.js';
+import { runtimeGotoTarget } from '../../helpers/expression-oracle.js';
 
 export interface OraclePassage {
   name: string;
@@ -141,22 +142,20 @@ function includeNameExpr(rawArgs: string): string {
  * use the raw text with surrounding quotes stripped. Only two shapes are
  * resolvable without the story's state, and only those are evaluated here:
  * a single string literal, and a bare name made of word characters, spaces
- * and hyphens (a ReferenceError/SyntaxError, so the name itself). Anything
+ * and hyphens, run through the installed evaluator (Spindle's sigil
+ * transformation, `temporary` as the `_` scope): a ReferenceError/SyntaxError
+ * is the name itself, `_x1` or `URL` is whatever they evaluate to. Anything
  * else (concatenation, parentheses, calls, sigils) is dynamic by design.
  */
-export function gotoTarget(rawArgs: string, include = false): string | null {
+export function gotoTarget(rawArgs: string, include = false, temporary: Record<string, unknown> = {}): string | null {
   let args = rawArgs;
   if (include) args = includeNameExpr(rawArgs);
   const literal = staticString(args);
   if (literal !== null) return literal;
   const bare = args.trim();
   if (!/^[A-Za-z_][\w -]*$/.test(bare)) return null;
-  try {
-    new Function(`return (${bare});`)();
-    return null; // evaluates: a value, not a name
-  } catch {
-    return bare.replace(/^["']|["']$/g, '');
-  }
+  // the installed evaluator (sigils included) on a fixed empty story state, then the component's String / catch rule
+  return runtimeGotoTarget(bare, temporary);
 }
 
 export interface OracleRef {
