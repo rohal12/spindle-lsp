@@ -261,6 +261,94 @@ describe('L77 (extra): static literal decoding', () => {
   });
 });
 
+describe('L77 (include target identity): references and SP302 read {include} per release', () => {
+  // No workspace root, so the version comes from StoryData and never from the installed runtime.
+  function versioned(version: string, includeArgs: string, widget = 'inline') {
+    const model = new WorkspaceModel();
+    const text = `:: StoryData\n{"format":"Spindle","format-version":"${version}"}\n:: StoryVariables\n` +
+      `:: ${widget} [widget]\n{widget "greet"}hi{/widget}\n:: Start\n{include ${includeArgs}}\n`;
+    model.initialize(new Map([[uri, text]]));
+    models.push(model);
+    return { model, text };
+  }
+  const identity = (version: string, args: string, widget = 'inline') => {
+    const { model, text } = versioned(version, args, widget);
+    const refs = parseMacroPassageRefs(text, 0, model.capabilities).filter(r => r.macro === 'include');
+    const sp302 = computeDiagnostics(uri, model).filter(d => d.code === 'SP302');
+    return { names: refs.map(r => r.name), sp302: sp302.length, model, text, refs };
+  };
+
+  // [args, passage tagged [widget], per version: reference names, SP302 count]
+  type Row = [string, string, Record<string, [string[], number]>];
+  const OLD = '0.45.1', MID = '0.51.1', NEW = '0.51.3';
+  const rows: Array<[string, Row]> = [
+    ['L77/include-inline-diagnostic-quoted', ['"inline"', 'inline', { [OLD]: [[], 0], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
+    ['L77/include-inline-diagnostic-quoted-flag-after', ['"inline" inline', 'inline', { [OLD]: [[], 0], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
+    ['L77/include-inline-diagnostic-flag-before', ['inline "inline"', 'inline', { [OLD]: [['inline'], 1], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
+    ['L77/include-inline-diagnostic-escaped', ['"\\u0069nline"', 'inline', { [OLD]: [['inline'], 1], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
+    ['L77/include-widget-other-quoted', ['"Other"', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
+    ['L77/include-widget-other-bare', ['Other', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
+    ['L77/include-widget-other-flag-after', ['"Other" inline', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
+    ['L77/include-widget-other-flag-before', ['inline Other', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
+    ['L77/include-widget-other-bare-flag-after', ['Other inline', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
+    ['L77/include-malformed-escape', ['"\\u00"', 'Other', { [OLD]: [[], 0], [MID]: [[], 0], [NEW]: [[], 0] }]],
+    ['L77/include-dynamic-variable', ['$x', 'Other', { [OLD]: [[], 0], [MID]: [[], 0], [NEW]: [[], 0] }]],
+    ['L77/include-dynamic-concat', ['"Other" + $x', 'Other', { [OLD]: [[], 0], [MID]: [[], 0], [NEW]: [[], 0] }]],
+  ];
+  for (const [id, [args, widget, expected]] of rows) {
+    for (const version of [OLD, MID, NEW]) {
+      it(`${id}-${version}: reference identity and SP302 agree`, () => {
+        const want = expected[version];
+        const got = identity(version, args, widget);
+        expect(got.names, `reference names for {include ${args}}`).toEqual(want[0]);
+        expect(got.sp302, `SP302 for {include ${args}}`).toBe(want[1]);
+      });
+    }
+  }
+
+  it('L77/include-inline-diagnostic-0.51.3: the SP302 of a widget passage named inline', () => {
+    const { model } = versioned(NEW, '"inline"');
+    expect(model.capabilities.includeInlineScoped).toBe(true);
+    expect(resolveIncludeTarget('"inline"', model.capabilities)).toBe('inline');
+    // 0.45.1 removes the word even inside the quotes, leaving the empty string
+    expect(resolveIncludeTarget('"inline"')).toBe('');
+    expect(computeDiagnostics(uri, model).map(d => d.code)).toContain('SP302');
+  });
+
+  it('L77/include-inline-resolver-flags: leading and trailing flags per release', () => {
+    const scoped = { includeInlineScoped: true };
+    for (const options of [{}, scoped]) {
+      expect(resolveIncludeTarget('"Other" inline', options)).toBe('Other');
+      expect(resolveIncludeTarget('inline "Other"', options)).toBe('Other');
+      expect(resolveIncludeTarget('Other inline', options)).toBe('Other');
+      expect(resolveIncludeTarget('$x', options)).toBeNull();
+      expect(resolveIncludeTarget('"\\u00"', options)).toBeNull();
+    }
+    expect(resolveIncludeTarget('"inline"', {})).toBe('');
+    expect(resolveIncludeTarget('"inline"', scoped)).toBe('inline');
+    expect(resolveIncludeTarget('"inline" inline', scoped)).toBe('inline');
+  });
+
+  it('L77/include-inline-range: the reference keeps the original escaped spelling on every release', () => {
+    for (const version of [OLD, MID, NEW]) {
+      const { refs } = identity(version, '"\\u0069nline" ');
+      expect(refs.map(r => r.name)).toEqual(['inline']);
+      const [ref] = refs;
+      expect(ref.range.end.character - ref.range.start.character).toBe('\\u0069nline'.length);
+    }
+  });
+
+  it('L77/include-inline-argument-check: the argument validation reads the flag like the resolver', () => {
+    const argCodes = (version: string, args: string) => {
+      const { model } = versioned(version, args, 'Other');
+      return computeDiagnostics(uri, model).filter(d => /^SP1/.test(String(d.code))).map(d => d.code);
+    };
+    for (const version of [OLD, MID, NEW]) {
+      expect(argCodes(version, '"inline"'), version).toEqual(argCodes(version, '"Other"'));
+    }
+  });
+});
+
 describe('R67/X70 (CRLF): template-literal passage targets', () => {
   const crlf = (text: string) => text.replace(/\n/g, '\r\n');
   // astral characters make UTF-16 columns differ from code points

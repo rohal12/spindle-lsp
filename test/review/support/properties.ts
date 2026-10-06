@@ -328,6 +328,9 @@ export function propRename(files: Files) {
       if (seen.has(key)) continue;
       seen.add(key);
       for (const newName of RENAMES[kind]) {
+        // Renaming onto a passage that already exists merges two passages: not a rename, and outside this contract
+        // (a fixture with a passage named `inline`, #77, meets the `inline` rename candidate).
+        if (kind === 'passage' && model.passages.getPassage(newName)) continue;
         let edits;
         try { edits = computeRename(uri, p.pos, newName, model); }
         catch (e) {

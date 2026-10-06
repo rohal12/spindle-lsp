@@ -9,7 +9,7 @@ import { policyFor, scanHtmlTags } from '../core/parsing/html-scanner.js';
 import { findUnevaluatedBlocks } from '../core/parsing/attribute-blocks.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
-import { findLinkMacroMismatches, findLinkRuntimeMismatches, findLiteralLinkInterpolations, parseLinks, type LinkRuntimeOptions } from '../core/parsing/link-parser.js';
+import { includeNameExpression, findLinkMacroMismatches, findLinkRuntimeMismatches, findLiteralLinkInterpolations, parseLinks, type LinkRuntimeOptions } from '../core/parsing/link-parser.js';
 import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage, isMarkupPassage, maskNonMarkupPassages } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
@@ -508,7 +508,7 @@ function validateArguments(
     const rawArgs = macro.rawArgs ?? '';
     const name = macro.name.toLowerCase();
     const args = name === 'include'
-      ? targetArguments(includeExpression(rawArgs))
+      ? targetArguments(includeNameExpression(rawArgs, workspace.capabilities))
       : name === 'goto'
         ? targetArguments(rawArgs.trim())
         : lexArguments(rawArgs);
@@ -583,11 +583,6 @@ function targetArguments(expr: string): Arg[] {
   const args = lexArguments(expr);
   if (args.length === 1) return args;
   return [{ type: ArgType.Expression, text: expr, start: 0, end: expr.length }];
-}
-
-/** The target expression of `{include}`: its arguments minus the `inline` keyword. */
-function includeExpression(rawArgs: string): string {
-  return rawArgs.replace(/\binline\b/, '').trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -1213,8 +1208,8 @@ const EXPRESSION_BUILTINS = new Set([
  * targets (variables, calls) that cannot be resolved without running the
  * story.
  */
-export function resolveIncludeTarget(rawArgs: string): string | null {
-  const expr = includeExpression(rawArgs);
+export function resolveIncludeTarget(rawArgs: string, options: LinkRuntimeOptions = {}): string | null {
+  const expr = includeNameExpression(rawArgs, options);
   if (expr === '') return null;
 
   // A single string literal evaluates to its contents.
@@ -1270,7 +1265,7 @@ function validateWidgetIncludes(
     if (!macro.open || !macro.rawArgs || macro.name.toLowerCase() !== 'include') continue;
 
     lineStarts ??= buildLineStarts(text);
-    const target = resolveIncludeTarget(sourceArgs(macro, text, lineStarts).args);
+    const target = resolveIncludeTarget(sourceArgs(macro, text, lineStarts).args, workspace.capabilities);
     if (target === null) continue;
 
     const passage = workspace.passages.getPassage(target);

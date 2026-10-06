@@ -607,6 +607,19 @@ function resolveIncludeTarget(args: string, options: LinkRuntimeOptions = {}): A
 }
 
 /**
+ * The expression `{include}` evaluates for its passage name: the arguments
+ * minus the `inline` flag, as the release in `options` removes it (see
+ * resolveIncludeTarget). For consumers that need the text, not source offsets.
+ */
+export function includeNameExpression(args: string, options: LinkRuntimeOptions = {}): string {
+  if (options.includeInlineScoped) {
+    const { start, end } = includeExpressionSpan(args);
+    return args.slice(start, end);
+  }
+  return args.replace(/\binline\b/, '').trim();
+}
+
+/**
  * The part of `{include}` arguments that names the passage in Spindle 0.51.1
  * and later (`parseIncludeArgs`): the trimmed arguments minus a standalone
  * `inline` word at the end or start (outside quotes and brackets, separated
