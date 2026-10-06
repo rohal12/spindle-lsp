@@ -417,7 +417,7 @@ describe('rename from a passage reference', () => {
   const renamed = [
     ':: Start',
     '[[After]] [[Go on|After]] [[Go on->After]] [[After<-Go on]]',
-    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto After}`,
+    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto "After"}`,
     '',
     ':: After',
     'Hello',

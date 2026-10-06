@@ -144,7 +144,7 @@ describe('X70 (extra): literal context variants and nearby controls', () => {
     expect(findPassageReferences('Old', model, false)).toHaveLength(3);
     const output = renamed(model, 1, 5, 'New');
     expect(output).toContain('{print "[[Old]]"}');
-    expect(output).toContain('{goto "New"} {include New inline} {link "go" "New"}');
+    expect(output).toContain('{goto "New"} {include "New" inline} {link "go" "New"}');
   });
   it('C-X70-link-in-macro-body: a link inside a block macro body is a reference', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{if true}[[Old]]{/if}');

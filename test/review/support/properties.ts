@@ -265,8 +265,10 @@ export function propMacroHeadOracle(files: Files) {
 const RENAMES = {
   // Contract #67: each name is spelled for its consumer. Bare, `1 + 2`, `5`, `a-b` and `true` evaluate as
   // {goto}/{include} expressions; `inline` is the {include} flag (0.45.1 removes the first one even inside
-  // quotes, 0.51.1 only a standalone word outside quotes).
-  passage: ['Renamed Passage', 'It\'s "quoted" [x] \\ y', '1 + 2', '5', 'a-b', 'true', 'inline', 'New inline name', 'inline x', 'x inline'],
+  // quotes, 0.51.1 only a standalone word outside quotes). `_x1` is `temporary["x1"]` and `URL` a global, `temporary`
+  // an evaluator parameter: evaluated through the installed expression evaluator they are values, not names;
+  // `Chapter 2` (a SyntaxError, so its own text) is the control that stays bare.
+  passage: ['_x1', 'URL', 'temporary', 'Image', 'Chapter 2', 'Renamed Passage', 'It\'s "quoted" [x] \\ y', '1 + 2', '5', 'a-b', 'true', 'inline', 'New inline name', 'inline x', 'x inline'],
   // `5` (digit-leading) and `_x` are valid Spindle names; `a$b` has an internal `$` and must be rejected atomically (#83)
   variable: ['renamedVar', '5', '_x', 'a$b'],
   widget: ['renamed-widget'],

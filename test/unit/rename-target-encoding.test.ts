@@ -13,6 +13,7 @@ import type { Range } from '../../src/core/types.js';
 import { computeRename, encodePassageRefName, RenameError } from '../../src/plugins/rename.js';
 import { parseMacroPassageRefs, type PassageRef } from '../../src/core/parsing/link-parser.js';
 import { gotoTarget } from '../review/support/oracle.js';
+import { runtimeGotoTarget } from '../helpers/expression-oracle.js';
 
 const uri = 'file:///story.tw';
 const models: WorkspaceModel[] = [];
@@ -42,15 +43,40 @@ describe('R67: arithmetic and other evaluating names', () => {
     expect(navigates(output, 'goto')).toBe('1 + 2');
   });
 
-  it('R67-bare-spelling: only names Spindle reads back verbatim stay bare', () => {
+  it('R67-bare-spelling: only names certain to throw (several plain words) stay bare; a single word is quoted', () => {
     for (const [name, spelled] of [
-      ['New', 'New'], ['New Name', 'New Name'], ['Chapter 2', 'Chapter 2'], ['_x1', '_x1'],
+      ['New', '"New"'], ['New Name', 'New Name'], ['Chapter 2', 'Chapter 2'], ['_x1', '"_x1"'], ['URL', '"URL"'],
+      ['temporary', '"temporary"'], ['Image', '"Image"'], ['_x 1', '"_x 1"'], ['a _b', '"a _b"'],
       ['1 + 2', '"1 + 2"'], ['5', '"5"'], ['a-b', '"a-b"'], ['true', '"true"'], ['null', '"null"'], ['Math', '"Math"'],
       ['typeof x', '"typeof x"'], ['a  b', '"a  b"'], ['a(b)', '"a(b)"'], ["it's", '"it\'s"'], ['$v', '"$v"'],
     ]) {
       expect(renamed(workspace(source('goto')), name), name).toContain(`{goto ${spelled}}`);
       expect(renamed(workspace(source('include')), name), name).toContain(`{include ${spelled}}`);
     }
+  });
+
+  it('R67-runtime-binding: renamed to a name Spindle binds, the target still navigates to the name (empty and populated scope)', () => {
+    const scopes = [{}, { x1: 'Other', URL: 'Other', temporary: 'Other', Image: 'Other' }];
+    for (const name of ['_x1', 'URL', 'temporary', 'Image', 'variables', 'Math', 'visited', 'New', 'Chapter 2']) {
+      for (const macro of ['goto', 'include'] as const) {
+        const output = renamed(workspace(`${source(macro)} {${macro} Old}`), name);
+        const call = tokenize(output).filter(t => t.type === 'macro').map(t => t.rawArgs);
+        expect(call.length, name).toBe(2);
+        for (const args of call) for (const temporary of scopes) {
+          expect(runtimeGotoTarget(args, temporary), `${macro} ${name} in ${JSON.stringify(temporary)}`).toBe(name);
+        }
+      }
+    }
+  });
+
+  it('R67-runtime-oracle: the evaluator transforms sigils, so a bare _x1 and a global are values, not names', () => {
+    expect(runtimeGotoTarget('_x1')).toBe('undefined');
+    expect(runtimeGotoTarget('_x1', { x1: 'Other' })).toBe('Other');
+    expect(runtimeGotoTarget('URL')).toMatch(/URL/);
+    expect(runtimeGotoTarget('URL')).not.toBe('URL');
+    expect(runtimeGotoTarget('temporary')).toBe('[object Object]');
+    expect(runtimeGotoTarget('Chapter 2')).toBe('Chapter 2');
+    expect(runtimeGotoTarget('"_x1"', { x1: 'Other' })).toBe('_x1');
   });
 
   it('R67-classifier: numeric expressions are not static names; canonical numbers and words are', () => {
@@ -95,7 +121,8 @@ describe('R67: the {include} inline flag per release', () => {
   it('R67-include-inline-goto: the inline word is no concern of {goto}', () => {
     const ref = { ...includeRef('js-string'), macro: 'goto' };
     expect(encodePassageRefName(ref, 'inline', {})).toBe('inline');
-    expect(encodePassageRefName({ ...ref, form: 'bare' }, 'inline', {})).toBe('inline');
+    // a single word is quoted whatever the macro (it may be a binding)
+    expect(encodePassageRefName({ ...ref, form: 'bare' }, 'inline', {})).toBe('"inline"');
   });
 
   it('R67-include-inline-installed: renaming to inline navigates to inline on the installed runtime', () => {

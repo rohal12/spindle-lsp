@@ -129,8 +129,8 @@ describe('macro passage references', () => {
     expect(renamePassage(content, 'Target', 'Renamed')).toBe([
       ':: Start',
       "{goto 'Renamed'}",
-      '{goto Renamed}',
-      '{include Renamed}',
+      '{goto "Renamed"}',
+      '{include "Renamed"}',
       '{include "Renamed" inline}',
       "{include inline 'Renamed'}",
       '{.cls#id goto "Renamed"}',

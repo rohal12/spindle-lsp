@@ -568,15 +568,23 @@ const NON_NAME_WORDS = new Set([
 
 /**
  * True when `name` written bare as a `{goto}` / `{include}` argument is
- * certain to make Spindle's expression evaluation throw (an unbound
- * identifier, or words with no operator between them), so the runtime uses
- * the text itself: letters, digits and `_`, starting with a letter or `_`,
- * words separated by single spaces, none a keyword, literal, builtin or
- * common global. Anything else (`1 + 2`, `a-b`, `5`) may evaluate to another
- * value and must be quoted.
+ * certain to make Spindle's expression evaluation throw, so the runtime uses
+ * the text itself. Decided from the text alone (nothing is evaluated).
+ *
+ * A single word is never certain: Spindle runs the argument as JavaScript, so
+ * it may be a global or builtin (`URL`, `Image`, `Math`), one of the evaluator's
+ * own parameters (`temporary`, `variables`, `locals`, `transient`) or its
+ * preamble names, or a sigil name (`_x1` is `temporary["x1"]`, `$v`, `@l`, `%t`).
+ * No list of those is complete, and quoting a name is always valid for these
+ * macros, so a single word is quoted. Several words separated by single spaces
+ * (`New Name`, `Chapter 2`) are a SyntaxError whatever the words are, unless one
+ * is an operator or keyword (`in`, `typeof`, `new`, ...), which is excluded:
+ * every word starts with a letter or digit, contains only letters, digits and
+ * `_`, and the first starts with a letter. Anything else (`1 + 2`, `a-b`, `5`,
+ * `_x 1`) may evaluate to another value and must be quoted.
  */
 export function isVerbatimBareName(name: string): boolean {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*(?: [A-Za-z0-9_]+)*$/.test(name)) return false;
+  if (!/^[A-Za-z][A-Za-z0-9_]*(?: [A-Za-z0-9][A-Za-z0-9_]*)+$/.test(name)) return false;
   return name.split(' ').every(word => !NON_NAME_WORDS.has(word) && !EXPRESSION_BUILTINS.has(word));
 }
 
