@@ -52,7 +52,7 @@ export class WidgetRegistry {
       // Find the end of this passage (next header or EOF)
       let contentEndLine = lines.length;
       for (let i = contentStartLine; i < lines.length; i++) {
-        if (/^::\s+/.test(lines[i])) {
+        if (/^\uFEFF?::\s+/.test(lines[i])) {
           contentEndLine = i;
           break;
         }

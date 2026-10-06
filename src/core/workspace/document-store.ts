@@ -4,8 +4,10 @@ import { pathToFileURL } from 'node:url';
 
 /**
  * A leading U+FEFF is the file's byte order mark, not story text: the
- * compiler reads `:: Name` behind it as a passage header. Editors normally
- * strip it before sending a document; files read from disk keep it.
+ * compiler reads `:: Name` behind it as a passage header. The store keeps the
+ * text exactly as the client or the disk delivered it so that every position
+ * the server computes is in the client's coordinates; the header recognisers
+ * skip the BOM instead. Use this only for analysis that reports no positions.
  */
 export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -25,7 +27,7 @@ export class DocumentStore extends EventEmitter {
 
   /** Open a document (or replace if already open). */
   open(uri: string, text: string, version?: number): void {
-    this.docs.set(uri, { text: stripBom(text), version: version ?? 0 });
+    this.docs.set(uri, { text, version: version ?? 0 });
     this.emit('documentOpened', uri);
   }
 
@@ -33,7 +35,7 @@ export class DocumentStore extends EventEmitter {
   update(uri: string, text: string, version?: number): void {
     const existing = this.docs.get(uri);
     const newVersion = version ?? (existing ? existing.version + 1 : 0);
-    this.docs.set(uri, { text: stripBom(text), version: newVersion });
+    this.docs.set(uri, { text, version: newVersion });
     this.emit('documentChanged', uri);
   }
 

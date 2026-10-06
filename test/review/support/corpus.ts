@@ -51,6 +51,9 @@ const CONTEXTS: Record<string, (t: string) => string> = {
   'goto-concat-dynamic': t => `{goto "${t}" + "x"}`,
   'goto-variable-dynamic': () => '{goto $v}',
   'include-double': t => `{include "${t}"}`,
+  'include-bare': t => `{include ${t}}`,
+  'include-inline-after': t => `{include "${t}" inline}`,
+  'include-inline-before': t => `{include inline "${t}"}`,
   'link-macro-double': t => `{link "go" "${t}"}x{/link}`,
   'link-macro-single': t => `{link 'go' '${t}'}x{/link}`,
   'link-macro-block': t => `{link "${t}"}go{/link}`,
@@ -100,6 +103,14 @@ const CONTEXTS: Record<string, (t: string) => string> = {
   'script-tag-contents': t => `<script>var x = "[[${t}]]";</script>`,
   'style-tag-contents': () => '<style>.a { content: "$v"; }</style>',
   'prose-only': () => 'Just words.',
+  // Raw {do} bodies (#70): from 0.50.1 the body is JavaScript text, so the strings are no references; before, they are markup. The oracle follows the installed tokenizer.
+  'do-body-bracket-string': t => `{do}\nconst note = "[[${t}]]";\n{/do}`,
+  'do-body-goto-string': t => `{do}\nconst n = '{goto "${t}"}';\n{/do}`,
+  'do-body-link-macro-string': t => `{do}\nconst n = '{link "go" "${t}"}';\n{/do}`,
+  'do-body-widget-var-string': () => '{do}\nconst n = "{wid} $v";\n{/do}',
+  'do-body-inline-bracket': t => `{do}const n = "[[${t}]]";{/do}`,
+  'do-body-then-link': t => `{do}\nconst n = "[[${t}]]";\n{/do} [[${t}]]`,
+  'do-body-unclosed': t => `{do}\n[[${t}]]`,
 };
 const WIDGET_FILE = ':: Widgets [widget]\n{widget "wid"}\ninside\n{/widget}\n\n:: BlockWidgets [widget]\n{widget "bw"}\n<b>{@children}</b>\n{/widget}\n';
 
@@ -212,6 +223,13 @@ for (const [bname, wrap] of Object.entries(BOUNDARIES)) {
     scene(`D/${bname}/${cname}`, { role: 'ordinary', context: cname, spelling: 'plain', boundary: bname, state: 'multi-file' }, files(wrap(snippet)));
   }
 }
+// The raw client boundary: every document the client sends starts with a BOM, so the first
+// header of each (the story's own, and the declaring documents a rename edits) sits behind it.
+// The client's coordinates include that code unit; the model must hold the same text.
+const withBom = (fs: Files): Files => Object.fromEntries(Object.entries(fs).map(([n, t]) => [n, /\.tw$/.test(n) ? `\uFEFF${t}` : t]));
+for (const [cname, snippet] of Object.entries(BOUNDARY_CORE)) {
+  scene(`D/bom-first-header-raw-client/${cname}`, { role: 'ordinary', context: cname, spelling: 'plain', boundary: 'bom-first-header-raw-client', state: 'multi-file' }, withBom(files(`:: Start\n${snippet}\n`)));
+}
 // An empty document, an empty passage and a lone header as the only content
 for (const [name, text] of [['empty-document', ''], ['only-header', ':: Only'], ['only-header-eol', ':: Only\n'], ['whitespace-only', '  \n\n'], ['only-crlf-header', ':: Only\r\n']] as const) {
   scene(`D/${name}/none`, { role: 'ordinary', context: 'none', spelling: 'plain', boundary: name, state: 'multi-file' }, { 'story.tw': text, 'target.tw': TARGET_FILE });
@@ -227,6 +245,45 @@ scene('E/js-source/goto', { role: 'script', context: 'goto-double', spelling: 'p
   { 'story.tw': inRole('ordinary', `{goto "${T}"}`), 'target.tw': TARGET_FILE, 'macros.js': `// [[${T}]] {goto "${T}"}\nStory.defineMacro({name:'x'});\n` });
 scene('E/two-stories/unicode-order', { role: 'ordinary', context: 'multiple-per-line', spelling: 'astral', boundary: 'astral-prefix', state: 'multi-file' },
   { 'a.tw': ':: A 😀\n😀 [[B 𝒜]] {goto "B 𝒜"}\n', 'b.tw': ':: B 𝒜\n😀 [[A 😀]]\n' });
+
+// Family F: JavaScript payloads in {do} bodies. The body is executed as written, so a literal
+// that spans lines is a value: formatting must not change it (see propFormatDoLiterals).
+// Every body pushes its literals to `out`; the property evaluates it before and after formatting.
+const DO_LITERALS: Record<string, string> = {
+  'template-lf': 'const value = `a\nb`;\nout.push(value);',
+  'template-leading-space-lines': 'out.push(`  a\n    b   \n\tc`);',
+  'template-blank-lines': 'out.push(`a\n\n\nb`);',
+  'template-nested-interpolation': 'out.push(`x ${ [1, 2].map(n => `<${n}\n  ${n}>`).join("") }\n   y`);',
+  'template-brace-in-literal': 'out.push(`{\n  }`);',
+  'template-html-lines': 'out.push(`\n<div>\n  x   y\n</div>\n`);',
+  'template-after-comments': "// it's `not` a literal\n/* `no\n   more` */\nout.push(`a\n  b`);",
+  'string-line-continuation': 'out.push("a\\\n   b");',
+  'two-templates': 'out.push(`a\n b`, `c\n  d`);',
+  'template-escaped-backtick': 'out.push(`a\\`\n  b`);',
+};
+const DO_WRAPS: Record<string, (b: string) => string> = {
+  container: b => `{do}\n${b}\n{/do}`,
+  'indented-container': b => `{do}\n    ${b.replaceAll('\n', '\n    ')}\n{/do}`,
+  inline: b => `{do}${b}{/do}`,
+  'in-if': b => `{if $v}\n  {do}\n${b}\n  {/do}\n{/if}`,
+  'in-element': b => `<div>\n{do}\n${b}\n{/do}\n</div>`,
+  'in-button': b => `{button "go"}{do}${b}{/do}{/button}`,
+  'with-prose': b => `before \n{do}\n${b}\n{/do}\n   after`,
+};
+const DO_EOLS: Record<string, string> = { lf: '\n', crlf: '\r\n' };
+for (const [lname, body] of Object.entries(DO_LITERALS)) {
+  for (const [wname, wrap] of Object.entries(DO_WRAPS)) {
+    for (const [ename, eol] of Object.entries(DO_EOLS)) {
+      scene(`F/do-${lname}/${wname}/${ename}`, { role: 'ordinary', context: `do body: ${lname}`, spelling: wname, boundary: ename === 'lf' ? 'eof-newline' : 'crlf', state: 'multi-file' },
+        files(`:: Start\n${wrap(body)}\n`.replaceAll('\n', eol)));
+    }
+  }
+}
+// Controls: a single-line do body in a container, and a do body in a role passage
+scene('F/do-control/single-line-in-container', { role: 'ordinary', context: 'do body: control', spelling: 'single-line', boundary: 'eof-newline', state: 'multi-file' },
+  files(':: Start\n{if $v}\n{do}\nout.push(`a`);\n{/do}\n{/if}\n'));
+scene('F/do-control/StoryInit', { role: 'StoryInit', context: 'do body: template', spelling: 'template-lf', boundary: 'eof-newline', state: 'multi-file' },
+  files(inRole('StoryInit', '{do}\nout.push(`a\n  b`);\n{/do}')));
 
 // ---------------------------------------------------------------------------
 // The matrix

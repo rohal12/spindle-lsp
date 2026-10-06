@@ -19,7 +19,7 @@ import {
   type CellRecord, type Dims,
 } from './harness.js';
 import {
-  propBounds, propFormat, propHover, propMacroHeadOracle, propNavigationAgree, propPassageOracle,
+  propBounds, propFormat, propFormatDoLiterals, propHover, propMacroHeadOracle, propNavigationAgree, propPassageOracle,
   propRename, propStateIncremental, propStateOrder, propTokens,
 } from './properties.js';
 import { registerInteractiveCells } from './interactive.js';
@@ -87,6 +87,7 @@ export function registerShard(shard: string): void {
       cell(`${s.id} [macro-oracle]`, d('diagnostics x semantic tokens x widget references vs runtime'), () => propMacroHeadOracle(s.files), owner);
       cell(`${s.id} [rename]`, d('prepareRename/rename applied, rebuilt, re-diagnosed, reparsed'), () => propRename(s.files), owner);
       cell(`${s.id} [format]`, d('formatting: idempotent, same diagnostics, same runtime payload'), () => propFormat(s.files), owner);
+      if (s.id.startsWith('F/')) cell(`${s.id} [do-literal]`, d('formatting: do-body JavaScript values identical, idempotent, unrelated text preserved'), () => propFormatDoLiterals(s.files), owner);
       cell(`${s.id} [hover]`, d('hover: variables and macros agree with semantic tokens and runtime tokens'), () => propHover(s.files), owner);
       cell(`${s.id} [tokens]`, d('semantic tokens validity and agreement'), () => propTokens(s.files), owner);
       if (STATE_SUBSET.has(s.id)) {

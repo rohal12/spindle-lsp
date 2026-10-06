@@ -2,6 +2,7 @@ import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parseLinks } from '../core/parsing/link-parser.js';
+import { maskRawDoBodies } from '../core/parsing/macro-parser.js';
 import { isMarkupPassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
@@ -41,7 +42,9 @@ export function computeDocumentLinks(uri: string, workspace: WorkspaceModel): Do
     const contentEndLine = passage.range.end.line + 1;
     const lines = text.split('\n');
     const contentLines = lines.slice(contentStartLine, contentEndLine);
-    const content = contentLines.join('\n');
+    const joined = contentLines.join('\n');
+    // (from Spindle 0.50.1 a {do} body is JavaScript text, not markup)
+    const content = workspace.capabilities.rawDoBodies ? maskRawDoBodies(joined, workspace.capabilities) : joined;
 
     const passageLinks = parseLinks(content, contentStartLine, workspace.capabilities);
 

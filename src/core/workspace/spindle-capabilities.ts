@@ -56,6 +56,13 @@ export interface SpindleCapabilities {
    * leaves it as text when there is none).
    */
   stringAwareBraces: boolean;
+  /**
+   * Spindle >= 0.51.1: `{include}` reads its `inline` flag only as a
+   * standalone word at the start or end of the arguments, outside quotes,
+   * brackets and parentheses. Below it the first `inline` word anywhere in
+   * the arguments is removed before evaluation, even inside a quoted target.
+   */
+  includeInlineScoped: boolean;
 }
 
 /** The oldest Spindle the LSP supports: the one that introduced transients. */
@@ -70,6 +77,8 @@ export const LINK_QUOTE_ESCAPES_VERSION = '0.51.1';
 export const RAW_DO_BODIES_VERSION = '0.50.1';
 /** First release whose tokenizer ignores braces inside string and template literals. */
 export const STRING_AWARE_BRACES_VERSION = '0.50.1';
+/** First release whose `{include}` reads `inline` only as a standalone flag. */
+export const INCLUDE_INLINE_SCOPED_VERSION = '0.51.1';
 
 type Triple = [number, number, number];
 
@@ -101,6 +110,7 @@ export const DEFAULT_CAPABILITIES: SpindleCapabilities = {
   linkQuoteEscapes: false,
   rawDoBodies: false,
   stringAwareBraces: false,
+  includeInlineScoped: false,
 };
 
 /** The capabilities of a Spindle `version`; the default ones if it does not parse. */
@@ -119,6 +129,7 @@ export function capabilitiesForVersion(
     linkQuoteEscapes: atLeast(triple, LINK_QUOTE_ESCAPES_VERSION),
     rawDoBodies: atLeast(triple, RAW_DO_BODIES_VERSION),
     stringAwareBraces: atLeast(triple, STRING_AWARE_BRACES_VERSION),
+    includeInlineScoped: atLeast(triple, INCLUDE_INLINE_SCOPED_VERSION),
   };
 }
 

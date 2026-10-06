@@ -3,7 +3,7 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
-import { findPassageRefAt, parseLinks, resolveExpressionTarget, resolveLinkMacroTarget, type LinkRuntimeOptions, type PassageRef } from '../core/parsing/link-parser.js';
+import { findPassageRefAt, isVerbatimBareName, parseLinks, resolveLinkMacroTarget, type LinkRuntimeOptions, type PassageRef } from '../core/parsing/link-parser.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
 import { isReservedPassageName, parsePassageHeader } from '../core/parsing/passage-parser.js';
@@ -95,9 +95,12 @@ export function computeRename(
     case 'variable': {
       const bareName = newName.startsWith('$') ? newName.slice(1) :
                        newName.startsWith('%') ? newName.slice(1) : newName;
-      if (!/^[A-Za-z_$][\w$]*$/.test(bareName)) {
+      // Spindle's grammar is the sigil followed by word characters
+      // (`declarationRegex` in story-variables, `[\w.]` in the tokenizer):
+      // digit-leading names are valid and an internal `$` is not.
+      if (!/^\w+$/.test(bareName)) {
         throw new RenameError(
-          `Cannot rename to ${JSON.stringify(newName)}: a variable name must be a JavaScript identifier (letters, digits, _ and $, not starting with a digit).`,
+          `Cannot rename to ${JSON.stringify(newName)}: a variable name must be word characters only (letters, digits and _; no \`$\`, \`%\`, \`.\` or spaces).`,
         ).at(uri, symbol.range);
       }
       const refs = symbol.sigil === '%'
@@ -179,16 +182,23 @@ function passageHeaderProblem(name: string): string | null {
 export function encodePassageRefName(ref: PassageRef, newName: string, options: LinkRuntimeOptions = {}): string {
   const unrepresentable = (where: string): RenameError =>
     new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it cannot be written inside ${where}.`);
+  const isInclude = ref.source === 'macro' && ref.macro === 'include';
+  // Before Spindle 0.51.1 `{include}` removes the first `inline` word from
+  // its arguments even inside a quoted target, so the word is spelled with a
+  // JavaScript escape (`\u0069nline`) that the evaluator reads back as `i`.
+  const encodeInclude = (literal: string): string =>
+    isInclude && !options.includeInlineScoped ? literal.replace(/\binline\b/g, '\\u0069nline') : literal;
 
   switch (ref.form) {
     case 'js-string':
-      return encodeStringLiteralBody(newName, ref.quote ?? '"');
+      return encodeInclude(encodeStringLiteralBody(newName, ref.quote ?? '"'));
     case 'bare': {
-      // An unquoted target is a text fallback; quote the name when the bare
-      // spelling would no longer read back as the same name.
-      const probe = resolveExpressionTarget(newName);
-      if (probe && probe.form === 'bare' && probe.name === newName && probe.start === 0) return newName;
-      return `"${encodeStringLiteralBody(newName, '"')}"`;
+      // An unquoted target is a text fallback, used only when evaluating it
+      // throws. Anything else (`1 + 2`, `a-b`, `true`) evaluates to another
+      // value, so quote it. A bare name Spindle 0.51.1+ would read as the
+      // `inline` flag is quoted as well.
+      if (isVerbatimBareName(newName) && !(isInclude && /\binline\b/.test(newName))) return newName;
+      return encodeInclude(`"${encodeStringLiteralBody(newName, '"')}"`);
     }
     case 'link-string': {
       // The link macro reads its quoted arguments with a quote regex: before

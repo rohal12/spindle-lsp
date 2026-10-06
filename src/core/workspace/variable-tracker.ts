@@ -293,7 +293,7 @@ function checkDeclarations(lines: string[], contentStartLine: number, sigil: '$'
   const check: DeclarationCheck = { problems: [], nestedNulls: [], names: new Map() };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.startsWith('::')) break;
+    if (/^\uFEFF?::/.test(line)) break;
     const absLine = contentStartLine + i;
     const problem = checkDeclaration(line, sigil);
     if (!problem) {

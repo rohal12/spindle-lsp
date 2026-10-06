@@ -36,8 +36,9 @@ function allSweeps(model: WorkspaceModel) {
 
 export function propBounds(files: Files) {
   const model = build(files);
+  // ranges are validated against the client's own text, not the model's copy
   const check = (what: string, uri: string, r: Range) => {
-    const text = model.documents.getText(uri);
+    const text = files[uri.replace('file:///', '')];
     expect(text, `${what}: unknown document ${uri}`).toBeDefined();
     expect(rangeProblem(text!, r), `${what} ${uri} ${JSON.stringify(r)}`).toBeNull();
   };
@@ -45,7 +46,7 @@ export function propBounds(files: Files) {
     for (const d of computeDiagnostics(uri, model)) check(`diagnostic ${d.code}`, uri, d.range);
     for (const l of computeDocumentLinks(uri, model)) check('document link', uri, l.range);
     for (const l of computeCodeLenses(uri, model)) check('code lens', uri, l.range);
-    const text = model.documents.getText(uri)!;
+    const text = files[uri.replace('file:///', '')];
     const lines = text.split('\n');
     for (const t of computeSemanticTokensAbsolute(uri, model)) {
       const line = (lines[t.line] ?? '').replace(/\r$/, '');
@@ -262,8 +263,12 @@ export function propMacroHeadOracle(files: Files) {
 // --- 5. rename: apply across documents, rebuild, reparse with the runtime ---
 
 const RENAMES = {
-  passage: ['Renamed Passage', 'It\'s "quoted" [x] \\ y'],
-  variable: ['renamedVar'],
+  // Contract #67: each name is spelled for its consumer. Bare, `1 + 2`, `5`, `a-b` and `true` evaluate as
+  // {goto}/{include} expressions; `inline` is the {include} flag (0.45.1 removes the first one even inside
+  // quotes, 0.51.1 only a standalone word outside quotes).
+  passage: ['Renamed Passage', 'It\'s "quoted" [x] \\ y', '1 + 2', '5', 'a-b', 'true', 'inline', 'New inline name', 'inline x', 'x inline'],
+  // `5` (digit-leading) and `_x` are valid Spindle names; `a$b` has an internal `$` and must be rejected atomically (#83)
+  variable: ['renamedVar', '5', '_x', 'a$b'],
   widget: ['renamed-widget'],
 } as const;
 
@@ -273,7 +278,10 @@ function applyAll(model: WorkspaceModel, edits: Map<string, Array<{ range: Range
     const name = uri.replace('file:///', '');
     expect(files[name], `edit for unknown document ${uri}`).toBeDefined();
     for (const e of list) expect(rangeProblem(files[name], e.range), `rename edit ${JSON.stringify(e)}`).toBeNull();
-    files[name] = TextDocument.applyEdits(TextDocument.create(uri, 'twee', 0, files[name]), list);
+    const before = files[name];
+    files[name] = TextDocument.applyEdits(TextDocument.create(uri, 'twee', 0, before), list);
+    // a byte order mark is the client's, never the edit's to remove or move
+    expect(files[name].charCodeAt(0) === 0xfeff, `rename edits keep the BOM of ${name}`).toBe(before.charCodeAt(0) === 0xfeff);
   }
   return files;
 }
@@ -322,7 +330,12 @@ export function propRename(files: Files) {
       for (const newName of RENAMES[kind]) {
         let edits;
         try { edits = computeRename(uri, p.pos, newName, model); }
-        catch (e) { if (e instanceof RenameError) continue; throw e; }
+        catch (e) {
+          if (!(e instanceof RenameError)) throw e;
+          continue;
+        }
+        // #83: a name outside Spindle's grammar (sigil + word characters) is rejected whole, never applied
+        if (kind === 'variable') expect(/^\w+$/.test(newName), `rename ${key} -> ${JSON.stringify(newName)} was accepted`).toBe(true);
         if (edits.size === 0) continue;
         renamed++;
         const after = applyAll(model, edits);
@@ -330,7 +343,10 @@ export function propRename(files: Files) {
         // diagnostics identity: same codes on the same documents
         // Diagnostics that depend on whether a name resolves (missing/unused/unreachable passages, a link read
         // differently, a macro-looking text in an attribute) may change when a name changes; the rest may not.
-        const nameDependent = /SP30[034]|SP40[01]|SP103/;
+        // A digit-leading transient (`%5`, valid in code) is plain text in prose, as `%20` is: Spindle never validates
+        // it there, so an undeclared prose-only `%off` renamed to `5` legitimately loses its SP203 (#83).
+        const proseTransient = kind === 'variable' && span[0] === '%' && /^\d/.test(newName);
+        const nameDependent = proseTransient ? /SP30[034]|SP40[01]|SP103|SP203/ : /SP30[034]|SP40[01]|SP103/;
         const before = codeMultiset(model).filter(s => !nameDependent.test(s));
         const now = codeMultiset(next).filter(s => !nameDependent.test(s));
         // Contract #44: literal text (strings, comments) is not renamed. Spindle < 0.50.1 still reads `$old`
@@ -358,9 +374,9 @@ export function propRename(files: Files) {
             const old = p.prep!.placeholder;
             const closers = kind === 'widget' && isBlockWidget(files, old);
             const swap = (s: string) => kind === 'widget'
-              ? s.replace(new RegExp(`^(m:${closers ? '/?' : ''})${old}(?=:)`, 'i'), `$1${newName}`)
+              ? s.replace(new RegExp(`^(m:${closers ? '/?' : ''})${old}(?=:)`, 'i'), (_m, h: string) => h + newName)
                 .replace(new RegExp(`^(m:widget:["']?)${old}(?=["'\\s]|$)`, 'i'), `$1${newName}`)
-              : s.replace(new RegExp(`^(v:\\w+:)${old}(?=\\.|$)`), `$1${newName}`)
+              : s.replace(new RegExp(`^(v:\\w+:)${old}(?=\\.|$)`), (_m, h: string) => h + newName)
                 .replace(/^(m:[^:]*:)(.*)$/, (_m, head: string, args: string) => head + renameInCode(args, kind === 'variable' ? span[0] : '$', old, newName));
             const was = runtimePayload(files[name]).map(swap).sort();
             const is = runtimePayload(after[name]).sort();
@@ -402,6 +418,41 @@ export async function propFormat(files: Files) {
   };
   expect(strip(next), 'format changed the diagnostics').toEqual(strip(model));
   void changed;
+}
+
+/**
+ * The JavaScript values a story's {do} bodies produce: each body (compiler-normalized newlines) is
+ * run with an `out` array and the array is returned unnormalized. The fixtures hold only fixed,
+ * benign literals.
+ */
+export function doBodyValues(text: string): unknown[][] {
+  const values: unknown[][] = [];
+  for (const m of text.replaceAll('\r\n', '\n').matchAll(/\{do\}([\s\S]*?)\{\/do\}/g)) {
+    const out: unknown[] = [];
+    new Function('out', m[1])(out);
+    values.push(out);
+  }
+  return values;
+}
+
+// --- 6b. formatting: {do} body JavaScript values are identical ---
+
+export async function propFormatDoLiterals(files: Files) {
+  const text = files['story.tw'];
+  const before = doBodyValues(text);
+  expect(before.length, 'fixture has a {do} body').toBeGreaterThan(0);
+  const once = await formatDocument(text);
+  // the values are compared as written: no whitespace normalization
+  expect(doBodyValues(once), 'format changed a {do} body value').toEqual(before);
+  expect(await formatDocument(once), 'formatting is not idempotent').toBe(once);
+  expect(once.includes('\r\n'), 'format keeps the document line endings').toBe(text.includes('\r\n'));
+  // unrelated text is still formatted and kept
+  const lf = once.replaceAll('\r\n', '\n');
+  if (text.includes('before \n') || text.includes('before \r\n')) {
+    expect(lf).toMatch(/^before$/m);
+    expect(lf).toMatch(/^after$/m);
+  }
+  expect(lf.startsWith(':: Start\n') || lf.startsWith(':: StoryInit\n'), 'passage header kept').toBe(true);
 }
 
 // --- 7. semantic tokens: valid, sorted, non-overlapping ---

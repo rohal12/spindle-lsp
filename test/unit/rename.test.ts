@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { parseStoryVariables } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
 import { prepareRename, computeRename, RenameError, type RenameEdit } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
@@ -559,17 +560,44 @@ describe('N-rename: invalid new names fail the whole request and name the offend
     expect(output.get(uri)).toContain(':: A\\[B\\]');
   });
 
-  it('N-rename-variable: a new variable name must be an identifier; sigils are accepted', () => {
+  it('N-rename-variable: a new variable name is sigil + word characters; sigils are accepted', () => {
     const ws = make();
     const cursor = { line: 1, character: 2 };
-    for (const name of ['', 'a b', '1x', 'a-b', 'a.b', '$', 'x"y']) {
+    for (const name of ['', 'a b', 'a-b', 'a.b', '$', '%', 'x"y', 'a$b', '$a$b', '$$x', '%x%y']) {
       const error = failure(() => computeRename(uri, cursor, name, ws));
-      expect(error.message, name).toContain('JavaScript identifier');
+      expect(error.message, name).toContain('word characters');
       expect(error.uri).toBe(uri);
     }
     expect(applyRename(ws, uri, cursor, '$mana').get(uri)).toContain('$mana = 1');
     expect(applyRename(ws, uri, cursor, 'mana').get(uri)).toContain('{$mana}');
-    expect(applyRename(ws, uri, cursor, '_ok$1').get(uri)).toContain('$_ok$1 = 1');
+  });
+
+  it('#83: digit-leading and underscore names are valid; an internal $ is rejected atomically', () => {
+    for (const [sigil, passage, parse] of [
+      ['$', 'StoryVariables', (t: string) => parseStoryVariables(t, '$')],
+      ['%', 'StoryTransients', (t: string) => parseStoryVariables(t, '%')],
+    ] as const) {
+      const files = [
+        { name: 'decl.tw', content: `:: ${passage}\n${sigil}x = {p: 1}` },
+        { name: 'use.tw', content: `:: Start\n{${sigil}x.p} {set ${sigil}x = {p: 2}}` },
+      ];
+      const ws = createWorkspace(...files);
+      const cursor = { line: 1, character: 1 };
+      for (const name of ['5', '_', '_x', '007', 'a_1', `${sigil}5`]) {
+        const bare = name.replace(/^[$%]/, '');
+        const out = applyRename(ws, 'file:///decl.tw', cursor, name);
+        const decl = out.get('file:///decl.tw')!;
+        expect(decl, name).toBe(`:: ${passage}\n${sigil}${bare} = {p: 1}`);
+        expect(out.get('file:///use.tw'), name).toBe(`:: Start\n{${sigil}${bare}.p} {set ${sigil}${bare} = {p: 2}}`);
+        // the runtime reads the rebuilt declaration as the new key
+        expect([...parse(decl.split('\n')[1]!).keys()], name).toEqual([bare]);
+      }
+      for (const name of ['a$b', `${sigil}a$b`, '$', '5$', 'a.b']) {
+        expect(() => computeRename('file:///decl.tw', cursor, name, ws), name).toThrow(RenameError);
+      }
+      // a rejected rename is atomic: the workspace text is untouched
+      expect(ws.documents.getText('file:///decl.tw')).toBe(files[0]!.content);
+    }
   });
 
   it('N-rename-widget: a new widget name must be callable and must not shadow a macro', () => {

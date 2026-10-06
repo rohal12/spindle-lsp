@@ -363,11 +363,28 @@ export function replaceSpindleTokens(html: string, options: ScanOptions = {}): P
   while (html.includes(`{${tag}`)) tag += 'X';
   let source = '';
   let last = 0;
-  for (const m of scanSpindleTokens(html, options)) {
-    if (!m.token.includes('\n')) continue;
-    source += html.slice(last, m.start) + `{${tag}${multiline.length}}`;
-    multiline.push(m.token);
-    last = m.end;
+  // A multiline `{do}…{/do}` is protected whole: its body is JavaScript executed
+  // as written, which an HTML formatter must not re-indent or re-flow.
+  const found = scanSpindleTokens(html, options);
+  const spans: { start: number; end: number }[] = [];
+  let doOpen: number | null = null;
+  for (const m of found) {
+    if (doOpen === null) {
+      if (/^\{(?:[.#][^\s{}]* )?do\}$/i.test(m.token) || /^\{do\s/i.test(m.token)) doOpen = m.start;
+    } else if (/^\{\/do\s*\}$/i.test(m.token)) {
+      spans.push({ start: doOpen, end: m.end });
+      doOpen = null;
+    }
+  }
+  const inDoSpan = (start: number) => spans.some(sp => start >= sp.start && start < sp.end);
+  const replaced = [
+    ...spans.filter(sp => html.slice(sp.start, sp.end).includes('\n')),
+    ...found.filter(m => m.token.includes('\n') && !inDoSpan(m.start)),
+  ].sort((x, y) => x.start - y.start);
+  for (const r of replaced) {
+    source += html.slice(last, r.start) + `{${tag}${multiline.length}}`;
+    multiline.push(html.slice(r.start, r.end));
+    last = r.end;
   }
   source += html.slice(last);
   const standIn = new RegExp(`\\{${tag}(\\d+)\\}`, 'g');

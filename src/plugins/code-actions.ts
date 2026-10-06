@@ -350,7 +350,7 @@ function declarationInsertEdit(
   const lines = text.split('\n');
   let contentEnd = lines.length;
   for (let i = headerLine + 1; i < lines.length; i++) {
-    if (/^::\s+/.test(lines[i])) {
+    if (/^\uFEFF?::\s+/.test(lines[i])) {
       contentEnd = i;
       break;
     }

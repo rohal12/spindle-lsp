@@ -129,6 +129,85 @@ function newlineSentinel(text: string): string {
  * trim, segment or re-flow the runtime payload inside it.
  */
 function protectMultilineTokens(body: string, sentinel: string, stringAwareBraces: boolean): string {
+  return protectTokenLines(protectDoLiterals(body, sentinel, stringAwareBraces), sentinel, stringAwareBraces);
+}
+
+/**
+ * The body of a `{do}` macro is JavaScript, executed as written: a template
+ * literal (or a string continued with a backslash) that spans lines is a value,
+ * so its line breaks and the whitespace after them must survive formatting.
+ * Join each such literal onto one line with `sentinel` for its newlines.
+ */
+function protectDoLiterals(body: string, sentinel: string, stringAwareBraces: boolean): string {
+  if (!body.includes('`') && !body.includes('\\\n')) return body;
+  let out = '';
+  let last = 0;
+  let open: number | null = null;
+  for (const m of scanSpindleTokens(body, { stringAwareBraces })) {
+    if (open === null) {
+      if (MACRO_OPEN_REGEX.exec(m.token)?.[1].toLowerCase() === 'do') open = m.end;
+      continue;
+    }
+    if (MACRO_CLOSE_REGEX.exec(m.token)?.[1].toLowerCase() !== 'do') continue;
+    for (const [a, b] of multilineJsLiterals(body.slice(open, m.start))) {
+      out += body.slice(last, open + a) + body.slice(open + a, open + b).replaceAll('\n', sentinel);
+      last = open + b;
+    }
+    open = null;
+  }
+  return out + body.slice(last);
+}
+
+/** Ranges of the string and template literals in `code` that contain a newline (outermost only). */
+function multilineJsLiterals(code: string): [number, number][] {
+  const spans: [number, number][] = [];
+  /** Scan from `start`; when `nested`, stop after the `}` closing a `${`. Returns the index reached. */
+  const scanCode = (start: number, nested: boolean): number => {
+    let i = start;
+    let depth = 0;
+    while (i < code.length) {
+      const ch = code[i];
+      if (ch === '/' && code[i + 1] === '/') {
+        while (i < code.length && code[i] !== '\n') i++;
+      } else if (ch === '/' && code[i + 1] === '*') {
+        const end = code.indexOf('*/', i + 2);
+        i = end === -1 ? code.length : end + 2;
+      } else if (ch === '"' || ch === "'") {
+        const from = i++;
+        while (i < code.length && code[i] !== ch && code[i] !== '\n') i += code[i] === '\\' ? 2 : 1;
+        // Only a backslash-newline continuation can carry a newline into a string
+        i = Math.min(i, code.length);
+        if (code.slice(from, i).includes('\n')) spans.push([from, i + 1]);
+        i++;
+      } else if (ch === '`') {
+        const from = i++;
+        while (i < code.length && code[i] !== '`') {
+          if (code[i] === '\\') i += 2;
+          else if (code[i] === '$' && code[i + 1] === '{') i = scanCode(i + 2, true);
+          else i++;
+        }
+        i = Math.min(i + 1, code.length);
+        if (code.slice(from, i).includes('\n')) spans.push([from, i]);
+      } else if (ch === '{') {
+        depth++;
+        i++;
+      } else if (ch === '}') {
+        if (nested && depth === 0) return i + 1;
+        depth--;
+        i++;
+      } else {
+        i++;
+      }
+    }
+    return i;
+  };
+  scanCode(0, false);
+  return spans
+    .sort((x, y) => x[0] - y[0] || y[1] - x[1])
+    .filter(([a, b], k, all) => !all.slice(0, k).some(([c, d]) => c <= a && b <= d));
+}
+
+function protectTokenLines(body: string, sentinel: string, stringAwareBraces: boolean): string {
   let out = '';
   let last = 0;
   for (const m of scanSpindleTokens(body, { stringAwareBraces })) {

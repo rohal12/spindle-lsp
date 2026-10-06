@@ -317,7 +317,7 @@ export class WorkspaceModel extends EventEmitter {
         // Find end of this passage
         let contentEnd = lines.length;
         for (let i = contentStart; i < lines.length; i++) {
-          if (/^::\s+/.test(lines[i])) {
+          if (/^\uFEFF?::\s+/.test(lines[i])) {
             contentEnd = i;
             break;
           }
@@ -338,7 +338,7 @@ export class WorkspaceModel extends EventEmitter {
         const contentStart = storyTransients.headerEnd.end.line + 1;
         let contentEnd = lines.length;
         for (let i = contentStart; i < lines.length; i++) {
-          if (/^::\s+/.test(lines[i])) {
+          if (/^\uFEFF?::\s+/.test(lines[i])) {
             contentEnd = i;
             break;
           }

@@ -87,10 +87,10 @@ export function computeSemanticTokensAbsolute(
     headerLines.add(headerLine);
 
     // Emit passage header tokens
-    // :: token
+    // :: token (behind the BOM a client's first line may start with)
     tokens.push({
       line: headerLine,
-      startChar: 0,
+      startChar: headerLine === 0 && text.charCodeAt(0) === 0xfeff ? 1 : 0,
       length: 2,
       tokenType: encodeType('namespace'),
       tokenModifiers: 0,

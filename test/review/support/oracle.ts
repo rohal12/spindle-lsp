@@ -9,6 +9,7 @@
  */
 import { tokenize, type Token } from '../../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
 import { runtimeBracketLink, runtimeLinkMacro } from '../../helpers/link-macro-oracle.js';
+import { INSTALLED_CAPABILITIES } from '../../helpers/spindle-version.js';
 
 export interface OraclePassage {
   name: string;
@@ -22,18 +23,26 @@ export interface OraclePassage {
 
 const NON_MARKUP = new Set(['StoryTitle', 'StoryData', 'StoryVariables', 'StoryTransients', 'SaveTitle']);
 
-/** A leading byte order mark is encoding, not text: the compiler reads the header behind it. */
-const stripBom = (text: string) => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+/**
+ * A leading byte order mark is encoding, not text: the compiler reads the
+ * header behind it. It still occupies a UTF-16 unit of the client's buffer, so
+ * every offset this oracle reports is an offset into the raw document text
+ * (BOM included), never into a stripped copy.
+ */
+const bomLength = (text: string) => (text.charCodeAt(0) === 0xfeff ? 1 : 0);
 
-/** Passages of a Twee document: a header is a line starting with `::`. */
+/** Passages of a Twee document: a header is a line starting with `::` (behind the BOM on the first line). */
 export function splitPassages(source: string): OraclePassage[] {
-  const text = stripBom(source);
+  const text = source;
   const out: OraclePassage[] = [];
   const re = /(^|\n)(::[^\n]*)/g;
   const heads: Array<{ start: number; end: number; line: string }> = [];
+  const skip = bomLength(text);
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    const start = m.index + m[1].length;
+  // matched on the text behind the BOM, then shifted back into raw coordinates
+  const behind = text.slice(skip);
+  while ((m = re.exec(behind))) {
+    const start = skip + m.index + m[1].length;
     heads.push({ start, end: start + m[2].length, line: m[2].replace(/\r$/, '') });
   }
   heads.forEach((h, i) => {
@@ -59,7 +68,7 @@ export interface OracleToken { token: Token; start: number; end: number; passage
 
 /** Runtime tokens of every markup passage, with offsets mapped back to the (possibly CRLF) document. */
 function runtimeTokensUncached(source: string): OracleToken[] {
-  const text = stripBom(source);
+  const text = source;
   const out: OracleToken[] = [];
   for (const passage of splitPassages(text)) {
     if (!passage.markup || passage.bodyEnd <= passage.bodyStart) continue;
@@ -94,6 +103,39 @@ export function staticString(expr: string): string | null {
 }
 
 /**
+ * The name expression of `{include}` arguments, as the installed Include
+ * component computes it: before 0.51.1 the first `inline` word anywhere is
+ * removed; from 0.51.1 `parseIncludeArgs` (components/macros/Include.tsx)
+ * removes a standalone flag at the start or end, outside quotes and brackets.
+ * Written out here independently of src/.
+ */
+function includeNameExpr(rawArgs: string): string {
+  if (!INSTALLED_CAPABILITIES.includeInlineScoped) return rawArgs.replace(/\binline\b/, '').trim();
+  const t = rawArgs.trim();
+  const spaces: Array<[number, number]> = [];
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'" || c === '`') quote = c;
+    else if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth--;
+    else if (depth === 0 && /\s/.test(c)) {
+      let end = i + 1;
+      while (end < t.length && /\s/.test(t[end])) end++;
+      spaces.push([i, end]);
+      i = end - 1;
+    }
+  }
+  const last = spaces.at(-1);
+  if (last && last[1] === t.length - 6 && t.endsWith('inline') && !/[-+*/%&|^!=<>?:,.]$/.test(t.slice(0, last[0]))) return t.slice(0, last[0]);
+  const first = spaces[0];
+  if (first && first[0] === 6 && t.startsWith('inline') && !/^[-+*/%&|^=<>?:,.]/.test(t.slice(first[1]))) return t.slice(first[1]);
+  return t;
+}
+
+/**
  * What `{goto}` / `{include}` navigate to, per the runtime's own rule
  * (components/macros/Goto.tsx): evaluate the arguments, and when that throws
  * use the raw text with surrounding quotes stripped. Only two shapes are
@@ -104,7 +146,7 @@ export function staticString(expr: string): string | null {
  */
 export function gotoTarget(rawArgs: string, include = false): string | null {
   let args = rawArgs;
-  if (include) args = args.replace(/\binline\b/, ' ');
+  if (include) args = includeNameExpr(rawArgs);
   const literal = staticString(args);
   if (literal !== null) return literal;
   const bare = args.trim();
@@ -136,7 +178,7 @@ const TWO_LITERALS = new RegExp(`^\\s*${LITERAL}\\s+(${LITERAL})\\s*$`);
 
 /** Passage targets the runtime resolves statically, per document text. */
 function runtimePassageRefsUncached(source: string): OracleRef[] {
-  const text = stripBom(source);
+  const text = source;
   const refs: OracleRef[] = [];
   for (const { token, start, end } of runtimeTokens(text)) {
     if (token.type === 'link') {

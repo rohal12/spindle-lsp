@@ -1339,7 +1339,7 @@ function validateLineLength(
     if (excludedLines.has(i)) continue;
     const line = lines[i];
     // Skip passage headers
-    if (/^::\s+/.test(line)) continue;
+    if (/^\uFEFF?::\s+/.test(line)) continue;
     // Skip HTML-heavy lines (tags with attributes)
     if (/^\s*<[a-zA-Z]/.test(line)) continue;
 

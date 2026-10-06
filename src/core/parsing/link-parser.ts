@@ -1,5 +1,5 @@
 import type { Range } from '../types.js';
-import { buildLineStarts, offsetToPosition, parseMacros } from './macro-parser.js';
+import { buildLineStarts, offsetToPosition, maskRawDoBodies, parseMacros } from './macro-parser.js';
 import { ArgType, lexArguments } from './argument-lexer.js';
 import { attributeValueSpans } from './html-scanner.js';
 import { createCodeScanner, type BraceReading } from './code-scanner.js';
@@ -13,6 +13,10 @@ import { bracketLinkMismatch, linkMacroStrings, readLinkMacroArgs, type LinkRead
  */
 export interface LinkRuntimeOptions extends BraceReading {
   linkQuoteEscapes?: boolean;
+  /** Spindle >= 0.50.1: a `{do}` body is JavaScript text, so no reference is read from it. */
+  rawDoBodies?: boolean;
+  /** `SpindleCapabilities.includeInlineScoped`: how `{include}` finds its `inline` flag. */
+  includeInlineScoped?: boolean;
 }
 
 /**
@@ -33,6 +37,8 @@ export interface PassageRef {
   form: PassageRefForm;
   /** Delimiter of a quoted target. */
   quote?: JsQuote;
+  /** The macro that reads a macro target (`goto`, `include` or `link`). */
+  macro?: string;
 }
 
 /** The passage minimum needed to mask non-markup passages. */
@@ -485,7 +491,8 @@ export function parseDocumentPassageRefs(
   passages: MaskablePassage[],
   options: LinkRuntimeOptions = {},
 ): PassageRef[] {
-  const markup = maskNonMarkupPassages(text, passages);
+  const masked = maskNonMarkupPassages(text, passages);
+  const markup = options.rawDoBodies ? maskRawDoBodies(masked, options) : masked;
   return [...parseLinks(markup, 0, options), ...parseMacroPassageRefs(markup, 0, options)];
 }
 
@@ -539,14 +546,52 @@ export function resolveExpressionTarget(args: string): ArgTarget | null {
 
   if (/[$@%"'`(]/.test(expr) || temporaryRefRegex.test(expr)) return null;
   if (EXPRESSION_BUILTINS.has(expr)) return null;
+  // Text made only of numbers and operators (`1 + 2`) evaluates to a value
+  // (`3`); only a canonical number names itself. (Decided from the text, the
+  // expression is never run.)
+  if (/^[\s\d.+\-*/%&|^<>=!~]+$/.test(expr) && /\d/.test(expr) && String(Number(expr)) !== expr) return null;
   return { name: expr, start: lead, end: lead + expr.length, form: 'bare' };
 }
 
+/** Words that are not plain identifiers when evaluated: keywords, value literals, language and browser globals. */
+const NON_NAME_WORDS = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum',
+  'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null',
+  'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+  'let', 'static', 'await', 'async', 'of', 'undefined', 'NaN', 'Infinity', 'arguments', 'eval',
+  'globalThis', 'window', 'self', 'top', 'parent', 'frames', 'document', 'location', 'history', 'navigator',
+  'console', 'name', 'status', 'length', 'event', 'origin', 'screen', 'performance', 'localStorage', 'sessionStorage',
+  'Math', 'JSON', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt', 'Date', 'RegExp', 'Error',
+  'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Proxy', 'Reflect', 'Intl', 'Function',
+  'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'alert', 'confirm', 'prompt', 'fetch', 'setTimeout', 'setInterval',
+]);
+
 /**
- * `{include}` first removes one `inline` keyword from its arguments, then
- * resolves the rest like `{goto}`.
+ * True when `name` written bare as a `{goto}` / `{include}` argument is
+ * certain to make Spindle's expression evaluation throw (an unbound
+ * identifier, or words with no operator between them), so the runtime uses
+ * the text itself: letters, digits and `_`, starting with a letter or `_`,
+ * words separated by single spaces, none a keyword, literal, builtin or
+ * common global. Anything else (`1 + 2`, `a-b`, `5`) may evaluate to another
+ * value and must be quoted.
  */
-function resolveIncludeTarget(args: string): ArgTarget | null {
+export function isVerbatimBareName(name: string): boolean {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*(?: [A-Za-z0-9_]+)*$/.test(name)) return false;
+  return name.split(' ').every(word => !NON_NAME_WORDS.has(word) && !EXPRESSION_BUILTINS.has(word));
+}
+
+/**
+ * `{include}` removes its `inline` flag from the arguments, then resolves the
+ * rest like `{goto}`. Before Spindle 0.51.1 the first `inline` word anywhere
+ * is removed (even inside a quoted target); from 0.51.1 only a standalone
+ * word at the start or end, outside quotes and brackets, is the flag.
+ */
+function resolveIncludeTarget(args: string, options: LinkRuntimeOptions = {}): ArgTarget | null {
+  if (options.includeInlineScoped) {
+    const { start, end } = includeExpressionSpan(args);
+    const target = resolveExpressionTarget(args.slice(start, end));
+    return target && { ...target, start: target.start + start, end: target.end + start };
+  }
   const inline = /\binline\b/.exec(args);
   if (!inline) return resolveExpressionTarget(args);
 
@@ -559,6 +604,48 @@ function resolveIncludeTarget(args: string): ArgTarget | null {
     start: target.start < cut ? target.start : target.start + width,
     end: target.end <= cut ? target.end : target.end + width,
   };
+}
+
+/**
+ * The part of `{include}` arguments that names the passage in Spindle 0.51.1
+ * and later (`parseIncludeArgs`): the trimmed arguments minus a standalone
+ * `inline` word at the end or start (outside quotes and brackets, separated
+ * by whitespace, and not next to a binary operator).
+ */
+function includeExpressionSpan(args: string): { start: number; end: number } {
+  const lead = args.length - args.trimStart().length;
+  const trimmed = args.trim();
+  let first: [number, number] | null = null;
+  let last: [number, number] | null = null;
+  let depth = 0;
+  let inString: string | null = null;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') inString = ch;
+    else if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (depth === 0 && /\s/.test(ch)) {
+      let end = i + 1;
+      while (end < trimmed.length && /\s/.test(trimmed[end])) end++;
+      last = [i, end];
+      first ??= last;
+      i = end - 1;
+    }
+  }
+  if (last && last[1] === trimmed.length - 'inline'.length && trimmed.endsWith('inline') &&
+    !/[-+*/%&|^!=<>?:,.]$/.test(trimmed.slice(0, last[0]))) {
+    return { start: lead, end: lead + last[0] };
+  }
+  if (first && first[0] === 'inline'.length && trimmed.startsWith('inline') &&
+    !/^[-+*/%&|^=<>?:,.]/.test(trimmed.slice(first[1]))) {
+    return { start: lead + first[1], end: lead + trimmed.length };
+  }
+  return { start: lead, end: lead + trimmed.length };
 }
 
 /**
@@ -577,7 +664,7 @@ export function resolveLinkMacroTarget(args: string, options: LinkRuntimeOptions
 
 const macroTargetResolvers: Record<string, (args: string, options: LinkRuntimeOptions) => ArgTarget | null> = {
   goto: args => resolveExpressionTarget(args),
-  include: args => resolveIncludeTarget(args),
+  include: resolveIncludeTarget,
   link: resolveLinkMacroTarget,
 };
 
@@ -619,6 +706,7 @@ export function parseMacroPassageRefs(text: string, lineOffset: number = 0, opti
       source: 'macro',
       form: target.form,
       quote: target.quote,
+      macro: macro.name.toLowerCase(),
     });
   }
 

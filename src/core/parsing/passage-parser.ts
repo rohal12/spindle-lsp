@@ -35,11 +35,14 @@ const SPECIAL_PASSAGES = new Set([
  */
 export function parsePassageHeader(line: string, lineNumber: number): ParsedPassageHeader | null {
   // Run regex against escaped version (neutralize backslash sequences for matching)
-  const escaped = line.replace(/\\./g, 'ec');
+  // A document's leading U+FEFF is its byte order mark: the header sits behind
+  // it, and every column stays in the client's own coordinates.
+  const bomLength = lineNumber === 0 && line.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const escaped = line.slice(bomLength).replace(/\\./g, 'ec');
   const match = passageHeaderRegex.exec(escaped);
   if (!match) return null;
 
-  const prefix = match[1] ?? '';       // ":: "
+  const prefix = line.slice(0, bomLength) + (match[1] ?? ''); // "\uFEFF:: "
   const rawName = match[2] ?? '';      // everything between prefix and tags/meta
   const rawTags = match[3] ?? '';      // "[tag1 tag2] " or ""
   const rawMeta = match[4] ?? '';      // '{"key":"val"} ' or ""
@@ -85,7 +88,7 @@ export function parsePassageHeader(line: string, lineNumber: number): ParsedPass
   // nameRange: position of the trimmed name within the line
   // The name starts right after the prefix, but the prefix may include extra whitespace.
   // We need to find where the actual name text starts (after ":: " which is the prefix).
-  const nameCharStart = prefix.length;
+  const nameCharStart = nameStart;
   const nameCharEnd = nameCharStart + name.length;
 
   const nameRange: Range = {
@@ -187,9 +190,9 @@ export function maskNonMarkupPassages(text: string, passages: Array<PassageRole 
   return lines.join('\n');
 }
 
-/** A line starting with `::` (lines end at `\n`, as everywhere else in the server). */
-export const HAS_PASSAGE_HEADER = /(?<![^\n])::/;
-const PASSAGE_HEADER_LINE = /(?<![^\n])::[^\r\n]*/g;
+/** A line starting with `::`, behind the text's leading BOM on the first line (lines end at `\n`, as everywhere else in the server). */
+export const HAS_PASSAGE_HEADER = /(?:^\uFEFF|(?<![^\n]))::/;
+const PASSAGE_HEADER_LINE = /(?:^\uFEFF|(?<![^\n]))::[^\r\n]*/g;
 
 /** A passage body of a Twee document: the text between two header lines. */
 export interface PassageBody {

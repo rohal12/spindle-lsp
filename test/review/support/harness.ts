@@ -45,9 +45,23 @@ const live: WorkspaceModel[] = [];
 const shared = new Map<string, WorkspaceModel>();
 const SHARED_LIMIT = 24;
 
+/**
+ * Every range a consumer returns is in the client's coordinates, so the model
+ * must hold each document exactly as the client sent it (a leading BOM, CRLF
+ * and all). A model that quietly holds a normalized copy would make every
+ * bounds and offset check below agree with itself while the client's own
+ * buffer disagrees.
+ */
+export function assertClientBasis(model: WorkspaceModel, files: Files, names: string[] = Object.keys(files)): void {
+  for (const n of names) {
+    expect(model.documents.getText(U(n)), `the model holds ${n} as the client sent it`).toBe(files[n]);
+  }
+}
+
 function make(files: Files, order: string[]): WorkspaceModel {
   const model = new WorkspaceModel({ workspaceRoot: root });
   model.initialize(new Map(order.map(n => [U(n), files[n]] as [string, string])));
+  assertClientBasis(model, files, order);
   return model;
 }
 /** A read-only workspace; the same `files` and `order` give the same model while it is recent. */

@@ -460,7 +460,7 @@ function linkEnd(text: string, i: number, spend: (units: number) => void): numbe
 export function attributeValueSpans(text: string, reading: BraceReading = {}): Array<[number, number]> {
   const spans: Array<[number, number]> = [];
   if (!text.includes('<')) return spans;
-  const headers = [...text.matchAll(/^::.*$/gm)];
+  const headers = [...text.matchAll(/^\uFEFF?::.*$/gm)];
   const scan = (from: number, to: number) => {
     const content = text.slice(from, to);
     if (!content.includes('<')) return;
