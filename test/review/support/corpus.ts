@@ -260,6 +260,16 @@ const DO_LITERALS: Record<string, string> = {
   'string-line-continuation': 'out.push("a\\\n   b");',
   'two-templates': 'out.push(`a\n b`, `c\n  d`);',
   'template-escaped-backtick': 'out.push(`a\\`\n  b`);',
+  // regex literals and division before a multiline template (F66/regex-backtick-before-template)
+  'regex-backtick-before-template': 'const re = /`/;\nconst value = `a\nb`;\nout.push(value, re.test("`"));',
+  'regex-quote-before-template': 'const re = /"\'/;\nconst value = `a\n  b`;\nout.push(value, re.test("\'"));',
+  'regex-class-slash-backtick': 'const re = /[/`]/;\nconst value = `a\n  b`;\nout.push(value, re.test("/"));',
+  'regex-escaped-slash-backtick': 'const re = /\\/`/g;\nconst value = `a\n  b`;\nout.push(value, re.test("/`"));',
+  'regex-in-call-and-interpolation': 'out.push("a-b".replace(/-/, "`"), `a\n  ${ /`/.test("`") }\n b`);',
+  'division-before-template': 'const a = 6, b = 3;\nconst q = a / b;\nconst value = `a\n  b`;\nout.push(q, value, q / 2);',
+  'division-after-paren-and-index': 'const a = [6];\nconst q = (a[0]) / 3 + a[0] / 3;\nout.push(q, `a\n  b`);',
+  'regex-without-backtick': 'const re = /a b/;\nconst value = `a\n  b`;\nout.push(value, re.test("a b"));',
+  'slash-comment-backtick': 'const x = 1; // /`/\nconst value = `a\n  b`;\nout.push(x, value);',
 };
 const DO_WRAPS: Record<string, (b: string) => string> = {
   container: b => `{do}\n${b}\n{/do}`,

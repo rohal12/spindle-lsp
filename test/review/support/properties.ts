@@ -441,10 +441,14 @@ export async function propFormatDoLiterals(files: Files) {
   const text = files['story.tw'];
   const before = doBodyValues(text);
   expect(before.length, 'fixture has a {do} body').toBeGreaterThan(0);
+  // both brace readings (the older tokenizer and stringAwareBraces) must keep the values
   const once = await formatDocument(text);
+  const onceAware = await formatDocument(text, { stringAwareBraces: true });
   // the values are compared as written: no whitespace normalization
   expect(doBodyValues(once), 'format changed a {do} body value').toEqual(before);
+  expect(doBodyValues(onceAware), 'format (stringAwareBraces) changed a {do} body value').toEqual(before);
   expect(await formatDocument(once), 'formatting is not idempotent').toBe(once);
+  expect(await formatDocument(onceAware, { stringAwareBraces: true }), 'formatting (stringAwareBraces) is not idempotent').toBe(onceAware);
   expect(once.includes('\r\n'), 'format keeps the document line endings').toBe(text.includes('\r\n'));
   // unrelated text is still formatted and kept
   const lf = once.replaceAll('\r\n', '\n');

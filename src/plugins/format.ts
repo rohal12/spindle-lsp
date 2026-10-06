@@ -158,6 +158,35 @@ function protectDoLiterals(body: string, sentinel: string, stringAwareBraces: bo
   return out + body.slice(last);
 }
 
+/** Keywords after which a `/` starts a regex literal rather than dividing. */
+const REGEX_AFTER_KEYWORD = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw',
+  'case', 'do', 'else', 'yield', 'await',
+]);
+
+/**
+ * End index (exclusive) of the regex literal starting at `code[from] === '/'`,
+ * or -1 when no closing `/` precedes the end of the line (a regex literal
+ * cannot span lines, so the `/` is not one). A `/` inside a character class
+ * `[...]` and escaped characters do not close it; flags are consumed.
+ */
+function regexLiteralEnd(code: string, from: number): number {
+  let i = from + 1;
+  let inClass = false;
+  while (i < code.length && code[i] !== '\n') {
+    const ch = code[i];
+    if (ch === '\\') i += 2;
+    else if (ch === '[') { inClass = true; i++; }
+    else if (ch === ']') { inClass = false; i++; }
+    else if (ch === '/' && !inClass) {
+      i++;
+      while (i < code.length && /[A-Za-z0-9_$]/.test(code[i])) i++;
+      return i;
+    } else i++;
+  }
+  return -1;
+}
+
 /** Ranges of the string and template literals in `code` that contain a newline (outermost only). */
 function multilineJsLiterals(code: string): [number, number][] {
   const spans: [number, number][] = [];
@@ -165,6 +194,8 @@ function multilineJsLiterals(code: string): [number, number][] {
   const scanCode = (start: number, nested: boolean): number => {
     let i = start;
     let depth = 0;
+    /** Whether a `/` here starts a regex literal (else it divides), from the previous significant token. */
+    let regexAllowed = true;
     while (i < code.length) {
       const ch = code[i];
       if (ch === '/' && code[i + 1] === '/') {
@@ -172,6 +203,15 @@ function multilineJsLiterals(code: string): [number, number][] {
       } else if (ch === '/' && code[i + 1] === '*') {
         const end = code.indexOf('*/', i + 2);
         i = end === -1 ? code.length : end + 2;
+      } else if (ch === '/') {
+        const end = regexAllowed ? regexLiteralEnd(code, i) : -1;
+        if (end >= 0) {
+          i = end;
+          regexAllowed = false;
+        } else {
+          i++;
+          regexAllowed = true;
+        }
       } else if (ch === '"' || ch === "'") {
         const from = i++;
         while (i < code.length && code[i] !== ch && code[i] !== '\n') i += code[i] === '\\' ? 2 : 1;
@@ -179,6 +219,7 @@ function multilineJsLiterals(code: string): [number, number][] {
         i = Math.min(i, code.length);
         if (code.slice(from, i).includes('\n')) spans.push([from, i + 1]);
         i++;
+        regexAllowed = false;
       } else if (ch === '`') {
         const from = i++;
         while (i < code.length && code[i] !== '`') {
@@ -188,15 +229,27 @@ function multilineJsLiterals(code: string): [number, number][] {
         }
         i = Math.min(i + 1, code.length);
         if (code.slice(from, i).includes('\n')) spans.push([from, i]);
+        regexAllowed = false;
       } else if (ch === '{') {
         depth++;
         i++;
+        regexAllowed = true;
       } else if (ch === '}') {
         if (nested && depth === 0) return i + 1;
         depth--;
         i++;
+        regexAllowed = true;
+      } else if (/[A-Za-z0-9_$]/.test(ch)) {
+        const from = i;
+        while (i < code.length && /[A-Za-z0-9_$.]/.test(code[i])) i++;
+        const word = code.slice(from, i);
+        regexAllowed = REGEX_AFTER_KEYWORD.has(word);
+      } else if (ch === ')' || ch === ']') {
+        i++;
+        regexAllowed = false;
       } else {
         i++;
+        if (!/\s/.test(ch)) regexAllowed = true;
       }
     }
     return i;
