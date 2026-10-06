@@ -330,14 +330,15 @@ export function propRename(files: Files) {
       if (seen.has(key)) continue;
       seen.add(key);
       for (const newName of RENAMES[kind]) {
-        // Renaming onto a passage that already exists merges two passages: not a rename, and outside this contract
-        // (a fixture with a passage named `inline`, #77, meets the `inline` rename candidate).
-        if (kind === 'passage' && model.passages.getPassage(newName)) continue;
         let edits;
         try { edits = computeRename(uri, p.pos, newName, model); }
         catch (e) {
           if (!(e instanceof RenameError)) throw e;
           continue;
+        }
+        // renaming onto another existing passage would merge two passages: it must be rejected whole
+        if (kind === 'passage' && newName !== p.prep.placeholder) {
+          expect(model.passages.getPassage(newName), `rename ${key} -> ${JSON.stringify(newName)} was accepted onto an existing passage`).toBeUndefined();
         }
         // #83: a name outside Spindle's grammar (sigil + word characters) is rejected whole, never applied
         if (kind === 'variable') expect(/^\w+$/.test(newName), `rename ${key} -> ${JSON.stringify(newName)} was accepted`).toBe(true);
