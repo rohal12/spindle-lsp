@@ -647,3 +647,29 @@ describe('N-rename: invalid new names fail the whole request and name the offend
     expect(Object.keys(ok.changes).sort()).toEqual([other, uri]);
   });
 });
+
+describe('rename onto an existing passage', () => {
+  const files = [
+    { name: 'a.tw', content: ':: StoryVariables\n:: Start\n[[Old]] [[Taken]]\n:: Old\nhi' },
+    { name: 'b.tw', content: ':: Taken\nthere\n:: Elsewhere\n{goto "Old"}' },
+  ];
+
+  it('rejects a name another passage holds, in any file, before returning edits', () => {
+    const ws = createWorkspace(...files);
+    try {
+      computeRename('file:///a.tw', { line: 3, character: 4 }, 'Taken', ws);
+      throw new Error('expected a RenameError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(RenameError);
+      expect((error as RenameError).message).toContain('already exists');
+    }
+  });
+
+  it('allows a no-op rename to the same name and an unused name', () => {
+    const ws = createWorkspace(...files);
+    expect(computeRename('file:///a.tw', { line: 3, character: 4 }, 'Old', ws).size).toBe(0);
+    const out = applyRename(ws, 'file:///a.tw', { line: 3, character: 4 }, 'Fresh');
+    expect(out.get('file:///a.tw')).toContain(':: Fresh');
+    expect(out.get('file:///b.tw')).toContain('{goto "Fresh"}');
+  });
+});

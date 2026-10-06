@@ -69,6 +69,14 @@ export function computeRename(
       // JavaScript string, MacroLink string); encode per reference and fail
       // before returning any edit when a spelling cannot hold the name. The
       // error names the reference that cannot.
+      // Renaming to its own name changes nothing; re-spelling references
+      // could only alter their meaning.
+      if (newName === symbol.name) return new Map();
+      // A name another passage already holds would merge the two passages
+      // (duplicate headers, every link ambiguous): reject before any edit.
+      if (workspace.passages.getPassage(newName)) {
+        throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: a passage with that name already exists.`).at(uri, symbol.range);
+      }
       const refEdits: Array<{ uri: string; range: Range; text: string }> = [];
       for (const { uri: refUri, ref } of findPassageRefs(symbol.name, workspace)) {
         try {
