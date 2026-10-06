@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
+import { stripBom } from './document-store.js';
 import type { Passage } from '../types.js';
 import { PassageIndex } from './passage-index.js';
 import { findProjectFiles, findProjectRoot } from './macro-sources.js';
+import { readInstalledSpindleVersion, resolveSpindleCapabilities } from './spindle-capabilities.js';
+import type { SpindleCapabilities } from './spindle-capabilities.js';
 
 /**
  * The story format a project declares in its Twee 3 StoryData passage
@@ -51,6 +54,27 @@ export function readStoryDataFormat(content: string): string | undefined {
 }
 
 /**
+ * The `format-version` of a StoryData passage's JSON content, trimmed, for
+ * a StoryData that names Spindle or no format. Undefined if the content does
+ * not parse, names another format, or has no string `format-version`.
+ */
+export function readStoryDataFormatVersion(content: string): string | undefined {
+  let data: unknown;
+  try {
+    data = JSON.parse(content);
+  } catch {
+    return undefined;
+  }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
+  const record = data as Record<string, unknown>;
+  if (typeof record.format === 'string' && record.format.trim() && !isSpindleFormatName(record.format)) {
+    return undefined;
+  }
+  const version = record['format-version'];
+  return typeof version === 'string' && version.trim() ? version.trim() : undefined;
+}
+
+/**
  * Combine the formats declared by every StoryData passage (undefined for
  * one that names none): Spindle if any names Spindle, foreign if one names
  * another format, Spindle otherwise.
@@ -91,6 +115,21 @@ export function storyDataFormats(
   return formats;
 }
 
+/** The first `format-version` declared by a Spindle StoryData passage among `passages`. */
+export function storyDataFormatVersion(
+  passages: Iterable<Passage>,
+  getText: (uri: string) => string | undefined,
+): string | undefined {
+  for (const passage of passages) {
+    if (passage.name !== 'StoryData') continue;
+    const text = getText(passage.uri);
+    if (text === undefined) continue;
+    const version = readStoryDataFormatVersion(passageContent(passage, text));
+    if (version !== undefined) return version;
+  }
+  return undefined;
+}
+
 /**
  * The story format declared in a set of documents, without a workspace,
  * and whether any of them has a StoryData passage at all.
@@ -119,19 +158,57 @@ export function storyFormatOfTexts(
  * output and hidden directories).
  */
 export async function findStoryFormat(texts: Iterable<string>, dir: string): Promise<StoryFormat> {
-  const own = storyFormatOfTexts(texts);
+  const own = storyFormatOfTexts([...texts].map(stripBom));
   if (own.hasStoryData) return { name: own.name, isSpindle: own.isSpindle };
 
   const projectTexts: string[] = [];
   for (const file of await findProjectFiles(findProjectRoot(dir), '**/*.{tw,twee}')) {
     try {
-      projectTexts.push(readFileSync(file, 'utf-8'));
+      projectTexts.push(stripBom(readFileSync(file, 'utf-8')));
     } catch {
       // Skip unreadable files
     }
   }
   const { name, isSpindle } = storyFormatOfTexts(projectTexts);
   return { name, isSpindle };
+}
+
+/** The first `format-version` a Spindle StoryData among `texts` declares. */
+function storyFormatVersionOfTexts(texts: Iterable<string>): string | undefined {
+  const index = new PassageIndex();
+  const byUri = new Map<string, string>();
+  for (const text of texts) {
+    if (!text.includes('StoryData')) continue;
+    const uri = `story-format:${byUri.size}`;
+    byUri.set(uri, text);
+    index.rebuild(uri, text);
+  }
+  return storyDataFormatVersion(index.getAllPassages(), uri => byUri.get(uri));
+}
+
+/**
+ * The target Spindle of files processed without a workspace (the CLI and MCP
+ * formatter), resolved like the workspace does: the `@rohal12/spindle`
+ * installed at or above `dir`, else the `format-version` of a StoryData among
+ * `texts` or in the project containing `dir`, else the default behavior.
+ */
+export async function findSpindleCapabilities(texts: Iterable<string>, dir: string): Promise<SpindleCapabilities> {
+  const installed = readInstalledSpindleVersion(dir);
+  if (installed) return resolveSpindleCapabilities(installed);
+  const own = [...texts];
+  let version = storyFormatVersionOfTexts(own);
+  if (version === undefined && !storyFormatOfTexts(own).hasStoryData) {
+    const projectTexts: string[] = [];
+    for (const file of await findProjectFiles(findProjectRoot(dir), '**/*.{tw,twee}')) {
+      try {
+        projectTexts.push(readFileSync(file, 'utf-8'));
+      } catch {
+        // Skip unreadable files
+      }
+    }
+    version = storyFormatVersionOfTexts(projectTexts);
+  }
+  return resolveSpindleCapabilities(undefined, version);
 }
 
 /** Note shown by the CLI and MCP tools when they skip a non-Spindle project. */

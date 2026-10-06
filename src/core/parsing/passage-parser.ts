@@ -35,11 +35,14 @@ const SPECIAL_PASSAGES = new Set([
  */
 export function parsePassageHeader(line: string, lineNumber: number): ParsedPassageHeader | null {
   // Run regex against escaped version (neutralize backslash sequences for matching)
-  const escaped = line.replace(/\\./g, 'ec');
+  // A document's leading U+FEFF is its byte order mark: the header sits behind
+  // it, and every column stays in the client's own coordinates.
+  const bomLength = lineNumber === 0 && line.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const escaped = line.slice(bomLength).replace(/\\./g, 'ec');
   const match = passageHeaderRegex.exec(escaped);
   if (!match) return null;
 
-  const prefix = match[1] ?? '';       // ":: "
+  const prefix = line.slice(0, bomLength) + (match[1] ?? ''); // "\uFEFF:: "
   const rawName = match[2] ?? '';      // everything between prefix and tags/meta
   const rawTags = match[3] ?? '';      // "[tag1 tag2] " or ""
   const rawMeta = match[4] ?? '';      // '{"key":"val"} ' or ""
@@ -85,7 +88,7 @@ export function parsePassageHeader(line: string, lineNumber: number): ParsedPass
   // nameRange: position of the trimmed name within the line
   // The name starts right after the prefix, but the prefix may include extra whitespace.
   // We need to find where the actual name text starts (after ":: " which is the prefix).
-  const nameCharStart = prefix.length;
+  const nameCharStart = nameStart;
   const nameCharEnd = nameCharStart + name.length;
 
   const nameRange: Range = {
@@ -113,10 +116,118 @@ export function isSpecialPassage(name: string): boolean {
 const CODE_PASSAGE_TAGS = new Set(['script', 'stylesheet']);
 
 /**
+ * Passage names that carry a meaning of their own: Twee's story passages and
+ * the ones Spindle reads by name at startup or around every passage. Renaming
+ * such a passage (or a reference to it) silently changes the passage's role,
+ * so navigation treats these names as fixed.
+ */
+const RESERVED_PASSAGE_NAMES: ReadonlySet<string> = new Set([
+  ...SPECIAL_PASSAGES,
+  'StoryTitle', 'StoryLoading', 'StoryTransients', 'StoryScript', 'SaveTitle',
+  'PassageReady', 'PassageDone', 'PassageHeader', 'PassageFooter',
+]);
+
+/** Whether `name` is a passage name with a fixed meaning (see RESERVED_PASSAGE_NAMES). */
+export function isReservedPassageName(name: string): boolean {
+  return RESERVED_PASSAGE_NAMES.has(name);
+}
+
+/**
  * Check whether a passage is a `script` or `stylesheet` passage. Its body is
  * compiled as JavaScript/CSS, not rendered as story markup, so story syntax
  * checks do not apply to it.
  */
 export function isScriptOrStylesheetPassage(passage: { tags?: string[] }): boolean {
   return passage.tags?.some(t => CODE_PASSAGE_TAGS.has(t)) ?? false;
+}
+
+/**
+ * Passages that Spindle never tokenizes as markup. The compiler turns
+ * StoryTitle and StoryData into story attributes; Spindle reads
+ * StoryVariables and StoryTransients as declarations (parseStoryVariables)
+ * and runs SaveTitle as a JavaScript function body. Script and stylesheet
+ * passages become the story's JavaScript and CSS. Every other passage can
+ * be rendered: Spindle tokenizes StoryInit, StoryInterface, StoryLoading
+ * and the Passage* passages itself, widget passages at startup, and any
+ * passage it navigates to, includes or opens in a dialog.
+ */
+export const NON_MARKUP_PASSAGES: ReadonlySet<string> = new Set([
+  'StoryTitle', 'StoryData', 'StoryVariables', 'StoryTransients', 'SaveTitle',
+]);
+
+/** What the role of a passage depends on. */
+export interface PassageRole {
+  name?: string;
+  tags?: string[];
+}
+
+/** Whether Spindle tokenizes the passage's body as story markup. */
+export function isMarkupPassage(passage: PassageRole): boolean {
+  return !(passage.name !== undefined && NON_MARKUP_PASSAGES.has(passage.name)) && !isScriptOrStylesheetPassage(passage);
+}
+
+/**
+ * Replace the body of every passage Spindle does not tokenize as markup
+ * (see isMarkupPassage()) with spaces, keeping line breaks so offsets and
+ * positions are unchanged. This is the one masking every consumer of
+ * macros, links and widget calls shares, so that code or data in such a
+ * passage is never read as markup. `range.start.line` is the header line.
+ */
+export function maskNonMarkupPassages(text: string, passages: Array<PassageRole & { range: Range }>): string {
+  const excluded = passages.filter(passage => !isMarkupPassage(passage));
+  // Text before the first header belongs to no passage: the compiler ignores it
+  const prelude = passages.length > 0 ? Math.min(...passages.map(p => p.range.start.line)) : 0;
+  if (excluded.length === 0 && prelude === 0) return text;
+
+  const lines = text.split('\n');
+  for (let i = 0; i < Math.min(prelude, lines.length); i++) lines[i] = lines[i].replace(/[^\r]/g, ' ');
+  for (const passage of excluded) {
+    const last = Math.min(passage.range.end.line, lines.length - 1);
+    for (let i = passage.range.start.line + 1; i <= last; i++) {
+      lines[i] = lines[i].replace(/[^\r]/g, ' ');
+    }
+  }
+  return lines.join('\n');
+}
+
+/** A line starting with `::`, behind the text's leading BOM on the first line (lines end at `\n`, as everywhere else in the server). */
+export const HAS_PASSAGE_HEADER = /(?:^\uFEFF|(?<![^\n]))::/;
+const PASSAGE_HEADER_LINE = /(?:^\uFEFF|(?<![^\n]))::[^\r\n]*/g;
+
+/** A passage body of a Twee document: the text between two header lines. */
+export interface PassageBody {
+  /** Offset of the first character after the header line (its line start). */
+  start: number;
+  /** Offset of the next header line, or the end of the text. */
+  end: number;
+  /** Line of `start`. */
+  line: number;
+}
+
+/**
+ * Split a Twee document at its passage header lines (a line starting with
+ * `::`). Spindle renders each passage on its own, so the tokenizer never
+ * reads a macro, link or tag across a header; the header lines themselves are
+ * not in any body. Text before the first header is one body, as for a text
+ * that is a single passage's content.
+ */
+export function passageBodies(text: string): PassageBody[] {
+  const bodies: PassageBody[] = [];
+  let start = 0;
+  let line = 0;
+  for (const header of text.matchAll(PASSAGE_HEADER_LINE)) {
+    if (header.index > start) bodies.push({ start, end: header.index, line });
+    // Count the lines up to the one after the header
+    line += countLines(text, start, header.index) + 1;
+    const newline = text.indexOf('\n', header.index);
+    start = newline === -1 ? text.length : newline + 1;
+  }
+  if (start < text.length) bodies.push({ start, end: text.length, line });
+  return bodies;
+}
+
+function countLines(text: string, from: number, to: number): number {
+  let count = 0;
+  for (let i = text.indexOf('\n', from); i !== -1 && i < to; i = text.indexOf('\n', i + 1)) count++;
+  return count;
 }

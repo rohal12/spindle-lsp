@@ -1,6 +1,7 @@
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
+import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
 import { findPassageRefAt } from '../core/parsing/link-parser.js';
 
 // ---------------------------------------------------------------------------
@@ -26,18 +27,18 @@ export function getDefinition(
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
   const text = workspace.documents.getText(uri);
-  if (text === undefined) return null;
+  if (text === undefined || !workspace.hasPassages(uri)) return null;
 
   const lines = text.split('\n');
   if (position.line >= lines.length) return null;
   const line = lines[position.line];
 
   // --- Passage ref in [[link]] or macro args (goto, include, link) ---
-  const passageResult = getPassageRefDefinition(text, position, workspace);
+  const passageResult = getPassageRefDefinition(uri, text, position, workspace);
   if (passageResult) return passageResult;
 
   // --- Widget name -> definition ---
-  const widgetResult = getWidgetDefinition(line, position, workspace);
+  const widgetResult = getWidgetDefinition(uri, text, position, workspace);
   if (widgetResult) return widgetResult;
 
   return null;
@@ -48,11 +49,12 @@ export function getDefinition(
 // ---------------------------------------------------------------------------
 
 function getPassageRefDefinition(
+  uri: string,
   text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  const ref = findPassageRefAt(text, position);
+  const ref = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
   if (!ref) return null;
   const passage = workspace.passages.getPassage(ref.name);
   if (!passage) return null;
@@ -63,31 +65,17 @@ function getPassageRefDefinition(
 }
 
 function getWidgetDefinition(
-  line: string,
+  uri: string,
+  text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  // Match {widgetName ...} invocations
-  const re = /\{([A-Za-z_$][\w$]*)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(line)) !== null) {
-    const name = match[1];
-    const nameStart = match.index + 1; // skip '{'
-    const nameEnd = nameStart + name.length;
-    if (position.character >= nameStart && position.character <= nameEnd) {
-      // Only if it's not a known macro
-      if (workspace.macros.getMacro(name)) continue;
-
-      const widget = workspace.widgets.getWidget(name);
-      if (widget) {
-        return {
-          uri: widget.uri,
-          range: widget.range,
-        };
-      }
-    }
-  }
-  return null;
+  const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
+  if (!head) return null;
+  // Only if it's not a known macro
+  if (workspace.macros.getMacro(head.name)) return null;
+  const widget = workspace.widgets.getWidget(head.name);
+  return widget ? { uri: widget.uri, range: widget.range } : null;
 }
 
 // ---------------------------------------------------------------------------

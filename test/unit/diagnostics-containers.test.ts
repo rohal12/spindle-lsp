@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { WorkspaceModel, type WorkspaceModelConfig } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import type { Diagnostic } from '../../src/core/types.js';
+import { runtimeRejects } from '../helpers/runtime-ast.js';
 
 function diagnose(content: string, config?: WorkspaceModelConfig): Diagnostic[] {
   const workspace = new WorkspaceModel(config);
@@ -230,18 +231,31 @@ describe('HTML elements on Spindle\'s AST stack', () => {
   it('stops tracking elements after a block closes over an open element', () => {
     // {if}<span>{/if}</span> crosses: Spindle throws "Expected </span> but found {/if}".
     const diags = diagnose(`${vars}:: Start\n{if $x}<span>{/if}</span>{if $x}<i>{else}</i>{/if}\n`);
-    expect(codes(diags)).toEqual(['SP102']);
+    // the rejected {/if} (SP102) leaves its {if} open (SP101); {else} after it is not judged
+    expect(codes(diags).sort()).toEqual(['SP101', 'SP102']);
   });
 
-  it('stops tracking elements where Spindle versions disagree', () => {
-    expect(diagnose(`${vars}:: Start\n<a title="{">{if $x}<i>{else}</i>{/if}</a>\n`)).toEqual([]);
-    expect(diagnose(`${vars}:: Start\n<a href = "x">{if $x}<i>{else}</i>{/if}</a>\n`)).toEqual([]);
+  it('reads an attribute value with a lone brace as the installed Spindle does', () => {
+    // 0.43.0-0.50.0 count the `{` and read no tag (so `</a>` is unexpected);
+    // 0.50.1 and later end the value at the next quote. The workspace here
+    // follows the installed release, and so must the verdict.
+    const body = '<a title="{">{if $x}<i>{else}</i>{/if}</a>';
+    const diags = diagnose(`${vars}:: Start\n${body}\n`, { workspaceRoot: process.cwd() });
+    expect(codes(diags).some(code => ['SP101', 'SP102', 'SP104', 'SP107'].includes(code))).toBe(runtimeRejects(body));
   });
 
-  it('still reports nested macro containers after giving up on elements', () => {
+  it('reads a tag with whitespace around = as text, in every release', () => {
+    // `<a href = "x">` is no tag, so `</a>` has no opener: buildAST throws
+    const body = '<a href = "x">{if $x}<i>{else}</i>{/if}</a>';
+    expect(runtimeRejects(body)).toBe(true);
+    const diags = diagnose(`${vars}:: Start\n${body}\n`);
+    expect(diags.map(d => d.message)).toContain('Malformed element: unexpected closing </a>');
+  });
+
+  it('reports nested macro containers beside a tag that is read as text', () => {
     const diags = diagnose(`${vars}:: Start\n<a href = "x">{if $x}{for @i of [1]}{else}{/for}{/if}</a>\n`);
-    expect(codes(diags)).toEqual(['SP107']);
-    expect(diags[0].message).toContain('not inside {for}');
+    expect(codes(diags).sort()).toEqual(['SP102', 'SP107']);
+    expect(diags.find(d => d.code === 'SP107')!.message).toContain('not inside {for}');
   });
 
   it('flags a branch in an element that is never closed', () => {

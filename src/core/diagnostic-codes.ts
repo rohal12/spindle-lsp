@@ -1,4 +1,5 @@
 export const DiagnosticCode = {
+  UnsupportedSpindleVersion: 'SP001',
   UndefinedMacro: 'SP100',
   MalformedContainer: 'SP101',
   MalformedElement: 'SP102',
@@ -24,6 +25,8 @@ export const DiagnosticCode = {
   WidgetArgCountMismatch: 'SP301',
   IncludeWidgetPassage: 'SP302',
   UnusedWidget: 'SP303',
+  LinkRuntimeMismatch: 'SP304',
+  LiteralLinkInterpolation: 'SP305',
   DeadEndPassage: 'SP400',
   UnreachablePassage: 'SP401',
   LineTooLong: 'SP500',
@@ -34,6 +37,7 @@ export type DiagnosticCodeValue = (typeof DiagnosticCode)[keyof typeof Diagnosti
 type Severity = 'error' | 'warning' | 'info' | 'hint';
 
 const severityMap: Record<DiagnosticCodeValue, Severity> = {
+  SP001: 'warning',
   SP100: 'warning',
   SP101: 'error',
   SP102: 'error',
@@ -59,6 +63,8 @@ const severityMap: Record<DiagnosticCodeValue, Severity> = {
   SP301: 'warning',
   SP302: 'warning',
   SP303: 'hint',
+  SP304: 'warning',
+  SP305: 'warning',
   SP400: 'hint',
   SP401: 'hint',
   SP500: 'warning',

@@ -2,6 +2,17 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+/**
+ * A leading U+FEFF is the file's byte order mark, not story text: the
+ * compiler reads `:: Name` behind it as a passage header. The store keeps the
+ * text exactly as the client or the disk delivered it so that every position
+ * the server computes is in the client's coordinates; the header recognisers
+ * skip the BOM instead. Use this only for analysis that reports no positions.
+ */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 interface DocumentEntry {
   text: string;
   version: number;

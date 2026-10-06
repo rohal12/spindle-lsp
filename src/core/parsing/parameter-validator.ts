@@ -476,6 +476,62 @@ function formatArgCountRange(format: Format): { min: number; max: number } {
 }
 
 // ---------------------------------------------------------------------------
+// Positional description (for editor signature help)
+// ---------------------------------------------------------------------------
+
+/** One argument position of a schema. */
+export interface ParameterSlot {
+  /** Type name, or the quoted literal for literal positions. */
+  label: string;
+  /** The position may be omitted (`|+`). */
+  optional: boolean;
+  /** The position may repeat (`...`). */
+  repeat: boolean;
+  /**
+   * Whether a typed argument can occupy this position, judged by the same
+   * format-tree crawl the validator uses (variables and expressions always
+   * pass; a type warning is not a rejection).
+   */
+  accepts(arg: Arg): boolean;
+}
+
+const DESCRIBE_ALTERNATIVE_LIMIT = 16;
+
+/**
+ * Expand a format into its alternative positional sequences. `|` yields one
+ * sequence per branch, `|+` yields the sequence with its right side optional.
+ */
+function slotAccepts(leaf: Format): (arg: Arg) => boolean {
+  return (arg) => crawlValidate(leaf, [arg], 0).status === CrawlStatus.Success;
+}
+
+function describeFormat(format: Format): ParameterSlot[][] {
+  const cap = (list: ParameterSlot[][]) => list.slice(0, DESCRIBE_ALTERNATIVE_LIMIT);
+  const join = (lefts: ParameterSlot[][], rights: ParameterSlot[][]) =>
+    cap(lefts.flatMap((l) => rights.map((r) => [...l, ...r])));
+  switch (format.kind) {
+    case FormatKind.Type:
+      return [[{ label: format.type.name[0], optional: false, repeat: false, accepts: slotAccepts(format) }]];
+    case FormatKind.Literal:
+      return [[{ label: `'${format.value}'`, optional: false, repeat: false, accepts: slotAccepts(format) }]];
+    case FormatKind.AndNext:
+      return join(describeFormat(format.left), describeFormat(format.right));
+    case FormatKind.MaybeNext: {
+      const rights = describeFormat(format.right).map((seq) =>
+        seq.map((slot) => ({ ...slot, optional: true })),
+      );
+      return join(format.left ? describeFormat(format.left) : [[]], rights);
+    }
+    case FormatKind.Or:
+      return cap([...describeFormat(format.left), ...describeFormat(format.right)]);
+    case FormatKind.Repeat:
+      return describeFormat(format.right).map((seq) =>
+        seq.map((slot) => ({ ...slot, optional: true, repeat: true })),
+      );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Validator (tree-crawl)
 // ---------------------------------------------------------------------------
 
@@ -680,6 +736,21 @@ export class Parameters {
       formatString: s,
       format: parseFormat(s),
     }));
+  }
+
+  /**
+   * Describe every argument position of every schema variant. Alternatives
+   * (`|`) and optional positions (`|+`) become separate sequences; an empty
+   * schema is the empty sequence. Variants whose format cannot be parsed
+   * contribute nothing.
+   */
+  describe(): ParameterSlot[][] {
+    const sequences: ParameterSlot[][] = [];
+    for (const variant of this.variants) {
+      if (variant.format === null) sequences.push([]);
+      else sequences.push(...describeFormat(variant.format));
+    }
+    return sequences;
   }
 
   /**

@@ -16,6 +16,24 @@ export interface MacroNode {
   range: Range;
   cssPrefix?: string;
   rawArgs?: string;
+  /**
+   * Set by pairMacros() on a closer that crosses a container still to be
+   * closed: the name of the container on top of the stack, which Spindle's
+   * buildAST expects to be closed first.
+   */
+  expected?: string;
+  /**
+   * Set by pairMacros() on a closer that cannot close its container because
+   * an HTML element opened inside it is still open and is closed later
+   * (`{wrap}<div>{/wrap}</div>`): the tag name of that element, which
+   * Spindle's buildAST expects to be closed first. SP102 reports it.
+   */
+  expectedElement?: string;
+  /**
+   * Set by pairMacros() when the innermost node on Spindle's AST stack at
+   * this macro is an HTML element: its tag name.
+   */
+  element?: string;
 }
 
 export interface MacroInfo {
@@ -28,9 +46,16 @@ export interface MacroInfo {
   source: 'builtin' | 'user';
   description?: string;
   parameters?: string[];
+  /** Descriptive name and help for each argument position of `parameters`. */
+  parameterDocs?: ParameterDoc[];
   children?: ChildConstraint[];
   parents?: string[];
   skipArgs?: boolean;
+}
+
+export interface ParameterDoc {
+  name: string;
+  documentation?: string;
 }
 
 export interface ChildConstraint {

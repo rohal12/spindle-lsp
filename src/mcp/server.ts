@@ -11,8 +11,8 @@ import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
 import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
-import { formatDocument } from '../plugins/format.js';
-import { findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
+import { formatDocument, type FormatOptions } from '../plugins/format.js';
+import { findSpindleCapabilities, findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
 import type { Diagnostic } from '../core/types.js';
 
 // ---------------------------------------------------------------------------
@@ -85,6 +85,12 @@ async function skippedReason(
 ): Promise<string | undefined> {
   const format = await findStoryFormat(fileContents.values(), commonDirectory(files));
   return format.isSpindle ? undefined : skippedFormatNote(format);
+}
+
+/** Formatter options for the target Spindle of `files` (see findSpindleCapabilities). */
+async function formatOptionsFor(contents: Map<string, string>, files: string[]): Promise<FormatOptions> {
+  const caps = await findSpindleCapabilities(contents.values(), commonDirectory(files));
+  return { stringAwareBraces: caps.stringAwareBraces };
 }
 
 /**
@@ -212,6 +218,7 @@ export async function formatFiles(pattern: string, cwd: string = process.cwd()):
   const skipped = files.length > 0 ? await skippedReason(contents, files) : undefined;
   if (skipped) return { formatted: 0, unchanged: 0, files: [], skipped };
 
+  const formatOptions = await formatOptionsFor(contents, files);
   let formatted = 0;
   let unchanged = 0;
   const changedFiles: string[] = [];
@@ -220,7 +227,7 @@ export async function formatFiles(pattern: string, cwd: string = process.cwd()):
     const text = contents.get(pathToFileURL(filePath).toString());
     if (text === undefined) continue;
     try {
-      const result = await formatDocument(text);
+      const result = await formatDocument(text, formatOptions);
 
       if (result !== text) {
         writeFileSync(filePath, result, 'utf-8');
@@ -259,6 +266,7 @@ export async function checkFormatting(
   const skipped = files.length > 0 ? await skippedReason(contents, files) : undefined;
   if (skipped) return { needsFormatting: [], alreadyFormatted: [], skipped };
 
+  const formatOptions = await formatOptionsFor(contents, files);
   const needsFormatting: string[] = [];
   const alreadyFormatted: string[] = [];
 
@@ -266,7 +274,7 @@ export async function checkFormatting(
     const text = contents.get(pathToFileURL(filePath).toString());
     if (text === undefined) continue;
     try {
-      const result = await formatDocument(text);
+      const result = await formatDocument(text, formatOptions);
       (result !== text ? needsFormatting : alreadyFormatted).push(relativeTo(cwd, filePath));
     } catch {
       // Skip files the formatter fails on

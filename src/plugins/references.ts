@@ -1,9 +1,11 @@
+import type { BraceReading } from '../core/parsing/code-scanner.js';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { findPassageRefAt, parseLinks, parseMacroPassageRefs } from '../core/parsing/link-parser.js';
-import { parseMacros } from '../core/parsing/macro-parser.js';
-import { parsePassageHeader } from '../core/parsing/passage-parser.js';
+import { findPassageRefAt, parseDocumentPassageRefs, type PassageRef } from '../core/parsing/link-parser.js';
+import { parseMacros, macroHeadNames, macroHeadNameAt } from '../core/parsing/macro-parser.js';
+import { isMarkupPassage, parsePassageHeader, type PassageRole } from '../core/parsing/passage-parser.js';
+import { executableCode } from '../core/workspace/variable-tracker.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 
 // ---------------------------------------------------------------------------
@@ -30,7 +32,7 @@ export function findReferences(
   includeDeclaration: boolean,
 ): ReferenceLocation[] {
   const text = workspace.documents.getText(uri);
-  if (text === undefined) return [];
+  if (text === undefined || !workspace.hasPassages(uri)) return [];
 
   const lines = text.split('\n');
   if (position.line >= lines.length) return [];
@@ -45,79 +47,104 @@ export function findReferences(
     }
   }
 
-  // --- $variable ---
-  {
-    const varRegex = /\$([\w$]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = varRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        const varName = match[1];
-        return findVariableReferences(varName, workspace, includeDeclaration);
-      }
-    }
-  }
-
-  // --- %transient ---
-  {
-    const transRegex = /(?<!\w)%([\w$]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = transRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        const varName = match[1];
-        if (!isTransientAt(varName, uri, position.line, start, workspace)) break;
-        return findTransientReferences(varName, workspace, includeDeclaration);
-      }
-    }
+  // --- $variable / %transient ---
+  const variable = variableAt(uri, position, workspace);
+  if (variable) {
+    return variable.sigil === '%'
+      ? findTransientReferences(variable.name, workspace, includeDeclaration)
+      : findVariableReferences(variable.name, workspace, includeDeclaration);
   }
 
   // --- Widget ---
   {
-    const widgetRegex = /\{\/?([A-Za-z_$][\w$]*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = widgetRegex.exec(line)) !== null) {
-      const name = match[1];
-      const nameStart = match.index + match[0].length - name.length;
-      const nameEnd = nameStart + name.length;
-      if (position.character >= nameStart && position.character <= nameEnd) {
-        const widget = workspace.widgets.getWidget(name);
-        const isClosing = match[0][1] === '/';
-        if (!workspace.macros.getMacro(name) && widget && (!isClosing || widget.block)) {
-          return findWidgetReferences(name, workspace, includeDeclaration);
-        }
+    const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
+    if (head) {
+      const widget = workspace.widgets.getWidget(head.name);
+      if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
+        return findWidgetReferences(head.name, workspace, includeDeclaration);
       }
     }
   }
 
   // --- Passage reference in [[link]] or macro arguments ---
-  const passageRef = findPassageRefAt(text, position);
+  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
   if (passageRef) {
     return findPassageReferences(passageRef.name, workspace, includeDeclaration);
   }
 
-  // --- Passage name in link (also check passage names) ---
-  {
-    const allPassages = workspace.passages.getAllPassages();
-    const passageNames = new Set(allPassages.map(p => p.name));
-    // Try to extract a word at cursor and see if it's a passage name
-    const wordRegex = /[A-Za-z_$][\w$\s]*/g;
-    let match: RegExpExecArray | null;
-    while ((match = wordRegex.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        const word = match[0].trim();
-        if (passageNames.has(word)) {
-          return findPassageReferences(word, workspace, includeDeclaration);
-        }
-      }
-    }
-  }
-
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// The variable under the cursor
+// ---------------------------------------------------------------------------
+
+/**
+ * The code Spindle evaluates in each line of a document (see
+ * executableCode()): every character of prose, comments, string contents and
+ * of passages that are not markup is a space. `_temp` and `@local` variables,
+ * which have no tracker, only mean something where this has text.
+ */
+export function executableCodeLines(
+  lines: string[],
+  passages: Array<PassageRole & { range: Range }>,
+  reading: BraceReading = {},
+): string[] {
+  const code = lines.map(l => ' '.repeat(l.length));
+  passages.forEach((passage, index) => {
+    if (!isMarkupPassage(passage)) return;
+    const first = passage.range.start.line + 1;
+    const last = index + 1 < passages.length ? passages[index + 1].range.start.line : lines.length;
+    executableCode(lines.slice(first, last).join('\n'), reading).split('\n').forEach((l, i) => { code[first + i] = l; });
+  });
+  return code;
+}
+
+export interface VariableAtCursor {
+  sigil: '$' | '%';
+  /** Base name, without the sigil or any property path. */
+  name: string;
+  /** The tracker's reference (or declaration) range: sigil, name and property path. */
+  range: Range;
+}
+
+// Spindle's expression transform reads a name as `\w+` (expression.ts): `$a$b` is two variables
+const VARIABLE_CANDIDATE = /(?:\$|(?<!\w)%)(?=\w)/g;
+const VARIABLE_PATH = /^([$%])(\w+(?:\.[A-Za-z_$][\w$]*)*)/;
+
+/**
+ * The `$variable` or `%transient` whose reference or declaration, as the
+ * variable tracker records it, contains the cursor. Text that merely looks
+ * like a variable (comments, attribute values, string contents, code in
+ * script/stylesheet/data passages) is not one: navigation, rename and
+ * highlighting must agree with the tracker about what is a reference.
+ */
+export function variableAt(uri: string, position: Position, workspace: WorkspaceModel): VariableAtCursor | null {
+  const line = workspace.documents.getText(uri)?.split('\n')[position.line];
+  if (line === undefined) return null;
+  // A cursor between two adjacent variables (`$a$b`) belongs to the one it is in front of
+  let atEnd: VariableAtCursor | null = null;
+  VARIABLE_CANDIDATE.lastIndex = 0;
+  let found: RegExpExecArray | null;
+  while ((found = VARIABLE_CANDIDATE.exec(line)) !== null) {
+    const match = VARIABLE_PATH.exec(line.slice(found.index))!;
+    const start = found.index;
+    const end = start + match[0].length;
+    VARIABLE_CANDIDATE.lastIndex = start + 1;
+    if (position.character < start || position.character > end) continue;
+    const sigil = match[1] as '$' | '%';
+    const name = match[2].split('.')[0];
+    const refs = sigil === '%'
+      ? findTransientReferences(name, workspace, true)
+      : findVariableReferences(name, workspace, true);
+    const hit = refs.find(r =>
+      r.uri === uri && r.range.start.line === position.line && r.range.start.character === start);
+    if (!hit) continue;
+    const symbol = { sigil, name, range: hit.range };
+    if (position.character < end) return symbol;
+    atEnd ??= symbol;
+  }
+  return atEnd;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,8 +163,7 @@ export function findPassageReferences(
 
   // Include declaration (the name in the passage header)
   if (includeDeclaration) {
-    const passage = workspace.passages.getPassage(passageName);
-    if (passage) {
+    for (const passage of workspace.passages.getPassages(passageName)) {
       locations.push({
         uri: passage.uri,
         range: passage.nameRange,
@@ -145,21 +171,35 @@ export function findPassageReferences(
     }
   }
 
-  // Scan all documents for [[links]] and macro references
-  // ({goto}, {include}, {link "label" "passage"})
-  for (const docUri of workspace.documents.getUris()) {
-    if (isMacroSource(docUri)) continue;
-    const docText = workspace.documents.getText(docUri);
-    if (!docText) continue;
-
-    for (const ref of [...parseLinks(docText), ...parseMacroPassageRefs(docText)]) {
-      if (ref.name === passageName) {
-        locations.push({ uri: docUri, range: ref.range });
-      }
-    }
+  for (const { uri, ref } of findPassageRefs(passageName, workspace)) {
+    locations.push({ uri, range: ref.range });
   }
 
   return locations;
+}
+
+/**
+ * The executable references (`[[links]]` and literal macro targets) to a
+ * passage, with the spelling of each target, so that an edit can re-encode a
+ * new name for it. Script/stylesheet bodies, macro-argument strings and HTML
+ * attribute values are not references.
+ */
+export function findPassageRefs(
+  passageName: string,
+  workspace: WorkspaceModel,
+): Array<{ uri: string; ref: PassageRef }> {
+  const found: Array<{ uri: string; ref: PassageRef }> = [];
+  for (const docUri of workspace.documents.getUris()) {
+    if (isMacroSource(docUri) || !workspace.hasPassages(docUri)) continue;
+    const docText = workspace.documents.getText(docUri);
+    if (!docText) continue;
+
+    const passages = workspace.passages.getPassagesInDocument(docUri);
+    for (const ref of parseDocumentPassageRefs(docText, passages, workspace.capabilities)) {
+      if (ref.name === passageName) found.push({ uri: docUri, ref });
+    }
+  }
+  return found;
 }
 
 /**
@@ -254,35 +294,21 @@ export function findWidgetReferences(
     locations.push({ uri: widget.uri, range: widget.range });
   }
 
-  // Scan all documents for {widgetName ...} invocations (case-insensitive, like Spindle),
-  // plus {/widgetName} closing tags when the widget is a block widget.
-  const widgetInvocationRegex = /\{(\/)?([A-Za-z_$][\w$]*)\b/g;
+  // Scan all documents for widget calls using the shared macro grammar
+  // (case-insensitive, like Spindle), plus {/widgetName} closing tags when the
+  // widget is a block widget.
   const lowerName = widgetName.toLowerCase();
   const isBlock = widget?.block ?? false;
 
   for (const docUri of workspace.documents.getUris()) {
-    if (isMacroSource(docUri)) continue;
+    if (isMacroSource(docUri) || !workspace.hasPassages(docUri)) continue;
     const docText = workspace.documents.getText(docUri);
     if (!docText) continue;
 
-    const lines = docText.split('\n');
-    for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-      const line = lines[lineNum];
-
-      widgetInvocationRegex.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = widgetInvocationRegex.exec(line)) !== null) {
-        if (match[1] && !isBlock) continue;
-        if (match[2].toLowerCase() === lowerName) {
-          const nameStart = match.index + 1 + (match[1] ? 1 : 0); // skip '{' or '{/'
-          locations.push({
-            uri: docUri,
-            range: {
-              start: { line: lineNum, character: nameStart },
-              end: { line: lineNum, character: nameStart + match[2].length },
-            },
-          });
-        }
+    for (const head of macroHeadNames(docText, workspace.macroHeadPairing(docUri))) {
+      if (head.closing && !isBlock) continue;
+      if (head.name.toLowerCase() === lowerName) {
+        locations.push({ uri: docUri, range: head.range });
       }
     }
   }

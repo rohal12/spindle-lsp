@@ -1,4 +1,11 @@
-import { createCodeScanner, type CodeScanner } from './code-scanner.js';
+import { createCodeScanner, type BraceReading, type CodeScanner } from './code-scanner.js';
+
+/**
+ * The reading these scans use: they classify the code inside an attribute
+ * value (JavaScript expressions), where a string is a string, and the one
+ * place where releases differ is covered by readBlock() (it goes past both).
+ */
+const STRING_AWARE: BraceReading = { stringAwareBraces: true };
 import { SELECTOR_PATTERN } from './macro-parser.js';
 
 /**
@@ -57,7 +64,7 @@ const VARIABLE_REFERENCE = /(?:^|[^\w$.@%])[$_@%][A-Za-z_$]/;
 export function findUnevaluatedBlocks(value: string, lookup: MacroLookup): UnevaluatedBlock[] {
   const blocks: UnevaluatedBlock[] = [];
   if (!value.includes('{')) return blocks;
-  const code = createCodeScanner(value);
+  const code = createCodeScanner(value, STRING_AWARE);
 
   let i = 0;
   while (i < value.length) {
@@ -147,7 +154,7 @@ function containerEnd(value: string, code: CodeScanner, from: number, name: stri
  * outside nested `{$…}` blocks.
  */
 function usesVariable(inner: string): boolean {
-  const code = createCodeScanner(inner);
+  const code = createCodeScanner(inner, STRING_AWARE);
   let masked = '';
   let i = 0;
   while (i < inner.length) {
@@ -196,7 +203,7 @@ export function conditionalExpression(source: string): string | null {
   if (!/^[$_@%]\w/.test(condition)) return null;
   if (/[`\r\n]/.test(condition) || /[\r\n]/.test(whenTrue + whenFalse)) return null;
 
-  const code = createCodeScanner(condition);
+  const code = createCodeScanner(condition, STRING_AWARE);
   let operators = '';
   for (let i = 0; i < condition.length; ) {
     const literal = code.literalEnd(i);
@@ -243,7 +250,7 @@ export function printExpression(source: string): string | null {
   const expr = match[1].trim();
   if (!/^[$_@%]\w/.test(expr)) return null;
 
-  const code = createCodeScanner(expr);
+  const code = createCodeScanner(expr, STRING_AWARE);
   let depth = 0;
   for (let i = 0; i < expr.length; ) {
     const literal = code.literalEnd(i);

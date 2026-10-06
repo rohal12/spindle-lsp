@@ -26,7 +26,7 @@ Check options:
   --config <path>                Path to config file
   --max-line-length <n>          Warn on lines exceeding n characters`;
 
-if (args.includes('--help') || args.includes('-h') || args.length === 0) {
+if (args.includes('--help') || args.includes('-h')) {
   console.log(HELP);
   process.exit(0);
 } else if (args.includes('--version') || args.includes('-v')) {

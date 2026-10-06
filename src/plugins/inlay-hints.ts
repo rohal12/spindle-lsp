@@ -1,7 +1,7 @@
 import type { Range, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
+import { parseDocumentMacros, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
 import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
 
 // ---------------------------------------------------------------------------
@@ -31,7 +31,7 @@ export function computeInlayHints(
 
   const hints: InlayHintItem[] = [];
 
-  addWidgetParamHints(text, range, workspace, hints);
+  addWidgetParamHints(uri, text, range, workspace, hints);
   addVariableTypeHints(uri, text, range, workspace, hints);
   addTransientTypeHints(uri, text, range, workspace, hints);
 
@@ -43,6 +43,7 @@ export function computeInlayHints(
 // ---------------------------------------------------------------------------
 
 function addWidgetParamHints(
+  uri: string,
   text: string,
   range: Range,
   workspace: WorkspaceModel,
@@ -50,7 +51,7 @@ function addWidgetParamHints(
 ): void {
   if (workspace.widgets.getAllWidgets().length === 0) return;
 
-  const macros = parseMacros(text);
+  const macros = parseDocumentMacros(text, workspace.passages.getPassagesInDocument(uri), undefined, workspace.capabilities);
   const lineStarts = buildLineStarts(text);
 
   for (const macro of macros) {

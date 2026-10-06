@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { prepareRename, computeRename, type RenameEdit } from '../../src/plugins/rename.js';
+import { parseStoryVariables } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { prepareRename, computeRename, RenameError, type RenameEdit } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -310,7 +311,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: Start',
       '{textbox "$x"}',
       '{print `${$x}`}',
-      '{link "{$x}"}go{/link}',
+      '{button "{$x}"}go{/button}',
     ].join('\n');
     const ws = createWorkspace({ name: 'test.tw', content });
     const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'y');
@@ -322,7 +323,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: Start',
       '{textbox "$y"}',
       '{print `${$y}`}',
-      '{link "{$y}"}go{/link}',
+      '{button "{$y}"}go{/button}',
     ].join('\n'));
   });
 
@@ -333,7 +334,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: StoryInit',
       '{set %t = 2}',
       ':: Start',
-      '{print `n: ${%t}`} {link "{%t}"}go{/link}',
+      '{print `n: ${%t}`} {button "{%t}"}go{/button}',
     ].join('\n');
     const ws = createWorkspace({ name: 'test.tw', content });
     const result = applyRename(ws, 'file:///test.tw', { line: 1, character: 1 }, 'u');
@@ -343,7 +344,7 @@ describe('computeRename: executable references in StoryInit and strings (#44)', 
       ':: StoryInit',
       '{set %u = 2}',
       ':: Start',
-      '{print `n: ${%u}`} {link "{%u}"}go{/link}',
+      '{print `n: ${%u}`} {button "{%u}"}go{/button}',
     ].join('\n'));
   });
 
@@ -416,7 +417,7 @@ describe('rename from a passage reference', () => {
   const renamed = [
     ':: Start',
     '[[After]] [[Go on|After]] [[Go on->After]] [[After<-Go on]]',
-    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto After}`,
+    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto "After"}`,
     '',
     ':: After',
     'Hello',
@@ -497,3 +498,152 @@ function applyRenameToFiles(
   }
   return out;
 }
+
+describe('N-rename: invalid new names fail the whole request and name the offender', () => {
+  const uri = 'file:///story.tw';
+  const other = 'file:///other.tw';
+  const make = () =>
+    createWorkspace(
+      { name: 'story.tw', content: ':: StoryVariables\n$hp = 1\n:: Old\nhello\n:: Start\n{goto "Old"}\n[[x|Old]] {$hp}' },
+      { name: 'other.tw', content: ':: Other\nbefore [[Old]] after {link "go" "Old"}{/link}' },
+    );
+  const at = { line: 2, character: 4 };
+
+  function failure(run: () => unknown): RenameError {
+    try {
+      run();
+    } catch (error) {
+      expect(error).toBeInstanceOf(RenameError);
+      return error as RenameError;
+    }
+    throw new Error('expected a RenameError');
+  }
+
+  it('N-rename-offender: the message and fields locate the reference that cannot hold the name', () => {
+    const ws = make();
+    // `a|b` fits {goto "..."} but not [[...]]; the first bracket link is on story.tw line 7
+    const error = failure(() => computeRename(uri, at, 'a|b', ws));
+    expect(error.uri).toBe(uri);
+    expect(error.range!.start).toEqual({ line: 6, character: 4 });
+    expect(error.message).toContain('[[link]]');
+    expect(error.message).toContain(`${uri}:7:5`);
+  });
+
+  it('N-rename-offender-other-file: an offender in another file is named by that file', () => {
+    const ws = createWorkspace(
+      { name: 'story.tw', content: ':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"}' },
+      { name: 'other.tw', content: ':: Other\nbefore {link "go" "Old"}{/link}' },
+    );
+    const error = failure(() => computeRename(uri, { line: 1, character: 4 }, 'Bob"s', ws));
+    expect(error.uri).toBe(other);
+    expect(error.message).toContain('{link}');
+    expect(error.message).toContain(`${other}:2:20`);
+  });
+
+  it('N-rename-atomic: a failing rename returns no partial edits for any document', () => {
+    const ws = make();
+    expect(() => computeRename(uri, at, 'a|b', ws)).toThrow(RenameError);
+    // and the same request with a name every context can hold produces edits for both files
+    const ok = computeRename(uri, at, 'New', ws);
+    expect([...ok.keys()].sort()).toEqual([other, uri]);
+  });
+
+  it('N-rename-header: a passage name its own header cannot hold is rejected', () => {
+    const ws = createWorkspace({ name: 'story.tw', content: ':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"}' });
+    for (const name of ['', '   ', 'two\nlines', 'cr\rhere', ' lead', 'trail ']) {
+      const error = failure(() => computeRename(uri, { line: 1, character: 4 }, name, ws));
+      expect(error.uri, JSON.stringify(name)).toBe(uri);
+      expect(error.range!.start).toEqual({ line: 1, character: 3 });
+    }
+    // Twee metacharacters are escaped, not rejected
+    const output = applyRename(ws, uri, { line: 1, character: 4 }, 'A[B]');
+    expect(output.get(uri)).toContain(':: A\\[B\\]');
+  });
+
+  it('N-rename-variable: a new variable name is sigil + word characters; sigils are accepted', () => {
+    const ws = make();
+    const cursor = { line: 1, character: 2 };
+    for (const name of ['', 'a b', 'a-b', 'a.b', '$', '%', 'x"y', 'a$b', '$a$b', '$$x', '%x%y']) {
+      const error = failure(() => computeRename(uri, cursor, name, ws));
+      expect(error.message, name).toContain('word characters');
+      expect(error.uri).toBe(uri);
+    }
+    expect(applyRename(ws, uri, cursor, '$mana').get(uri)).toContain('$mana = 1');
+    expect(applyRename(ws, uri, cursor, 'mana').get(uri)).toContain('{$mana}');
+  });
+
+  it('#83: digit-leading and underscore names are valid; an internal $ is rejected atomically', () => {
+    for (const [sigil, passage, parse] of [
+      ['$', 'StoryVariables', (t: string) => parseStoryVariables(t, '$')],
+      ['%', 'StoryTransients', (t: string) => parseStoryVariables(t, '%')],
+    ] as const) {
+      const files = [
+        { name: 'decl.tw', content: `:: ${passage}\n${sigil}x = {p: 1}` },
+        { name: 'use.tw', content: `:: Start\n{${sigil}x.p} {set ${sigil}x = {p: 2}}` },
+      ];
+      const ws = createWorkspace(...files);
+      const cursor = { line: 1, character: 1 };
+      for (const name of ['5', '_', '_x', '007', 'a_1', `${sigil}5`]) {
+        const bare = name.replace(/^[$%]/, '');
+        const out = applyRename(ws, 'file:///decl.tw', cursor, name);
+        const decl = out.get('file:///decl.tw')!;
+        expect(decl, name).toBe(`:: ${passage}\n${sigil}${bare} = {p: 1}`);
+        expect(out.get('file:///use.tw'), name).toBe(`:: Start\n{${sigil}${bare}.p} {set ${sigil}${bare} = {p: 2}}`);
+        // the runtime reads the rebuilt declaration as the new key
+        expect([...parse(decl.split('\n')[1]!).keys()], name).toEqual([bare]);
+      }
+      for (const name of ['a$b', `${sigil}a$b`, '$', '5$', 'a.b']) {
+        expect(() => computeRename('file:///decl.tw', cursor, name, ws), name).toThrow(RenameError);
+      }
+      // a rejected rename is atomic: the workspace text is untouched
+      expect(ws.documents.getText('file:///decl.tw')).toBe(files[0]!.content);
+    }
+  });
+
+  it('N-rename-widget: a new widget name must be callable and must not shadow a macro', () => {
+    const ws = createWorkspace(
+      { name: 'w.tw', content: ':: Widgets [widget]\n{widget "greet" @x}\n{@x}\n{/widget}' },
+      { name: 'story.tw', content: ':: Start\n{greet 1}' },
+    );
+    const cursor = { line: 1, character: 11 };
+    for (const name of ['', 'a b', '_w', '1w', 'w!', '$w']) {
+      expect(() => computeRename('file:///w.tw', cursor, name, ws), name).toThrow(RenameError);
+    }
+    expect(() => computeRename('file:///w.tw', cursor, 'if', ws)).toThrow(/macro of that name/);
+    const output = applyRename(ws, 'file:///w.tw', cursor, 'hello-2');
+    expect(output.get(uri)).toBe(':: Start\n{hello-2 1}');
+    expect(output.get('file:///w.tw')).toContain('{widget "hello-2" @x}');
+  });
+
+  it('N-rename-consistent: whatever prepareRename accepts, renaming to its placeholder succeeds', () => {
+    const ws = make();
+    for (const [file, position] of [
+      [uri, { line: 2, character: 4 }],
+      [uri, { line: 5, character: 10 }],
+      [uri, { line: 1, character: 2 }],
+      [uri, { line: 6, character: 14 }],
+      [other, { line: 1, character: 12 }],
+    ] as const) {
+      const prepared = prepareRename(file, position, ws);
+      expect(prepared, `${file}:${position.line}:${position.character}`).not.toBeNull();
+      expect(() => computeRename(file, position, prepared!.placeholder, ws)).not.toThrow();
+    }
+  });
+
+  it('N-rename-lsp: the request fails with InvalidParams and the located message, not an edit', async () => {
+    const { renamePlugin } = await import('../../src/plugins/rename.js');
+    const { ErrorCodes, ResponseError } = await import('vscode-languageserver');
+    let handler: ((p: unknown) => any) | undefined;
+    const ws = make();
+    renamePlugin.initialize!({
+      connection: { onPrepareRename: () => {}, onRenameRequest: (h: any) => { handler = h; } },
+      workspace: ws,
+    } as any);
+    const result = handler!({ textDocument: { uri }, position: at, newName: 'a|b' });
+    expect(result).toBeInstanceOf(ResponseError);
+    expect(result.code).toBe(ErrorCodes.InvalidParams);
+    expect(result.message).toContain(`${uri}:7:5`);
+    const ok = handler!({ textDocument: { uri }, position: at, newName: 'New' });
+    expect(Object.keys(ok.changes).sort()).toEqual([other, uri]);
+  });
+});

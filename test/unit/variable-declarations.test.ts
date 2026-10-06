@@ -212,11 +212,11 @@ describe('variable names Spindle accepts (#62)', () => {
   it('finds $5 in string interpolations and quoted receivers', () => {
     const ws = createWorkspace({
       name: 'test.tw',
-      content: ':: StoryVariables\n$5 = 0\n:: Start\n{link "Pay {$5}" "Shop"}{textbox "$5"}',
+      content: ':: StoryVariables\n$5 = 0\n:: Start\n{button "Pay {$5}"}{/button}{textbox "$5"}',
     });
     expect(findVariableReferences('5', ws, false).map(r => r.range.start)).toEqual([
-      { line: 3, character: 12 },
-      { line: 3, character: 34 },
+      { line: 3, character: 14 },
+      { line: 3, character: 38 },
     ]);
   });
 

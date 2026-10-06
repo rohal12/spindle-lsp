@@ -7,6 +7,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode } from '../core/diagnostic-codes.js';
 import { findConfigFile } from '../core/workspace/config-loader.js';
+import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 import { conditionalExpression, printExpression } from '../core/parsing/attribute-blocks.js';
 import { buildLineStarts } from '../core/parsing/macro-parser.js';
@@ -66,7 +67,7 @@ export function computeCodeActions(
         break;
       }
       case DiagnosticCode.NoStoryVariables: {
-        const action = fixNoStoryVariables(uri, workspace);
+        const action = fixNoStoryVariables(workspace);
         if (action) actions.push(action);
         break;
       }
@@ -303,6 +304,62 @@ function minimalEdit(oldText: string, newText: string): TextEdit {
   };
 }
 
+/**
+ * Insert `body` (one or more complete lines, `\n`-terminated) at line index
+ * `line`. When `line` lies past the last line (EOF), the edit targets the real
+ * end of the text and a separator is prepended unless EOF is already at a line
+ * boundary. `eol` is the line ending to write (see {@link lineEndingFor}).
+ */
+function insertLinesAt(text: string, line: number, body: string, eol: string): { range: Range; newText: string } {
+  const lines = text.split('\n');
+  const normalized = body.replace(/\r?\n/g, eol);
+  if (line < lines.length) {
+    const pos = { line, character: 0 };
+    return { range: { start: pos, end: pos }, newText: normalized };
+  }
+  const end = offsetToPosition(text, text.length);
+  const atBoundary = text.length === 0 || text.endsWith('\n');
+  return { range: { start: end, end }, newText: (atBoundary ? '' : eol) + normalized };
+}
+
+/**
+ * The line ending to write into document `uri`: its own when it has a line
+ * break (CRLF if it uses any), otherwise (empty or header-only, nothing to
+ * detect) that of the first other story document that has one, otherwise LF.
+ */
+function lineEndingFor(workspace: WorkspaceModel, uri: string): string {
+  const own = workspace.documents.getText(uri) ?? '';
+  const detect = (text: string) => (text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : undefined);
+  const fromOwn = detect(own);
+  if (fromOwn) return fromOwn;
+  for (const other of workspace.documents.getUris()) {
+    if (other === uri || isMacroSource(other)) continue;
+    const found = detect(workspace.documents.getText(other) ?? '');
+    if (found) return found;
+  }
+  return '\n';
+}
+
+/** Line index where the declaration passage content ends (or `lines.length`). */
+function declarationInsertEdit(
+  text: string,
+  headerLine: number,
+  declaration: string,
+  eol: string,
+): { range: Range; newText: string } {
+  const lines = text.split('\n');
+  let contentEnd = lines.length;
+  for (let i = headerLine + 1; i < lines.length; i++) {
+    if (/^\uFEFF?::\s+/.test(lines[i])) {
+      contentEnd = i;
+      break;
+    }
+  }
+  // A trailing newline yields an empty final "line" that is not content.
+  if (contentEnd === lines.length && text.endsWith('\n')) contentEnd = lines.length;
+  return insertLinesAt(text, contentEnd, declaration, eol);
+}
+
 // ---------------------------------------------------------------------------
 // Quick fix: SP200 — Declare variable in StoryVariables
 // ---------------------------------------------------------------------------
@@ -324,32 +381,13 @@ function fixUndeclaredVariable(
   const text = workspace.documents.getText(storyVarsUri);
   if (text === undefined) return null;
 
-  // Find the end of the StoryVariables passage content
-  const lines = text.split('\n');
-  const contentStart = storyVars.headerEnd.end.line + 1;
-  let contentEnd = lines.length;
-  for (let i = contentStart; i < lines.length; i++) {
-    if (/^::\s+/.test(lines[i])) {
-      contentEnd = i;
-      break;
-    }
-  }
-
-  // Insert at the end of StoryVariables content
-  const insertLine = contentEnd;
+  const edit = declarationInsertEdit(text, storyVars.headerEnd.end.line, `$${varName} = 0\n`, lineEndingFor(workspace, storyVarsUri));
 
   return {
     title: `Declare '$${varName}' in StoryVariables`,
     kind: 'quickfix',
     diagnosticCodes: [DiagnosticCode.UndeclaredVariable],
-    edits: [{
-      uri: storyVarsUri,
-      range: {
-        start: { line: insertLine, character: 0 },
-        end: { line: insertLine, character: 0 },
-      },
-      newText: `$${varName} = 0\n`,
-    }],
+    edits: [{ uri: storyVarsUri, ...edit }],
   };
 }
 
@@ -358,31 +396,22 @@ function fixUndeclaredVariable(
 // ---------------------------------------------------------------------------
 
 function fixNoStoryVariables(
-  uri: string,
   workspace: WorkspaceModel,
 ): CodeAction | null {
-  // Find the first story document in the workspace to append the passage
-  const uris = workspace.documents.getUris().filter(u => !isMacroSource(u));
-  const targetUri = uris.length > 0 ? uris[0] : uri;
+  // Same owner as the SP202 diagnostic, so applying the fix clears it.
+  const targetUri = missingStoryVariablesOwner(workspace);
+  if (targetUri === undefined) return null;
 
   const text = workspace.documents.getText(targetUri);
   if (text === undefined) return null;
 
-  const lines = text.split('\n');
-  const lastLine = lines.length;
+  const edit = insertLinesAt(text, text.split('\n').length, '\n:: StoryVariables\n', lineEndingFor(workspace, targetUri));
 
   return {
     title: 'Create StoryVariables passage',
     kind: 'quickfix',
     diagnosticCodes: [DiagnosticCode.NoStoryVariables],
-    edits: [{
-      uri: targetUri,
-      range: {
-        start: { line: lastLine, character: 0 },
-        end: { line: lastLine, character: 0 },
-      },
-      newText: '\n:: StoryVariables\n',
-    }],
+    edits: [{ uri: targetUri, ...edit }],
   };
 }
 
@@ -406,30 +435,13 @@ function fixUndeclaredTransient(
   const text = workspace.documents.getText(storyTransientsUri);
   if (text === undefined) return null;
 
-  const lines = text.split('\n');
-  const contentStart = storyTransients.headerEnd.end.line + 1;
-  let contentEnd = lines.length;
-  for (let i = contentStart; i < lines.length; i++) {
-    if (/^::\s+/.test(lines[i])) {
-      contentEnd = i;
-      break;
-    }
-  }
-
-  const insertLine = contentEnd;
+  const edit = declarationInsertEdit(text, storyTransients.headerEnd.end.line, `%${varName} = 0\n`, lineEndingFor(workspace, storyTransientsUri));
 
   return {
     title: `Declare '%${varName}' in StoryTransients`,
     kind: 'quickfix',
     diagnosticCodes: [DiagnosticCode.UndeclaredTransient],
-    edits: [{
-      uri: storyTransientsUri,
-      range: {
-        start: { line: insertLine, character: 0 },
-        end: { line: insertLine, character: 0 },
-      },
-      newText: `%${varName} = 0\n`,
-    }],
+    edits: [{ uri: storyTransientsUri, ...edit }],
   };
 }
 

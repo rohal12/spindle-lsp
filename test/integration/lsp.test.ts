@@ -12,6 +12,7 @@ import {
   type MessageConnection,
   type Diagnostic as LspDiagnostic,
 } from 'vscode-languageserver/node.js';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getCompletions } from '../../src/plugins/completions.js';
@@ -1311,5 +1312,64 @@ describe('Integration: LSP server over stdio', () => {
     await session.waitForDiagnostics(startUri, diags => diags.length === 0, mark);
     expect(await session.conn.sendRequest('textDocument/hover', { textDocument, position })).toBeNull();
     expect(session.log().match(/is not Spindle; language features disabled/g)).toHaveLength(2);
+  });
+
+  // -----------------------------------------------------------------------
+  // Closing-macro completion and SP202 fix through the real server (framed
+  // JSON-RPC over stdio): the response is applied, not just inspected.
+  // -----------------------------------------------------------------------
+
+  it('completes {/if} after "{/i" through the server and the applied textEdit closes the block', async () => {
+    const text = ':: Start\n{if true}\nbody\n{/i\n';
+    const dir = makeTempWorkspace({ 'story.tw': text });
+    const storyUri = uriFor(dir, 'story.tw');
+    const session = await startLsp(dir);
+    await didOpen(session, storyUri, text);
+    await session.waitForDiagnostics(storyUri, () => true);
+
+    const position = { line: 3, character: 3 };
+    const result = await session.conn.sendRequest('textDocument/completion', {
+      textDocument: { uri: storyUri },
+      position,
+      context: { triggerKind: 2, triggerCharacter: '/' },
+    }) as { items?: Array<{ label: string; textEdit?: { range: unknown; newText: string } }> }
+      | Array<{ label: string; textEdit?: { range: unknown; newText: string } }>
+      | null;
+    const items = Array.isArray(result) ? result : result?.items ?? [];
+    const item = items.find(i => i.label === '{/if}');
+    expect(item, JSON.stringify(items.map(i => i.label))).toBeDefined();
+    expect(item!.textEdit).toBeDefined();
+
+    const applied = TextDocument.applyEdits(
+      TextDocument.create(storyUri, 'twee', 1, text),
+      [item!.textEdit as { range: { start: { line: number; character: number }; end: { line: number; character: number } }; newText: string }],
+    );
+    expect(applied).toBe(':: Start\n{if true}\nbody\n{/if}\n');
+  });
+
+  it('offers the SP202 fix through textDocument/codeAction for a non-.tw story document and it applies', async () => {
+    const text = ':: StoryData\n{"format":"Spindle"}\n:: Start\nhi\n';
+    const dir = makeTempWorkspace();
+    const storyUri = 'untitled:Untitled-1';
+    const session = await startLsp(dir);
+    await didOpen(session, storyUri, text);
+    const diags = await session.waitForDiagnostics(storyUri, hasCode('SP202'));
+    const sp202 = diags.find(d => d.code === 'SP202')!;
+    expect(sp202.severity).toBe(1);
+    const actions = await session.conn.sendRequest('textDocument/codeAction', {
+      textDocument: { uri: storyUri },
+      range: sp202.range,
+      context: { diagnostics: [sp202] },
+    }) as Array<{ title: string; edit?: { changes?: Record<string, Array<{ range: never; newText: string }>>; documentChanges?: Array<{ textDocument: { uri: string }; edits: Array<{ range: never; newText: string }> }> } }>;
+    const fix = actions.find(a => a.title === 'Create StoryVariables passage');
+    expect(fix, JSON.stringify(actions.map(a => a.title))).toBeDefined();
+    const edits = fix!.edit?.changes?.[storyUri]
+      ?? fix!.edit?.documentChanges?.find(c => c.textDocument.uri === storyUri)?.edits;
+    expect(edits).toBeDefined();
+    const applied = TextDocument.applyEdits(TextDocument.create(storyUri, 'twee', 1, text), edits as never);
+    expect(applied).toBe(`${text}\n:: StoryVariables\n`);
+    const mark = session.publishes.length;
+    await didChangeFull(session, storyUri, 2, applied);
+    await session.waitForDiagnostics(storyUri, lacksCode('SP202'), mark);
   });
 });

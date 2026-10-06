@@ -11,6 +11,7 @@ import {
   validatePassages,
 } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
+import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 
 const uri = 'file:///story.tw';
 
@@ -32,6 +33,7 @@ function runtimeErrors(vars: string, passages: Array<[string, string]>): string[
 function lspErrors(vars: string, passages: Array<[string, string]>): string[] {
   const text = [':: StoryVariables', vars, '', ...passages.flatMap(([name, content]) => [`:: ${name}`, content, ''])].join('\n');
   const tracker = new VariableTracker();
+  tracker.setCapabilities(INSTALLED_CAPABILITIES); // the LSP follows the runtime it targets
   tracker.parseStoryVariables(vars, 1, uri);
   tracker.scanDocument(uri, text, []);
   return tracker.getPrimitiveFieldAccesses(uri)
@@ -117,7 +119,10 @@ describe('SP201 agrees with Spindle\'s validatePassages', () => {
     ];
     const runtime = runtimeErrors(vars, passages.map(([n, c]) => [n.replace(/ \[.*\]$/, ''), c]));
     // The {for @name} in Start makes every $name there a local, as in Spindle.
-    expect(runtime).toHaveLength(8);
+    // Before 0.50.1 prose, strings and comments are validated too; 0.51.1
+    // also allows primitive members ($name.length).
+    const { executableRefsOnly, primitiveMembers } = INSTALLED_CAPABILITIES;
+    expect(runtime).toHaveLength(executableRefsOnly ? (primitiveMembers ? 3 : 4) : 8);
     expect(lspErrors(vars, passages)).toEqual(runtime);
   });
 });

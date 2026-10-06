@@ -358,7 +358,7 @@ describe('CLI check --config', () => {
   it('applies discovered macros, with config taking precedence', () =>
     withProject({
       'custom.yaml': 'macros:\n  box:\n    container: false\n',
-      'story.twee': ':: StoryInit\n{do}\nStory.defineMacro({name: "box", block: true, render: () => null});\nStory.defineMacro({name: "hello", render: () => null});\n{/do}\n\n:: Start\n{hello}\n{box}\n',
+      'story.twee': ':: StoryInit\n{do}\nStory.defineMacro({ name: "box", block: true, render: () => null});\nStory.defineMacro({ name: "hello", render: () => null});\n{/do}\n\n:: Start\n{hello}\n{box}\n',
     }, async (dir) => {
       const { exitCode, output } = await captureStdout(() =>
         runCheck(['--config', join(dir, 'custom.yaml'), '--format', 'json', join(dir, 'story.twee')]),
@@ -478,5 +478,45 @@ describe('CLI check on a story in another format', () => {
     const { exitCode, errors } = await check(['--format', 'json']);
     expect(exitCode).toBe(1);
     expect(errors).toBe('');
+  });
+});
+
+describe('CLI check: missing StoryVariables (#78)', () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  function project(files: Record<string, string>): string {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'spindle-lsp-sp202-')));
+    dirs.push(root);
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
+    return root;
+  }
+
+  it('D78: an explicit Spindle story without StoryVariables exits 1', async () => {
+    const root = project({ 'story.tw': ':: StoryData\n{"format":"Spindle"}\n:: Start\nhello\n' });
+    const { exitCode, output } = await captureStdout(() => runCheck([join(root, 'story.tw')]));
+    expect(exitCode).toBe(1);
+    expect(output).toContain('SP202');
+  });
+
+  it('C-D78: an empty StoryVariables passage exits 0', async () => {
+    const root = project({ 'story.tw': ':: StoryData\n{"format":"Spindle"}\n:: StoryVariables\n:: Start\nhello\n' });
+    const { exitCode } = await captureStdout(() => runCheck([join(root, 'story.tw')]));
+    expect(exitCode).toBe(0);
+  });
+
+  it('C-M-SP202: a declared Spindle story in an explicitly named non-.tw file exits 1 with SP202', async () => {
+    const root = project({ 'story.tw2': ':: StoryData\n{"format":"Spindle"}\n:: Start\nhello\n' });
+    const { exitCode, output } = await captureStdout(() => runCheck([join(root, 'story.tw2')]));
+    expect(exitCode).toBe(1);
+    expect(output).toContain('SP202');
+  });
+
+  it('C-M-SP202-empty: only an empty story file or a passage-less non-story file exits 0 without SP202', async () => {
+    const root = project({ 'empty.tw': '', 'readme.md': '# Notes\n' });
+    for (const files of [[join(root, 'empty.tw')], [join(root, 'readme.md')], [join(root, 'empty.tw'), join(root, 'readme.md')]]) {
+      const { exitCode, output } = await captureStdout(() => runCheck(files));
+      expect(exitCode).toBe(0);
+      expect(output).not.toContain('SP202');
+    }
   });
 });

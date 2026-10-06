@@ -68,16 +68,14 @@ describe('computeSemanticTokensAbsolute', () => {
     expect(nameTokens).toEqual([[0, 3, 4], [3, 3, 6]]);
   });
 
-  it('emits tokens for sugar keywords', () => {
+  it('does not emit keyword tokens: `is` is a plain identifier in Spindle expressions', () => {
     const ws = createWorkspace({
       name: 'test.tw',
       content: ':: Start\n{if $x is 5}ok{/if}',
     });
     const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
-    const kwTokens = tokens.filter(t => t.tokenType === typeIdx('keyword'));
-    // 'is' should be recognized as a keyword
-    expect(kwTokens.length).toBeGreaterThanOrEqual(1);
-    expect(kwTokens.some(t => t.length === 2)).toBe(true); // 'is' has length 2
+    expect(tokens.filter(t => t.tokenType === typeIdx('keyword'))).toEqual([]);
+    expect(tokens.filter(t => t.tokenType === typeIdx('variable')).map(t => [t.startChar, t.length])).toEqual([[4, 2]]);
   });
 
   it('emits tokens for temp and local variables', () => {
@@ -197,5 +195,96 @@ describe('semantic tokens inside HTML attribute values', () => {
     const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
     const functionTokens = tokens.filter(t => t.tokenType === typeIdx('function'));
     expect(functionTokens.map(t => t.startChar)).toEqual([37, 46]);
+  });
+});
+
+describe('S80: variable identifiers never overlap other semantic tokens (#80)', () => {
+  const uri = 'file:///story.tw';
+  const tokensOf = (text: string) => computeSemanticTokensAbsolute(uri, createWorkspace({ name: 'story.tw', content: text }));
+  const spans = (text: string, type: string) =>
+    tokensOf(text).filter(t => t.tokenType === typeIdx(type)).map(t => [t.line, t.startChar, t.startChar + t.length]);
+
+  /** The source text of each variable token */
+  const varTexts = (text: string) => {
+    const lines = text.split(/\r?\n/);
+    return spans(text, 'variable').map(([l, s, e]) => lines[l].slice(s, e));
+  };
+
+  function expectNoOverlap(text: string) {
+    const tokens = tokensOf(text);
+    for (let i = 1; i < tokens.length; i++) {
+      if (tokens[i].line === tokens[i - 1].line) {
+        expect(tokens[i].startChar).toBeGreaterThanOrEqual(tokens[i - 1].startChar + tokens[i - 1].length);
+      }
+    }
+  }
+
+  /** Spindle 0.45.1 has no keyword sugar (expression.ts only rewrites sigils): no keyword token anywhere. */
+  function expectNoKeywords(text: string) {
+    expect(spans(text, 'keyword')).toEqual([]);
+  }
+
+  it('S80: declarations and usages of $is are a single variable token', () => {
+    const text = ':: StoryVariables\n$is = 1\n:: Start\n{$is}';
+    expectNoOverlap(text);
+    expect(spans(text, 'variable')).toEqual([[1, 0, 3], [3, 1, 4]]);
+    expectNoKeywords(text);
+  });
+
+  it('S80-names: sugar-looking words as variable names and property paths are whole variable tokens', () => {
+    const text = ':: StoryVariables\n$to = 1\n$not = 2\n$o = {"is": 1}\n:: Start\n{if $to is $not and _or is @and}x{/if}{print $o.is}';
+    expectNoOverlap(text);
+    expectNoKeywords(text);
+    expect(varTexts(text)).toEqual(['$to', '$not', '$o', '$to', '$not', '_or', '@and', '$o.is']);
+  });
+
+  it('S80-operators: sugar words in macro arguments are not highlighted (identifiers at runtime)', () => {
+    const text = ':: Start\n{if $a gte 1 and not $b}x{/if}';
+    expectNoOverlap(text);
+    expectNoKeywords(text);
+    expect(varTexts(text)).toEqual(['$a', '$b']);
+  });
+
+  it('S80-text: sugar-looking words in prose and strings carry no token', () => {
+    const text = ':: Start\nthis is not a drill, to be or not to be\n{print "this is not it"}{set $x to \'a or b\'}';
+    expectNoOverlap(text);
+    expectNoKeywords(text);
+    expect(varTexts(text)).toEqual(['$x']);
+  });
+
+  it('S80-multiline: variables in multiline macro arguments keep their position', () => {
+    const text = ':: Start\n{if $a\n  is $b}x{/if}';
+    expectNoOverlap(text);
+    expect(varTexts(text)).toEqual(['$a', '$b']);
+    expect(spans(text, 'variable')).toEqual([[1, 4, 6], [2, 5, 7]]);
+    expectNoKeywords(text);
+  });
+
+  it('S80-decl-control: StoryVariables is plain JavaScript in Spindle 0.45.1 (story-variables.ts uses new Function)', () => {
+    const text = ':: StoryVariables\n$a = 1\n$b = "x is y"\n$c = [1, 2]\n:: Start\nx';
+    expectNoOverlap(text);
+    expectNoKeywords(text);
+    expectNoKeywords(':: StoryInit\n$a is 1 and $b');
+  });
+
+  it('S80-template: variables inside ${} interpolations are tokenized, keyword-looking words are not', () => {
+    const text = ':: Start\n{print `this is ${$a is 1 and not $b} or to ${"is"}`}';
+    expectNoOverlap(text);
+    expectNoKeywords(text);
+    expect(varTexts(text)).toEqual(['$a', '$b']);
+  });
+
+  it('S80-template-crlf-utf16: CRLF and astral characters keep UTF-16 columns and in-line ranges', () => {
+    const text = ':: Start\r\n{print `\u{1F600} ${$a\r\n  is $c} \u{1F600} and`}\r\n$d';
+    expectNoOverlap(text);
+    expectNoKeywords(text);
+    const lines = text.split('\r\n');
+    const vars = spans(text, 'variable');
+    expect(vars.map(([l, s, e]) => lines[l].slice(s, e))).toEqual(['$a', '$c', '$d']);
+    const astral = ':: Start\r\n{set $s = `\u{1F600}${$a + 1}` + \u{1F600} + $z}';
+    const aLines = astral.split('\r\n');
+    const av = spans(astral, 'variable');
+    expect(av.map(([l, s, e]) => aLines[l].slice(s, e))).toEqual(['$s', '$a', '$z']);
+    for (const [l, s, e] of av) expect(e).toBeLessThanOrEqual(aLines[l].length);
   });
 });

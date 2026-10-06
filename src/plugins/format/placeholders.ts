@@ -8,58 +8,101 @@ export interface TokenMatch {
 }
 
 /**
- * Scan text for Spindle tokens using character-level brace-depth tracking.
- * Finds: closing tags, macro calls, CSS-prefixed macros, variable/expression
- * interpolations (with arbitrary nested braces), and [[links]].
+ * Scan text for Spindle tokens the way the Spindle runtime tokenizer
+ * (`src/markup/tokenizer.ts` in @rohal12/spindle) does, so the formatter
+ * protects exactly the spans the runtime executes. Finds closing tags, macro
+ * calls, CSS-prefixed macros, variable/expression interpolations and
+ * [[links]] (the runtime's token kinds).
+ *
+ * Like the runtime before 0.50.1, by default this counts braces and does not
+ * look at string contents: a stray `{` in a string extends the macro to the
+ * next balanced `}`, and an unbalanced `{` is plain text. From 0.50.1
+ * (`options.stringAwareBraces`) the runtime skips string and template
+ * literals, so a brace inside one is not counted. Differs from the runtime in one way, on
+ * purpose: tokens inside the attribute values of an HTML tag are reported
+ * too (the runtime keeps them inside its HTML token) because they must not
+ * be reformatted either. `test/unit/placeholders-oracle.test.ts` checks the
+ * two against each other.
  */
-export function scanSpindleTokens(text: string): TokenMatch[] {
+export function scanSpindleTokens(text: string, options: ScanOptions = {}): TokenMatch[] {
+  return scan(text, true, options.stringAwareBraces === true);
+}
+
+/** Version-dependent behavior of the runtime tokenizer the scan follows. */
+export interface ScanOptions {
+  /**
+   * Spindle >= 0.50.1 (`SpindleCapabilities.stringAwareBraces`): braces inside
+   * string and template literals do not count, in a token and in an HTML
+   * attribute value. Default: the 0.43.0-0.50.0 behavior, which counts every brace.
+   */
+  stringAwareBraces?: boolean;
+}
+
+/** Scan once; `html` enables HTML tag recognition (off inside a tag's own text). */
+function scan(input: string, html: boolean, strings: boolean): TokenMatch[] {
   const matches: TokenMatch[] = [];
+  const push = (start: number, end: number) =>
+    matches.push({ start, end, token: input.slice(start, end) });
   let i = 0;
 
-  while (i < text.length) {
-    // [[links]]
-    if (text[i] === '[' && text[i + 1] === '[') {
-      const closeIdx = text.indexOf(']]', i + 2);
-      if (closeIdx !== -1) {
-        const end = closeIdx + 2;
-        matches.push({ start: i, end, token: text.slice(i, end) });
-        i = end;
-        continue;
-      }
+  while (i < input.length) {
+    // Escaped braces are text: \{ and \}
+    if (input[i] === '\\' && (input[i + 1] === '{' || input[i + 1] === '}')) {
+      i += 2;
+      continue;
     }
 
-    // {token} — skip escaped braces
-    if (text[i] === '{' && !(i > 0 && text[i - 1] === '\\')) {
-      const next = i + 1 < text.length ? text[i + 1] : '';
-      let isToken = false;
-
-      if (next === '/') {
-        // Closing tag: {/Name}
-        isToken = i + 2 < text.length && /[A-Za-z]/.test(text[i + 2]);
-      } else if (next === '#' || next === '.') {
-        // CSS-prefixed macro: {.class MacroName ...}
-        isToken = i + 2 < text.length && /[a-zA-Z]/.test(text[i + 2]);
-      } else if (/[A-Za-z]/.test(next)) {
-        // Macro call: {MacroName ...}
-        isToken = true;
-      } else if (/[$_@%]/.test(next)) {
-        // Variable/expression: {$var}, {@node.tier + 1}
-        isToken = i + 2 < text.length && /[a-zA-Z]/.test(text[i + 2]);
+    // [[link]], with optional .class/#id selectors; links may nest
+    if (input[i] === '[' && input[i + 1] === '[') {
+      const start = i;
+      i += 2;
+      if (input[i] === '.' || input[i] === '#') {
+        i = parseSelectors(input, i);
+        if (input[i] === ' ') i++;
       }
-
-      if (isToken) {
-        let depth = 1;
-        let j = i + 1;
-        while (j < text.length && depth > 0) {
-          if (text[j] === '{') depth++;
-          else if (text[j] === '}') depth--;
-          j++;
+      let depth = 1;
+      while (i < input.length && depth > 0) {
+        if (input[i] === '[' && input[i + 1] === '[') {
+          depth++;
+          i += 2;
+        } else if (input[i] === ']' && input[i + 1] === ']') {
+          depth--;
+          if (depth === 0) break;
+          i += 2;
+        } else {
+          i++;
         }
-        if (depth === 0) {
-          matches.push({ start: i, end: j, token: text.slice(i, j) });
-          i = j;
+      }
+      if (depth !== 0) {
+        i = start + 2; // unclosed link: text, scanning resumes after `[[`
+        continue;
+      }
+      i += 2;
+      push(start, i);
+      continue;
+    }
+
+    if (input[i] === '{') {
+      const start = i;
+      if (isTokenStart(input, i)) {
+        const close = strings ? scanBalancedBraceStrings(input, i + 1) : scanBalancedBrace(input, i + 1);
+        if (close !== -1) {
+          i = close + 1;
+          push(start, i);
           continue;
         }
+      }
+      i++; // bare or unbalanced brace: text
+      continue;
+    }
+
+    if (html && input[i] === '<') {
+      const end = htmlTagEnd(input, i, strings);
+      if (end !== -1) {
+        // Attribute values hold tokens that must stay intact as well
+        for (const m of scan(input.slice(i, end), false, strings)) push(i + m.start, i + m.end);
+        i = end;
+        continue;
       }
     }
 
@@ -67,6 +110,189 @@ export function scanSpindleTokens(text: string): TokenMatch[] {
   }
 
   return matches;
+}
+
+/** Index of the `}` balancing an open brace whose content starts at `i`, or -1. */
+function scanBalancedBrace(input: string, i: number): number {
+  let depth = 1;
+  while (i < input.length && depth > 0) {
+    if (input[i] === '{') depth++;
+    else if (input[i] === '}') depth--;
+    if (depth > 0) i++;
+  }
+  return depth === 0 ? i : -1;
+}
+
+/**
+ * Spindle >= 0.50.1 `scanBalancedBrace`: as above, but a quoted string
+ * ('...' or "...", closed on the same line, not an apostrophe after a
+ * letter, digit, `_` or backslash) and a template literal (with `${...}`
+ * parts) are skipped whole, so braces inside them do not count.
+ */
+function scanBalancedBraceStrings(input: string, start: number): number {
+  let depth = 1;
+  let i = start;
+  while (i < input.length) {
+    const c = input[i];
+    if (c === '{') {
+      depth++;
+    } else if (c === '}') {
+      if (--depth === 0) return i;
+    } else if ((c === '"' || c === "'") && !(i > 0 && /[\p{L}\p{N}_\\]/u.test(input[i - 1]))) {
+      const end = skipQuoted(input, i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    } else if (c === '`') {
+      const end = skipTemplate(input, i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+/** Index past the closing quote of the string opening at `i`, or -1 (unclosed on its line). */
+function skipQuoted(input: string, i: number): number {
+  const quote = input[i];
+  let j = i + 1;
+  while (j < input.length) {
+    const c = input[j];
+    if (c === '\\') j += 2;
+    else if (c === quote) return j + 1;
+    else if (c === '\n') return -1;
+    else j++;
+  }
+  return -1;
+}
+
+/** Index past the closing backtick of the template literal opening at `i`, or -1. */
+function skipTemplate(input: string, i: number): number {
+  let j = i + 1;
+  while (j < input.length) {
+    const c = input[j];
+    if (c === '\\') {
+      j += 2;
+    } else if (c === '`') {
+      return j + 1;
+    } else if (c === '$' && input[j + 1] === '{') {
+      const close = scanBalancedBraceStrings(input, j + 2);
+      if (close === -1) return -1;
+      j = close + 1;
+    } else {
+      j++;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Does the `{` at `i` open a token (given a balanced end)? Mirrors the
+ * runtime: a sigil, a `/` or a letter follows it, or CSS selectors followed
+ * by a sigil or a letter.
+ */
+function isTokenStart(input: string, i: number): boolean {
+  const next = input[i + 1];
+  if (next === '.' || next === '#') {
+    let after = parseSelectors(input, i + 1);
+    if (input[after] === ' ') after++;
+    const ch = input[after];
+    return ch !== undefined && (/[$_@%]/.test(ch) || /[a-zA-Z]/.test(ch));
+  }
+  return next !== undefined && /[$_@%/a-zA-Z]/.test(next);
+}
+
+/**
+ * Skip `.class` / `#id` selector segments starting at `i`; segments may
+ * hold `{$var}`-style interpolations. Returns the index after the last one.
+ */
+function parseSelectors(input: string, start: number): number {
+  let i = start;
+  while (i < input.length && (input[i] === '.' || input[i] === '#')) {
+    i++;
+    while (i < input.length) {
+      if (/[a-zA-Z0-9_-]/.test(input[i])) {
+        i++;
+      } else if (input[i] === '{' && (input[i + 1] === '$' || input[i + 1] === '_' || input[i + 1] === '@')) {
+        const braceStart = i;
+        i += 2;
+        while (i < input.length && /[\w.]/.test(input[i])) i++;
+        if (input[i] === '}') {
+          i++;
+        } else {
+          i = braceStart;
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+  }
+  return i;
+}
+
+/**
+ * End index of the HTML tag starting at the `<` at `start`, or -1 when the
+ * runtime tokenizer would treat it as text.
+ */
+function htmlTagEnd(input: string, start: number, strings: boolean): number {
+  let j = start + 1;
+  const isClose = input[j] === '/';
+  if (isClose) j++;
+  const tagStart = j;
+  while (j < input.length && /[a-zA-Z0-9-]/.test(input[j])) j++;
+  if (j === tagStart || !/[a-zA-Z]/.test(input[tagStart])) return -1;
+
+  if (isClose) {
+    while (j < input.length && /\s/.test(input[j])) j++;
+    return input[j] === '>' ? j + 1 : -1;
+  }
+
+  // Attributes: quoted values may hold braces, which the runtime counts
+  while (j < input.length) {
+    while (j < input.length && /\s/.test(input[j])) j++;
+    if (j >= input.length || input[j] === '>' || (input[j] === '/' && input[j + 1] === '>')) break;
+    const nameStart = j;
+    while (j < input.length && /[a-zA-Z0-9_\-:@]/.test(input[j])) j++;
+    if (j === nameStart) break;
+    if (input[j] !== '=') continue;
+    j++;
+    if (input[j] === '"' || input[j] === "'") {
+      const quote = input[j];
+      j++;
+      if (strings) {
+        // 0.50.1+: a balanced {...} is skipped whole; any other character
+        // other than the closing quote is part of the value
+        while (j < input.length) {
+          if (input[j] === '{') {
+            const close = scanBalancedBraceStrings(input, j + 1);
+            if (close !== -1) {
+              j = close + 1;
+              continue;
+            }
+          } else if (input[j] === quote) break;
+          j++;
+        }
+      } else {
+        let braceDepth = 0;
+        while (j < input.length) {
+          if (input[j] === '{') braceDepth++;
+          else if (input[j] === '}') braceDepth--;
+          else if (input[j] === quote && braceDepth <= 0) break;
+          j++;
+        }
+      }
+      if (j < input.length) j++;
+    } else {
+      while (j < input.length && /[^\s>]/.test(input[j])) j++;
+    }
+  }
+  if (input[j] === '/') j++;
+  return input[j] === '>' ? j + 1 : -1;
 }
 
 /**
@@ -127,16 +353,50 @@ export function restoreSvgBlocks(text: string, tokens: string[]): string {
  * Lines that contain Spindle tokens but no HTML tags are replaced as a
  * single whole-line placeholder so Prettier cannot split them.
  */
-export function replaceSpindleTokens(html: string): PlaceholderResult {
+export function replaceSpindleTokens(html: string, options: ScanOptions = {}): PlaceholderResult {
   const tokens: string[] = [];
-  const lines = html.split('\n');
+  // A token may span lines (e.g. a template literal with a newline). The
+  // per-line scan below cannot see it whole, so protect complete multiline
+  // tokens first as single-line stand-ins and expand them again at the end.
+  const multiline: string[] = [];
+  let tag = 'SPML';
+  while (html.includes(`{${tag}`)) tag += 'X';
+  let source = '';
+  let last = 0;
+  // A multiline `{do}…{/do}` is protected whole: its body is JavaScript executed
+  // as written, which an HTML formatter must not re-indent or re-flow.
+  const found = scanSpindleTokens(html, options);
+  const spans: { start: number; end: number }[] = [];
+  let doOpen: number | null = null;
+  for (const m of found) {
+    if (doOpen === null) {
+      if (/^\{(?:[.#][^\s{}]* )?do\}$/i.test(m.token) || /^\{do\s/i.test(m.token)) doOpen = m.start;
+    } else if (/^\{\/do\s*\}$/i.test(m.token)) {
+      spans.push({ start: doOpen, end: m.end });
+      doOpen = null;
+    }
+  }
+  const inDoSpan = (start: number) => spans.some(sp => start >= sp.start && start < sp.end);
+  const replaced = [
+    ...spans.filter(sp => html.slice(sp.start, sp.end).includes('\n')),
+    ...found.filter(m => m.token.includes('\n') && !inDoSpan(m.start)),
+  ].sort((x, y) => x.start - y.start);
+  for (const r of replaced) {
+    source += html.slice(last, r.start) + `{${tag}${multiline.length}}`;
+    multiline.push(html.slice(r.start, r.end));
+    last = r.end;
+  }
+  source += html.slice(last);
+  const standIn = new RegExp(`\\{${tag}(\\d+)\\}`, 'g');
+  const expand = (t: string) => t.replace(standIn, (_, n) => multiline[Number(n)]);
+  const lines = source.split('\n');
   const resultLines: string[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
 
     // Scan for Spindle tokens
-    const found = scanSpindleTokens(trimmed);
+    const found = scanSpindleTokens(trimmed, options);
 
     if (found.length === 0) {
       resultLines.push(line);
@@ -182,7 +442,7 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
     }
   }
 
-  return { text: resultLines.join('\n'), tokens };
+  return { text: resultLines.join('\n'), tokens: tokens.map(expand) };
 }
 
 /**
