@@ -189,7 +189,8 @@ function runtimePassageRefsUncached(source: string): OracleRef[] {
       const name = token.name.toLowerCase();
       if (name === 'goto' || name === 'include') {
         const target = gotoTarget(token.rawArgs, name === 'include');
-        if (target !== null) refs.push({ target, intended: target, reads: target, kind: name, start, end, uriText: text });
+        // an empty name (0.45.1 reads `{include "inline"}` as `""`) names no passage: a header always has a name
+        if (target !== null && target !== '') refs.push({ target, intended: target, reads: target, kind: name, start, end, uriText: text });
       } else if (name === 'link') {
         const read = runtimeLinkMacro(token.rawArgs);
         // `{link "label" "Passage"}`: the second literal names the passage (a single argument is a label only)

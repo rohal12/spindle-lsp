@@ -164,6 +164,24 @@ for (const [spelling, s] of Object.entries(SPELLINGS)) {
       { 'story.tw': inRole('ordinary', snippet), 'target.tw': targetFile, 'base.tw': BASE });
   }
 }
+// Family C2 (#77): include targets that read differently per release. The target passage is [widget]-tagged
+// and named `inline` (or `Other`), so SP302, references, definition and rename must all agree with the
+// installed runtime on whether the quoted word is the flag (0.45.1) or the target (0.51.1+).
+for (const [spelling, target, snippet] of [
+  ['include-inline-quoted', 'inline', '{include "inline"}'],
+  ['include-inline-quoted-flag-after', 'inline', '{include "inline" inline}'],
+  ['include-inline-flag-before-quoted', 'inline', '{include inline "inline"}'],
+  ['include-inline-escaped', 'inline', '{include "\\u0069nline"}'],
+  ['include-widget-other-quoted', 'Other', '{include "Other"}'],
+  ['include-widget-other-bare', 'Other', '{include Other}'],
+  ['include-widget-other-flag-after', 'Other', '{include "Other" inline}'],
+  ['include-widget-other-flag-before', 'Other', '{include inline Other}'],
+  ['include-widget-malformed-escape', 'Other', '{include "\\u00"}'],
+  ['include-widget-dynamic', 'Other', '{include $v}'],
+] as const) {
+  scene(`C/${spelling}/include-widget-target`, { role: 'ordinary', context: 'include-widget-target', spelling, boundary: 'eof-newline', state: 'multi-file' },
+    files(inRole('ordinary', snippet), { 'target.tw': `:: ${target} [widget]\n{widget "greet"}hi{/widget}\n` }));
+}
 // Hyphenated widget spelling (case-insensitive, hyphen, sigil params)
 for (const [spelling, def, use] of [
   ['hyphenated-widget', 'my-widget', '{my-widget}'],
