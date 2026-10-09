@@ -14,8 +14,8 @@ import {
   storyDataFormats,
   storyDataFormatVersion,
 } from './story-format.js';
-import { DEFAULT_CAPABILITIES, readInstalledSpindleVersion, resolveSpindleCapabilities } from './spindle-capabilities.js';
-import type { SpindleCapabilities } from './spindle-capabilities.js';
+import { DEFAULT_CAPABILITIES, readInstalledSpindleVersion, resolveSpindleCapabilities } from './spindle-version.js';
+import type { SpindleCapabilities } from './spindle-version.js';
 import type { StoryFormat } from './story-format.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
 

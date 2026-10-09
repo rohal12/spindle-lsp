@@ -19,7 +19,7 @@ import {
   parseStoryVariables as vendoredParse,
   validatePassages as vendoredValidate,
 } from '../fixtures/spindle-0.51.3/story-variables.js';
-import { capabilitiesForVersion } from '../../src/core/workspace/spindle-capabilities.js';
+import { capabilitiesForVersion } from '../../src/core/workspace/spindle-version.js';
 import { collectExecutableRefs } from '../../src/core/parsing/executable-refs.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 import { BUILTIN_STORE_VAR_MACROS } from '../../src/core/workspace/variable-tracker.js';

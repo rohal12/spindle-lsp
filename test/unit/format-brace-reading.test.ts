@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { formatDocument } from '../../src/plugins/format.js';
 import { scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
 import { findSpindleCapabilities } from '../../src/core/workspace/story-format.js';

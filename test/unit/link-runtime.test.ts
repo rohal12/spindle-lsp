@@ -26,7 +26,7 @@ import {
   resolveLinkMacroTarget,
 } from '../../src/core/parsing/link-parser.js';
 import { readBracketLink } from '../../src/core/parsing/link-runtime.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { runtimeBracketLink, runtimeLinkMacro } from '../helpers/link-macro-oracle.js';
 import { INSTALLED_CAPABILITIES, INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
 import { DiagnosticCode } from '../../src/core/diagnostic-codes.js';

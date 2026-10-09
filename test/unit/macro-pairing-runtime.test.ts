@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildAST, registerBlockMacro, unregisterBlockMacro } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { pairMacros, parseMacros } from '../../src/core/parsing/macro-parser.js';
 
 const BLOCKS = new Set(['if', 'for', 'wrap', 'box']);

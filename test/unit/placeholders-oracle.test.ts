@@ -12,7 +12,7 @@
  * macro's own `}`. The scan follows the installed release in both cases.
  */
 import { describe, expect, it } from 'vitest';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { scanSpindleTokens as scanWith } from '../../src/plugins/format/placeholders.js';
 import { INSTALLED_CAPABILITIES, INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
 

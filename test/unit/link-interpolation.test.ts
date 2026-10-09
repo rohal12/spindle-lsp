@@ -25,7 +25,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { parseStoryVariables, validatePassages } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { LITERAL_ARGUMENT_MACROS, VariableTracker } from '../../src/core/workspace/variable-tracker.js';

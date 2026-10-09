@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../src/core/types.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';

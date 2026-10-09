@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { hasInterpolation, interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { evaluate } from '../../node_modules/@rohal12/spindle/src/expression.js';
 import { conditionalExpression, findUnevaluatedBlocks, printExpression } from '../../src/core/parsing/attribute-blocks.js';
 import { scanHtmlTags } from '../../src/core/parsing/html-scanner.js';

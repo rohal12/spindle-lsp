@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildAST } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { collectText } from '../../node_modules/@rohal12/spindle/src/utils/extract-text.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';

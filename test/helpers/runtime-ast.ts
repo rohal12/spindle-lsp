@@ -1,5 +1,5 @@
 import { buildAST } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from './tooling.js';
 
 /**
  * Whether the installed Spindle's markup pipeline (tokenize, then buildAST)

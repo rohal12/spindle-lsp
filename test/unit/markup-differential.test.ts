@@ -13,7 +13,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
-import { tokenize, type Token } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize, type Token } from '../helpers/tooling.js';
 import { attributeValueSpans } from '../../src/core/parsing/html-scanner.js';
 import { findBracketLinks, parseDocumentPassageRefs } from '../../src/core/parsing/link-parser.js';
 import { buildLineStarts, parseMacros } from '../../src/core/parsing/macro-parser.js';

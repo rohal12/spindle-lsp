@@ -4,7 +4,7 @@
  * keeps the document's line-ending style.
  */
 import { describe, expect, it } from 'vitest';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { formatDocument } from '../../src/plugins/format.js';
 
 /** The runtime view of a passage: compiler-normalized newlines, executable tokens only. */

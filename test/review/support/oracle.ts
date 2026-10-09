@@ -7,7 +7,7 @@
  * with src/. Expressions are only evaluated when the whole argument is a
  * single string literal written by these tests.
  */
-import { tokenize, type Token } from '../../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize, type Token } from '../../helpers/tooling.js';
 import { runtimeBracketLink, runtimeLinkMacro } from '../../helpers/link-macro-oracle.js';
 import { INSTALLED_CAPABILITIES } from '../../helpers/spindle-version.js';
 import { runtimeGotoTarget } from '../../helpers/expression-oracle.js';

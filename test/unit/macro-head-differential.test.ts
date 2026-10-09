@@ -15,7 +15,7 @@
  * string literals when it looks for the closing brace.
  */
 import { describe, expect, it } from 'vitest';
-import { tokenize as installedTokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize as installedTokenize } from '../helpers/tooling.js';
 import { tokenize as vendoredTokenize } from '../fixtures/spindle-0.51.3/tokenizer.js';
 import { buildLineStarts, macroHeadNameAt, macroHeadNames, parseMacros } from '../../src/core/parsing/macro-parser.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';

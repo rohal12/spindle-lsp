@@ -8,7 +8,7 @@ import {
   parseSpindleVersion,
   readInstalledSpindleVersion,
   resolveSpindleCapabilities,
-} from '../../src/core/workspace/spindle-capabilities.js';
+} from '../../src/core/workspace/spindle-version.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { INSTALLED_CAPABILITIES, INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';

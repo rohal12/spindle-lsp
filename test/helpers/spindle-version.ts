@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { capabilitiesForVersion } from '../../src/core/workspace/spindle-capabilities.js';
+import { capabilitiesForVersion } from '../../src/core/workspace/spindle-version.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 

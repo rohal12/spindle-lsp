@@ -3,8 +3,8 @@ import { stripBom } from './document-store.js';
 import type { Passage } from '../types.js';
 import { PassageIndex } from './passage-index.js';
 import { findProjectFiles, findProjectRoot } from './macro-sources.js';
-import { readInstalledSpindleVersion, resolveSpindleCapabilities } from './spindle-capabilities.js';
-import type { SpindleCapabilities } from './spindle-capabilities.js';
+import { readInstalledSpindleVersion, resolveSpindleCapabilities } from './spindle-version.js';
+import type { SpindleCapabilities } from './spindle-version.js';
 
 /**
  * The story format a project declares in its Twee 3 StoryData passage

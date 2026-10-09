@@ -6,7 +6,7 @@ import type { BraceReading } from '../parsing/code-scanner.js';
 import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
 import { checkDeclaration, declaredName } from './declaration-check.js';
 import { collectExecutableRefs } from '../parsing/executable-refs.js';
-import { DEFAULT_CAPABILITIES, type SpindleCapabilities } from './spindle-capabilities.js';
+import { DEFAULT_CAPABILITIES, type SpindleCapabilities } from './spindle-version.js';
 
 /**
  * Regex to match $variable references including dot notation. A name may

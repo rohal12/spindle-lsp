@@ -16,7 +16,7 @@ import {
 } from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { CompletionItem } from 'vscode-languageserver';
-import { tokenize } from '../../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../../helpers/tooling.js';
 import { buildAST, registerBlockMacro, unregisterBlockMacro } from '../../../node_modules/@rohal12/spindle/src/markup/ast.js';
 import { parseStoryVariables } from '../../../node_modules/@rohal12/spindle/src/story-variables.js';
 import { getCompletions } from '../../../src/plugins/completions.js';

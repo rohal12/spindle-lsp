@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { buildAST } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from './tooling.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 

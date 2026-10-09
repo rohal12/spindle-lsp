@@ -22,7 +22,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { buildAST, registerBlockMacro, unregisterBlockMacro } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
-import { tokenize, type Token } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize, type Token } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeFoldingRanges } from '../../src/plugins/folding-range.js';

@@ -14,7 +14,7 @@ import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { isScriptOrStylesheetPassage, isMarkupPassage, maskNonMarkupPassages } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
-import { MINIMUM_SPINDLE_VERSION, unsupportedVersionMessage } from '../core/workspace/spindle-capabilities.js';
+import { MINIMUM_SPINDLE_VERSION, unsupportedVersionMessage } from '../core/workspace/spindle-version.js';
 
 // ---------------------------------------------------------------------------
 // Core diagnostic function (no LSP dependency)
