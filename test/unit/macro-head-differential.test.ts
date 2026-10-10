@@ -9,14 +9,13 @@
  * unknown-macro diagnostics (SP100/SP104), widget references, definition and
  * rename.
  *
- * Oracles: the installed runtime's tokenizer (the parser reads braces as that
- * release does: `stringAwareBraces` from 0.50.1, plain counting before), and
- * the vendored 0.51.3 tokenizer (test/fixtures/spindle-0.51.3), which skips
- * string literals when it looks for the closing brace.
+ * Oracle: the installed runtime's tokenizer, through `tokenizeMarkupTolerant`
+ * of the public tooling API. It skips string literals when it looks for the
+ * closing brace (the plain counting of Spindle before 0.50.1 is gone from the
+ * supported releases).
  */
 import { describe, expect, it } from 'vitest';
 import { tokenize as installedTokenize } from '../helpers/tooling.js';
-import { tokenize as vendoredTokenize } from '../fixtures/spindle-0.51.3/tokenizer.js';
 import { buildLineStarts, macroHeadNameAt, macroHeadNames, parseMacros } from '../../src/core/parsing/macro-parser.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
@@ -67,7 +66,7 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
     let withOddNames = 0;
     for (let n = 0; n < 60000; n++) {
       const text = head(random, BASE_CHARS);
-      const expected = oracle(installedTokenize as Tokenize, text);
+      const expected = oracle(installedTokenize as unknown as Tokenize, text);
       expect(ours(text), JSON.stringify(text)).toEqual(expected);
       compared++;
       if (expected.some(m => /[^\w:"-]/.test(m.split(':').slice(1, -1).join(':').replace(/"/g, '')))) withOddNames++;
@@ -82,7 +81,7 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
     let differing = 0;
     for (let n = 0; n < 60000; n++) {
       const text = head(random, [...BASE_CHARS, ...QUOTE_CHARS]);
-      const expected = oracle(installedTokenize as Tokenize, text);
+      const expected = oracle(installedTokenize as unknown as Tokenize, text);
       expect(ours(text), JSON.stringify(text)).toEqual(expected);
       if (JSON.stringify(ours(text, { stringAwareBraces: !INSTALLED_CAPABILITIES.stringAwareBraces })) !== JSON.stringify(expected)) differing++;
     }
@@ -90,11 +89,11 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
     expect(differing).toBeGreaterThan(10);
   });
 
-  it('H-vendored: heads with quotes and braces agree with the 0.51.3 tokenizer', () => {
+  it('H-vendored: heads with quotes and braces agree with the string-aware tokenizer', () => {
     const random = rng(51);
     for (let n = 0; n < 60000; n++) {
       const text = head(random, [...BASE_CHARS, ...QUOTE_CHARS]);
-      expect(ours(text, { stringAwareBraces: true }), JSON.stringify(text)).toEqual(oracle(vendoredTokenize as Tokenize, text));
+      expect(ours(text, { stringAwareBraces: true }), JSON.stringify(text)).toEqual(oracle(installedTokenize as unknown as Tokenize, text));
     }
   });
 
@@ -104,8 +103,8 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
     for (let n = 0; n < 30000; n++) {
       let text = '';
       for (let k = 1 + Math.floor(random() * 8); k > 0; k--) text += fragments[Math.floor(random() * fragments.length)];
-      expect(ours(text, { stringAwareBraces: true }), JSON.stringify(text)).toEqual(oracle(vendoredTokenize as Tokenize, text));
-      expect(ours(text), JSON.stringify(text)).toEqual(oracle(installedTokenize as Tokenize, text));
+      expect(ours(text, { stringAwareBraces: true }), JSON.stringify(text)).toEqual(oracle(installedTokenize as unknown as Tokenize, text));
+      expect(ours(text), JSON.stringify(text)).toEqual(oracle(installedTokenize as unknown as Tokenize, text));
     }
   });
 
@@ -114,11 +113,13 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
       ['{a=b}', ['a=b']],
       ['{a=b c}', ['a=b']],
       ['{if($x)}x{/if}', ['if($x)', 'if']],
-      ['{x{$y}}', ['x{$y}']],
+      // the braces inside a head are matched (up to 0.51.3 the name ran to the last `}`)
+      ['{x{$y}}', ['x{$y']],
       ['{.c a+b 1}', ['a+b']],
-      ['{/.cls if}', ['.cls']],
-      ['{/}', ['']],
-      ['{/ x}', ['']],
+      // a closer takes no selectors, arguments or empty name any more: `{/` is text and the tokenizer reports it
+      ['{/.cls if}', []],
+      ['{/}', []],
+      ['{/ x}', []],
       ['{a"b c}', ['a"b']],
       ['{a}{a=}', ['a', 'a=']],
     ] as Array<[string, string[]]>) {
@@ -129,7 +130,7 @@ describe('macro heads: every name the tokenizer reads is a macro (differential)'
 });
 
 function tokenize_names(text: string): string[] {
-  return vendoredTokenize(text).filter(t => t.type === 'macro').map(t => (t as unknown as { name: string }).name);
+  return installedTokenize(text).filter(t => t.type === 'macro').map(t => (t as unknown as { name: string }).name);
 }
 
 describe('macro heads: the consumers agree', () => {

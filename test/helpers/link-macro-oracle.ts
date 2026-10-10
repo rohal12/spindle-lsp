@@ -1,47 +1,47 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { transformSync } from 'esbuild';
-import { buildAST } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
+import { builtinMacros, passagePieces } from '@rohal12/spindle/tooling';
 import { tokenize } from './tooling.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-
 export interface LinkRead {
+  /** The label, as the macro reads it (before its markup is resolved); '' if its text argument is malformed. */
   display: string;
+  /**
+   * The passage a click navigates to when the `passage` argument is a quoted
+   * name; null when there is none, or when it is an expression (`expression`
+   * is then set: the name is only known when the macro runs).
+   */
   passage: string | null;
+  expression?: string;
 }
 
 /**
- * The installed runtime's own `parseArgs` of the `{link}` macro
- * (components/macros/MacroLink.tsx): the function's source is cut out of the
- * component (which needs a DOM and preact to import), compiled and called.
+ * What the runtime's link macro reads from `{link ...rawArgs}`: the pieces of
+ * the passage that `passagePieces` (the reader the story-start check and
+ * `collectPassageReferences` use) finds in the macro, against the built-in
+ * macros' declared parameters (`text`: a quoted string holding markup;
+ * `passage`: a quoted name or an expression).
  */
-function loadParseArgs(): (rawArgs: string) => LinkRead {
-  const file = join(here, '../../node_modules/@rohal12/spindle/src/components/macros/MacroLink.tsx');
-  const source = readFileSync(file, 'utf-8');
-  const start = source.indexOf('function parseArgs(');
-  const end = source.indexOf('\nfunction ', start + 1);
-  if (start === -1 || end === -1) throw new Error('MacroLink.parseArgs not found in the installed Spindle');
-  const js = transformSync(source.slice(start, end), { loader: 'ts' }).code;
-  return new Function(`${js}\nreturn parseArgs;`)() as (rawArgs: string) => LinkRead;
-}
-
-export const runtimeParseLinkArgs = loadParseArgs();
-
-/** What the runtime's link macro reads from `{link ...rawArgs}`. */
 export function runtimeLinkMacro(rawArgs: string): LinkRead {
-  return runtimeParseLinkArgs(rawArgs);
+  const pieces = passagePieces(`{link ${rawArgs}}`, builtinMacros).filter(piece => !piece.nested);
+  const text = pieces.find(piece => piece.kind === 'text');
+  const name = pieces.find(piece => piece.kind === 'passage');
+  const expression = pieces.find(piece => piece.kind === 'code' && piece.passage);
+  return {
+    display: text?.kind === 'text' ? text.text : '',
+    passage: name?.kind === 'passage' ? name.name : null,
+    ...(expression?.kind === 'code' ? { expression: expression.code } : {}),
+  };
 }
+
+/** `value` as a quoted macro argument: the rule that turns a bracket link into `{link "label" "target"}` (markup/ast.ts). */
+export const quoteArg = (value: string) => `"${value.replace(/[\\"]/g, '\\$&')}"`;
 
 /**
  * What the runtime's link macro reads for the single bracket link in `text`:
- * the tokenizer's link token, buildAST's `{link}` node, then parseArgs.
+ * the tokenizer's link token, which the AST turns into `{link "label"
+ * "target"}` (the label and target quoted), then the macro's own reading.
  */
 export function runtimeBracketLink(text: string): (LinkRead & { token: { display: string; target: string } }) | null {
   const token = tokenize(text).find(t => t.type === 'link');
   if (!token || token.type !== 'link') return null;
-  const node = buildAST([token])[0];
-  if (node.type !== 'macro') throw new Error('a link token is not a macro node');
-  return { ...runtimeParseLinkArgs(node.rawArgs), token: { display: token.display, target: token.target } };
+  return { ...runtimeLinkMacro(`${quoteArg(token.display)} ${quoteArg(token.target)}`), token: { display: token.display, target: token.target } };
 }

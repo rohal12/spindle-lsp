@@ -11,9 +11,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildAST } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
-import { tokenize } from '../helpers/tooling.js';
-import { collectText } from '../../node_modules/@rohal12/spindle/src/utils/extract-text.js';
+import { passagePieces } from '@rohal12/spindle/tooling';
+import { builtinMacros } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { maskRawDoBodies } from '../../src/core/parsing/macro-parser.js';
@@ -42,9 +41,10 @@ const code = 'Story.defineMacro({name: "x", render: () => null});';
 
 describe('do-body: macros inside {do}', () => {
   it('D-runtime: the installed runtime runs the object literal only from 0.50.1', () => {
-    const ast = buildAST(tokenize(`{do}${code}{/do}`));
-    const run = collectText((ast[0] as { children: never[] }).children);
-    expect(run).toBe(INSTALLED_CAPABILITIES.rawDoBodies ? code : 'Story.defineMacro();');
+    // `passagePieces` says which parts of a passage are code: the body of {do} is the statements the macro runs
+    const [piece] = passagePieces(`{do}${code}{/do}`, builtinMacros);
+    expect(piece).toMatchObject({ kind: 'code', goal: 'statements', label: '{do}' });
+    expect(piece.kind === 'code' && piece.code).toBe(INSTALLED_CAPABILITIES.rawDoBodies ? code : 'Story.defineMacro();');
   });
 
   for (const eol of ['\n', '\r\n']) {

@@ -1,56 +1,44 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { transformSync } from 'esbuild';
+import { evaluatePassageName, passageTarget, transform } from '@rohal12/spindle/tooling';
 
-const here = dirname(fileURLToPath(import.meta.url));
-
-type Evaluate = (
-  expr: string,
-  variables: Record<string, unknown>,
-  temporary: Record<string, unknown>,
-  locals?: Record<string, unknown>,
-  transient?: Record<string, unknown>,
-) => unknown;
+type Scope = Record<string, unknown>;
 
 /**
- * The installed Spindle's own expression evaluator (src/expression.ts: the
- * sigil transformation, the `new Function` wrapper and its preamble), compiled
- * from the installed source with its store and PRNG imports replaced by a fixed
- * benign empty story state (no visits, no renders, no history). It is only
+ * The runtime's expression evaluator for the tests: Spindle's own sigil
+ * transformation (`transform`, public in the tooling API) wrapped in the same
+ * `new Function('variables', 'temporary', 'locals', 'transient', ...)` the
+ * runtime builds (src/expression.ts), over the scopes the caller passes. The
+ * story-state functions the runtime also puts in scope (`visited()`,
+ * `random()`, ...) are fixed benign values: no visits, no renders. It is only
  * ever called with expressions written by these tests.
  */
-function load(): Evaluate {
-  const file = join(here, '../../node_modules/@rohal12/spindle/src/expression.ts');
-  const js = transformSync(readFileSync(file, 'utf-8'), { loader: 'ts', format: 'cjs' }).code;
-  const stubs: Record<string, unknown> = {
-    './store': {
-      useStoryStore: {
-        getState: () => ({ visitCounts: {}, renderCounts: {}, currentPassage: 'Start', history: [], historyIndex: 0, storyData: undefined }),
-      },
-    },
-    './prng': { random: () => 0.5, randomInt: (min: number) => min },
+export function evaluate(expr: string, variables: Scope = {}, temporary: Scope = {}, locals: Scope = {}, transient: Scope = {}): unknown {
+  const body = transform(expr);
+  const stubs = {
+    currentPassage: () => undefined, previousPassage: () => undefined,
+    visited: () => 0, hasVisited: () => false, hasVisitedAny: () => false, hasVisitedAll: () => false,
+    rendered: () => 0, hasRendered: () => false, hasRenderedAny: () => false, hasRenderedAll: () => false,
+    random: () => 0.5, randomInt: (min: number) => min,
   };
-  const module = { exports: {} as { evaluate: Evaluate } };
-  new Function('module', 'exports', 'require', js)(module, module.exports, (id: string) => {
-    if (!(id in stubs)) throw new Error(`unexpected import ${id} in expression.ts`);
-    return stubs[id];
-  });
-  return module.exports.evaluate;
+  const preamble = `const {${Object.keys(stubs).join(',')}}=__fns;`;
+  return new Function('variables', 'temporary', 'locals', '__fns', 'transient', `${preamble}return (${body});`)(
+    variables, temporary, locals, stubs, transient);
 }
 
-const evaluate = load();
-
 /**
- * Where `{goto}` / `{include}` navigate for these (already `inline`-stripped)
- * arguments, by the components' rule (Goto.tsx, Include.tsx): `String` of the
- * evaluated expression, or, when evaluating throws, the raw text with
- * surrounding quotes stripped. `temporary` is the story's `_` scope.
+ * The passage a `passage` argument of `{goto}` / `{include}` / `{link}` names
+ * at run time, by the macros' own rule: a string literal is the name
+ * (`passageTarget`), anything else is an expression evaluated in the story's
+ * scopes and read with `evaluatePassageName`. Spindle 0.59 has no text
+ * fallback: an argument that does not evaluate (`Chapter 2`, a bare name that
+ * is no variable) throws when the macro runs and the macro shows an error, so
+ * this returns null (no navigation). `temporary` is the story's `_` scope.
  */
-export function runtimeGotoTarget(args: string, temporary: Record<string, unknown> = {}): string {
+export function runtimeGotoTarget(arg: string, temporary: Scope = {}, variables: Scope = {}): string | null {
+  const target = passageTarget(arg);
+  if (target.kind === 'name') return target.name;
   try {
-    return String(evaluate(args, {}, temporary, {}, {}));
+    return evaluatePassageName(target.expression, expr => evaluate(expr, variables, temporary), { storyData: null, currentPassage: 'Start' });
   } catch {
-    return args.replace(/^["']|["']$/g, '');
+    return null;
   }
 }

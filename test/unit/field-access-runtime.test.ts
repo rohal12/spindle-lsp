@@ -1,15 +1,14 @@
 /**
  * Differential test: the LSP's field-access check (SP201) against Spindle's
- * own startup validation, imported from the installed runtime's source.
+ * own startup validation. NEEDS UPSTREAM API: `validatePassages` is not
+ * exported by `@rohal12/spindle/tooling` (see test/helpers/story-variables-oracle.ts),
+ * so the cases that need it fail with that message.
  * Every field error the LSP reports must be one Spindle reports, with the
  * same message; the only errors the LSP may miss are those whose default is
  * not a literal it can type without evaluating code.
  */
 import { describe, it, expect } from 'vitest';
-import {
-  parseStoryVariables,
-  validatePassages,
-} from '../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 

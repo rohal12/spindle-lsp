@@ -1,24 +1,15 @@
 /**
  * Differential tests: the references the LSP validates (SP200/SP201) against
- * Spindle's own startup validation. From 0.50.1 the runtime scans only
- * executable references (tokenizer-based) and from 0.51.1 allows primitive
- * wrapper members; before, it scans the raw text.
+ * Spindle's own startup validation (executable references only; primitive
+ * wrapper members allowed).
  *
- *  - The first two describes use a vendored copy of the 0.51.3 runtime
- *    (test/fixtures/spindle-0.51.3), so they run whichever Spindle is installed.
- *  - The last describe follows the installed runtime: the LSP, given that
- *    version's capabilities, must agree with it. scripts/peer-matrix.sh runs
- *    it against each release.
+ * NEEDS UPSTREAM API: the oracle is `validatePassages` of the installed
+ * runtime, which `@rohal12/spindle/tooling` does not export (see
+ * test/helpers/story-variables-oracle.ts). Until it does, these tests fail
+ * with that message instead of comparing the LSP with a copy of itself.
  */
 import { describe, it, expect } from 'vitest';
-import {
-  parseStoryVariables,
-  validatePassages,
-} from '../../node_modules/@rohal12/spindle/src/story-variables.js';
-import {
-  parseStoryVariables as vendoredParse,
-  validatePassages as vendoredValidate,
-} from '../fixtures/spindle-0.51.3/story-variables.js';
+import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
 import { capabilitiesForVersion } from '../../src/core/workspace/spindle-version.js';
 import { collectExecutableRefs } from '../../src/core/parsing/executable-refs.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
@@ -28,10 +19,10 @@ import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 const uri = 'file:///story.tw';
 const STORE_MACROS = new Set(BUILTIN_STORE_VAR_MACROS);
 
-/** Every reference the 0.51.3 runtime validates, in order: all are undeclared in an empty schema. */
+/** Every reference the runtime validates, in order: all are undeclared in an empty schema. */
 function runtimeRefs(content: string): string[] {
   const passages = new Map([['P', { name: 'P', tags: [], content } as never]]);
-  return vendoredValidate(passages, new Map())
+  return validatePassages(passages, new Map())
     .map(e => /Undeclared variable: \$(.*)$/.exec(e)![1]);
 }
 
@@ -70,7 +61,7 @@ function rng(seed: number): () => number {
   };
 }
 
-describe('executable references match the 0.51.3 runtime', () => {
+describe('executable references match the runtime', () => {
   it('agrees with validatePassages on every fragment and on random passages', () => {
     const cases = FRAGMENTS.map(f => f);
     const random = rng(42);
@@ -101,7 +92,7 @@ describe('executable references match the 0.51.3 runtime', () => {
 
 const V0513 = capabilitiesForVersion('0.51.3');
 
-describe('SP201 under 0.51.3 capabilities matches the 0.51.3 runtime', () => {
+describe('SP201 matches the runtime', () => {
   const DEFAULTS = ['5', '-1.5', '"s"', 'true', '[]', '{}', '{a: 1}', '{a: "x", b: {c: 1, d: "y"}}', '{s: "x", n: 2, arr: [1]}'];
   const PATHS = [
     'a', 'x', 'length', 'toFixed', 'toString', 'constructor', '__proto__', 'valueOf', 'a.b', 'a.length', 'a.toFixed',
@@ -116,9 +107,9 @@ describe('SP201 under 0.51.3 capabilities matches the 0.51.3 runtime', () => {
       for (const path of PATHS) {
         const vars = `$v = ${def}`;
         const content = `{print $v.${path}}`;
-        const runtime = vendoredValidate(
+        const runtime = validatePassages(
           new Map([['Start', { name: 'Start', tags: [], content } as never]]),
-          vendoredParse(vars),
+          parseStoryVariables(vars),
         ).map(e => e.replace(/^Passage "[^"]*": /, ''));
         const text = `:: StoryVariables\n${vars}\n\n:: Start\n${content}\n`;
         const tracker = new VariableTracker();

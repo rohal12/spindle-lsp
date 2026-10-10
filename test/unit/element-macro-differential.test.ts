@@ -1,28 +1,30 @@
 /**
- * HTML elements and block macros share one stack in Spindle's buildAST
- * (markup/ast.ts): `{wrap}<div>{/wrap}</div>` throws at `{/wrap}` because a
- * `<div>` is on top, not at the `</div>`. This differential runs every
- * sequence of up to N of `<div>`, `</div>`, `{if}`, `{/if}`, `{wrap}` and
- * `{/wrap}` (the first three and last three are the element, a built-in
- * block and a block widget) through the installed runtime's tokenizer and
- * AST builder and through every consumer of the container structure:
+ * HTML elements and block macros share one stack in Spindle's pairing
+ * (`pairMarkup`, which `parseMarkup` runs): `{wrap}<div>{/wrap}</div>` is
+ * rejected at `{/wrap}` because a `<div>` is on top, not at the `</div>`.
+ * This differential runs every sequence of up to N of `<div>`, `</div>`,
+ * `{if}`, `{/if}`, `{wrap}` and `{/wrap}` (the first three and last three are
+ * the element, a built-in block and a block widget) through the installed
+ * runtime's tokenizer and pairing (public tooling API) and through every
+ * consumer of the container structure:
  *
  *  - diagnostics (SP101 container, SP102 element, SP104 closer): none when
- *    buildAST accepts the passage; otherwise one at the token buildAST
- *    throws at (or, for an unclosed node, at the innermost one);
- *  - folding ranges: the pairs buildAST makes, up to its first error;
+ *    the runtime accepts the passage; otherwise one at the tag the pairing
+ *    reports first (or, for an unclosed node, at the innermost one);
+ *  - folding ranges: the pairs the runtime makes, up to its first error;
  *  - widget heads (references, definition, rename): an opener always; a
- *    closer when buildAST pops it, or when a container of its name is open
+ *    closer when pairMarkup pops it, or when a container of its name is open
  *    (written out of order), but not a stray one;
  *  - the pairing every one of them shares (pairMacros / parseDocumentMacros).
  *
  * Tokens after the first error are never rendered, so nothing is asserted
  * about them.
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { buildAST, registerBlockMacro, unregisterBlockMacro } from '../../node_modules/@rohal12/spindle/src/markup/ast.js';
+import { isBlockMacro } from '@rohal12/spindle/tooling';
 import { tokenize, type Token } from '../helpers/tooling.js';
+import { runtimeMarkupFailure } from '../helpers/runtime-ast.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeFoldingRanges } from '../../src/plugins/folding-range.js';
@@ -31,8 +33,8 @@ import { getDefinition } from '../../src/plugins/definition.js';
 import { computeRename } from '../../src/plugins/rename.js';
 import { parseDocumentMacros } from '../../src/core/parsing/macro-parser.js';
 
-registerBlockMacro('wrap');
-afterAll(() => unregisterBlockMacro('wrap'));
+/** The widget `wrap` is a block widget (its body renders {@children}); the built-in blocks are Spindle's. */
+const isBlock = (name: string) => name.toLowerCase() === 'wrap' || isBlockMacro(name);
 
 const SYMBOLS = ['<div>', '</div>', '{if}', '{/if}', '{wrap}', '{/wrap}'];
 const widgets = ':: Widgets [widget]\n{widget "wrap"}\n[{@children}]\n{/widget}\n';
@@ -50,22 +52,22 @@ function* sequences(max: number, symbols: string[] = SYMBOLS): Generator<string[
 
 type Node = { kind: 'macro' | 'html'; name: string; token: Token; index: number };
 
-/** buildAST's verdict, and its own stack, replayed on the tokens before the error. */
+/** pairMarkup's verdict, and its own stack, replayed on the tokens before the error. */
 interface Verdict {
   ok: boolean;
-  /** Offset buildAST names (the failing token, or the innermost unclosed one). */
+  /** Offset pairMarkup names (the failing token, or the innermost unclosed one). */
   at?: number;
   message?: string;
-  /** Index (in the token list) of the token buildAST throws at; -1 when it throws at the end. */
+  /** Index (in the token list) of the token pairMarkup throws at; -1 when it throws at the end. */
   failing: number;
-  /** Closer token index -> opener token index, for closers buildAST accepts. */
+  /** Closer token index -> opener token index, for closers pairMarkup accepts. */
   pairs: Map<number, number>;
-  /** Names of the macro containers open when buildAST throws. */
+  /** Names of the macro containers open when pairMarkup throws. */
   openMacros: string[];
-  /** Offset of the node on top of the stack when buildAST throws, if any. */
+  /** Offset of the node on top of the stack when pairMarkup throws, if any. */
   topStart?: number;
   /**
-   * What the pairing does with a closing macro buildAST rejects: the index of
+   * What the pairing does with a closing macro pairMarkup rejects: the index of
    * the opener it pairs with when the containers above that opener are never
    * closed (the author forgot them), -1 when it is stray or crosses a
    * container that is closed later. Undefined for any other failure.
@@ -75,16 +77,10 @@ interface Verdict {
 
 function verdict(text: string): Verdict {
   const tokens = tokenize(text).filter(t => t.type === 'macro' || t.type === 'html');
-  let ok = true;
-  let message: string | undefined;
-  let at: number | undefined;
-  try {
-    buildAST(tokenize(text));
-  } catch (error) {
-    ok = false;
-    message = (error as Error).message;
-    at = Number(/(?:at|opened at) character (\d+)/.exec(message)?.[1]);
-  }
+  const failure = runtimeMarkupFailure(text, isBlock);
+  const ok = failure === null;
+  const message = failure?.message;
+  const at = failure?.at;
 
   // Replay the stack on the tokens the same way, to learn the pairs
   const stack: Array<{ kind: 'macro' | 'html'; name: string; index: number }> = [];
@@ -155,7 +151,7 @@ function workspaceFor(story: string): WorkspaceModel {
   return ws;
 }
 
-describe('buildAST replay used by this differential', () => {
+describe('pairMarkup replay used by this differential', () => {
   it('agrees with the runtime on where it throws', () => {
     let throws = 0;
     for (const sequence of sequences(5)) {
@@ -178,8 +174,8 @@ for (const [eolName, eol, max] of [['LF', '\n', 5], ['CRLF', '\r\n', 4]] as cons
   const symbols = SYMBOLS;
   const header = `:: Start${eol}`;
 
-  describe(`diagnostics against buildAST (${eolName})`, () => {
-    it('SP101/SP102/SP104 are absent when buildAST accepts and name the failing token when it throws', () => {
+  describe(`diagnostics against pairMarkup (${eolName})`, () => {
+    it('SP101/SP102/SP104 are absent when pairMarkup accepts and name the failing token when it throws', () => {
       let accepted = 0;
       let rejected = 0;
       for (const sequence of [...sequences(max, symbols), ...(eolName === 'LF' ? sequences(4, WIDE) : [])]) {
@@ -198,7 +194,7 @@ for (const [eolName, eol, max] of [['LF', '\n', 5], ['CRLF', '\r\n', 4]] as cons
         }
         rejected++;
         const offsets = found.map(d => doc.offsetAt(d.range.start) - header.length);
-        // buildAST's own token, or (where the author forgot closers and the
+        // pairMarkup's own token, or (where the author forgot closers and the
         // pairing closes the container anyway) the node left open on top
         const acceptable = [v.at, v.rejectedPairs !== undefined && v.rejectedPairs !== -1 ? v.topStart : undefined];
         expect(offsets.some(o => acceptable.includes(o)), `${body}: ${v.message}; found ${JSON.stringify(offsets)}`).toBe(true);
@@ -210,8 +206,8 @@ for (const [eolName, eol, max] of [['LF', '\n', 5], ['CRLF', '\r\n', 4]] as cons
 }
 
 for (const [label, symbols, max] of [['six symbols', SYMBOLS, 5], ['eight symbols, two element names', WIDE, 4]] as const) {
-describe(`folding and pairing against buildAST (${label})`, () => {
-  it('folds the pairs buildAST makes, up to its first error', () => {
+describe(`folding and pairing against pairMarkup (${label})`, () => {
+  it('folds the pairs pairMarkup makes, up to its first error', () => {
     for (const sequence of sequences(max, symbols)) {
       const body = sequence.join('\n');
       const story = `:: Start\n${body}`;
@@ -237,8 +233,8 @@ describe(`folding and pairing against buildAST (${label})`, () => {
   });
 });
 
-describe(`widget heads against buildAST (${label})`, () => {
-  it('references, definition and rename take the openers and the closers buildAST accepts or that close an open container', () => {
+describe(`widget heads against pairMarkup (${label})`, () => {
+  it('references, definition and rename take the openers and the closers pairMarkup accepts or that close an open container', () => {
     for (const sequence of sequences(max, symbols)) {
       const body = sequence.join('');
       const story = `:: Start\n${body}`;
@@ -290,8 +286,8 @@ describe(`widget heads against buildAST (${label})`, () => {
   });
 });
 
-describe(`the shared pairing against buildAST (${label})`, () => {
-  it('pairs every closer buildAST accepts with the opener it pops', () => {
+describe(`the shared pairing against pairMarkup (${label})`, () => {
+  it('pairs every closer pairMarkup accepts with the opener it pops', () => {
     for (const sequence of sequences(max, symbols)) {
       const body = sequence.join('');
       const story = `:: Start\n${body}`;

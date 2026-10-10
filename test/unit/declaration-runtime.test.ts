@@ -5,7 +5,7 @@
  * Spindle rejects; the lines Spindle rejects that the LSP misses are listed.
  */
 import { describe, it, expect } from 'vitest';
-import { parseStoryVariables } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 

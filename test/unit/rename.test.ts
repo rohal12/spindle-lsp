@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { parseStoryVariables } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 import { prepareRename, computeRename, RenameError, type RenameEdit } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
@@ -532,12 +532,14 @@ describe('N-rename: invalid new names fail the whole request and name the offend
   it('N-rename-offender-other-file: an offender in another file is named by that file', () => {
     const ws = createWorkspace(
       { name: 'story.tw', content: ':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"}' },
-      { name: 'other.tw', content: ':: Other\nbefore {link "go" "Old"}{/link}' },
+      { name: 'other.tw', content: ':: Other\nbefore {link "go" "Old"}{/link} [[go->Old]]' },
     );
-    const error = failure(() => computeRename(uri, { line: 1, character: 4 }, 'Bob"s', ws));
+    // Spindle 0.59 reads the {link} passage as a JavaScript string literal, so `Bob"s` fits it
+    // (`"Bob\"s"`); only the bracket link cannot hold a `|` (the macro link used to be the offender)
+    const error = failure(() => computeRename(uri, { line: 1, character: 4 }, 'a|b', ws));
     expect(error.uri).toBe(other);
-    expect(error.message).toContain('{link}');
-    expect(error.message).toContain(`${other}:2:20`);
+    expect(error.message).toContain('[[link]]');
+    expect(error.message).toContain(`${other}:2:39`);
   });
 
   it('N-rename-atomic: a failing rename returns no partial edits for any document', () => {

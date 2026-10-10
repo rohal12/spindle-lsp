@@ -50,64 +50,43 @@ first assertion does not demonstrate its later assertions on that baseline.
 
 ## Validate meaning, not just response shape
 
-Use the installed runtime as the oracle for the supported version. Tokenize a
-small fixture, parse its declaration, or inspect the exact runtime call path.
-Record normalization done by the compiler, such as CRLF to LF. Upstream main is
-additional evidence, not a replacement for the installed dependency. A syntax
-case accepted by another runtime version is not automatically a defect here.
-The current audit covers Spindle 0.45.1 (the devDependency, and the behavior
-used when no version can be detected). The supported range is `>=0.43.0`; the
-suite is green on every release from 0.43.0 to 0.51.3
-([2026-10-06-peer-range.md](2026-10-06-peer-range.md)).
+Use the installed runtime as the oracle, through its public tooling API
+(`@rohal12/spindle/tooling`; `test/helpers/*.ts` wrap it for the tests).
+Tokenize a small fixture (`tokenizeMarkupTolerant`), pair it (`pairMarkup`),
+read its passage names and code (`collectStoryPassageReferences`,
+`passagePieces`), parse its declaration (`parseStoryVariables`), or run the
+rule the macros run (`passageTarget`, `evaluatePassageName`,
+`splitIncludeFlag`). Do not import the runtime's source files: they are not
+importable under vitest and their shapes are not public. Record normalization
+done by the compiler, such as CRLF to LF. Upstream main is additional
+evidence, not a replacement for the installed dependency.
 
-### Running the suite against another Spindle
-
-```
-scripts/peer-matrix.sh <spindle-version> [scratch-dir]
-# e.g. for v in 0.43.0 0.50.0 0.50.1 0.51.1 0.51.3; do scripts/peer-matrix.sh $v; done
-```
-
-The script packs that release, copies `src/`, `test/` and the configs to
-`<scratch>/run/<version>` (default `$TMPDIR/spindle-peer`), links the repo's
-`node_modules` except `@rohal12/spindle`, runs vitest and `tsc --noEmit`
-there (including `esbuild.config.ts`, which the dist-based tests build the
-executable with) and prints `<version> <passed>/<total> tsc=<exit>`;
-`out.json`, `out.log` and `tsc.log` stay in the run directory. The repo's `node_modules`
-is never modified. Tests find the runtime by relative
-`node_modules/@rohal12/spindle/src/...` imports and learn its version from
-`test/helpers/spindle-version.ts`, so version-dependent expectations follow
-the installed release. Run the boundary releases (0.43.0, 0.50.0, 0.50.1,
-0.51.0, 0.51.1) and the latest before changing version-gated behavior or the
-peer range; a skipped test counts as not run, so the suite has none.
-
-Version-dependent behavior lives in
-`src/core/workspace/spindle-capabilities.ts` (`SpindleCapabilities`): the
-target version is the one installed under the workspace root, else StoryData's
-`format-version`, else the Spindle 0.45.1 behavior. Add a flag there, with the
-release that introduced the behavior, rather than testing versions inline.
-Code that reads braces the way the tokenizer does takes a `BraceReading`
-(`stringAwareBraces`, from 0.50.1) and its callers pass
-`workspace.capabilities`; an omitted reading means the 0.45.1 behavior. Oracle
-tests compare against the installed tokenizer with the matching reading
-(`INSTALLED_CAPABILITIES`) instead of excluding the inputs on which releases
-differ, and state both readings with a StoryData `format-version` when a test
-must fix the release.
+The supported range is `>=0.59.20` (`MINIMUM_SPINDLE_VERSION`); the
+devDependency is the oracle and the suite is not run against other releases.
+There is no per-release behavior to gate: a release below the minimum is
+reported to the user, not emulated. What the oracle layer needs from Spindle
+and does not get from the public API is listed as "needs upstream API" in
+[2026-10-10-tooling-migration.md](2026-10-10-tooling-migration.md), together
+with the cells and tests whose expectation changed with the runtime.
 
 Different runtime consumers have different contracts:
 
 - Markup tokens determine which macro/link syntax executes.
-- Interpolation is per consumer, not per syntax: the `{link}` macro (every
-  bracket link) interpolates its `.class#id` selectors but prints its label and
-  navigates to its target as written; `{button}` and `{dialog}` interpolate
-  their label; HTML attribute values are interpolated; a string in any other
-  macro's arguments is not. Render the markup with a real release
-  (`scripts/runtime-render.mjs`) before encoding a rule about it.
+- Interpolation is per consumer, not per syntax: a macro's parameters declare
+  what a string holds (`builtinMacros`, `ParameterDef.holds`). The `{link}`
+  macro (every bracket link) interpolates its `.class#id` selectors and its
+  label, which is markup, and navigates to its target as written; `{button}`,
+  `{dialog}` and `{meter}` interpolate their label; HTML attribute values are
+  markup too; a string in any other macro's arguments is not. `passagePieces`
+  reports each such piece with its offsets. Render the markup with a real
+  release (`scripts/runtime-render.mjs`) before encoding a rule about it.
 - Executable symbol usages drive navigation and rename.
 - Spindle's startup variable validation can inspect raw passage text, including
   strings/prose that are not executable references. Preserve that behavior in
   diagnostics; do not reuse an executable-only reference list for it.
-- `goto`/`include` evaluate expressions, while the installed `link` macro
-  extracts quoted text with its own rules. Encoding must follow each consumer.
+- `goto`/`include`/`link` read their `passage` argument alike (`passageTarget`):
+  a quoted string is the name, anything else is an expression evaluated when
+  the macro runs, with no text fallback. Encoding must follow that rule.
 
 For transformations, apply all edits with `TextDocument.applyEdits`, across all
 affected documents. Rebuild the workspace, reparse the resulting story, and

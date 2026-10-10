@@ -110,12 +110,12 @@ describe('SP103: {…} in an HTML attribute that Spindle outputs as text', () =>
     expect(sp103(diagnose(story))).toEqual([]);
   });
 
-  it('reads a tag with whitespace around = as text, in every release', () => {
-    // `<a href = "x">` is no tag (the tokenizer re-reads the text after `<`),
-    // but the `<b>` after it is: its value is interpolated as text.
+  it('reads a tag with whitespace around = as a tag', () => {
+    // Spindle 0.59 allows whitespace around `=` (up to 0.51.3 `<a href = "x">` was no tag, and the tokenizer
+    // re-read the text after `<`): `href` has the value `x`, and the `<b>` after it is a tag too.
     const found = sp103(diagnose(`${vars}:: Start\n<a href = "x"> <b title="{if $x}a{/if}">t</b></a>\n`));
     expect(found.map(at)).toEqual([[5, 25, 38]]);
-    expect(runtimeAttributeValues('<a href = "x"> <b title="{if $x}a{/if}">t</b></a>')).toEqual(['{if $x}a{/if}']);
+    expect(runtimeAttributeValues('<a href = "x"> <b title="{if $x}a{/if}">t</b></a>')).toEqual(['x', '{if $x}a{/if}']);
   });
 
   it('reports nothing for other story formats', () => {
