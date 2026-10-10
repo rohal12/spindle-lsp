@@ -1,8 +1,11 @@
 /**
- * Differential test: the LSP's StoryVariables / StoryTransients checks (SP207,
- * and SP204 for null) against Spindle's own parseStoryVariables(), imported
- * from the installed runtime's source. Every line the LSP flags must be one
- * Spindle rejects; the lines Spindle rejects that the LSP misses are listed.
+ * Differential test: the LSP's StoryVariables / StoryTransients check (SP207)
+ * against Spindle's own parseStoryVariables(), through the public tooling API.
+ * Every line the LSP flags must be one Spindle rejects; the lines Spindle
+ * rejects that the LSP misses are listed. The LSP reads the lines with
+ * parseDeclarations (which never evaluates a value) and compiles each value
+ * without running it for its syntax errors. A `null` default is valid in 0.59,
+ * so SP204 is gone.
  */
 import { describe, it, expect } from 'vitest';
 import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
@@ -31,14 +34,14 @@ function runtimeError(content: string, sigil: Sigil): string | undefined {
   }
 }
 
-/** The SP207 / SP204 diagnostics for a passage, by line of its content. */
+/** The SP207 diagnostics for a passage, by line of its content. */
 function lspFindings(content: string, sigil: Sigil): Map<number, string> {
   const text = `:: ${PASSAGE[sigil]}\n${content}\n\n:: Start\nHello`;
   const model = new WorkspaceModel();
   model.initialize(new Map([['file:///story.tw', text]]));
   const findings = new Map<number, string>();
   for (const d of computeDiagnostics('file:///story.tw', model)) {
-    if (d.code === 'SP207' || d.code === 'SP204') findings.set(d.range.start.line - 1, d.message);
+    if (d.code === 'SP207') findings.set(d.range.start.line - 1, d.message);
   }
   return findings;
 }
@@ -48,15 +51,15 @@ const VALUES = [
   '1', '-1.5', '.5', '1e3', '0x10', '0777', '08', '1_000', 'NaN', 'Infinity', 'true', 'false',
   '"s"', "'s'", '`s`', '`t${1}`', '"http://example.com"', '"a // b"', "'x = 1'", '"<!-- -->"', '`a // b`',
   '"semi;colon"', '[]', '[1, "a", {b: 2}]', '[null]', '[undefined]', '[() => 1]', '{}', '{a: 1}', '{a: {b: [1]}}',
-  '{"a": 1, \'b\': 2}', '{a: null, a: 1}', '{a: undefined, a: 1}', '{__proto__: {}}', '/ab+c/gi', '/a\\/\\/b/',
+  '{"a": 1, \'b\': 2}', '{a: null, a: 1}', '{__proto__: {}}', '/ab+c/gi', '/a\\/\\/b/',
   '/[/]/', 'new Date()', 'new Map()', 'Math.max(1, 2)', '1 + 2', '"a" + "b"', '1, 2', '1) || (2', '(1)',
   '1 /* note */', '/* note */ 1', 'typeof x', '[1].length', '({a: 1}).a', '{a: 1}.a', '!0', 'null ?? 1',
-  'undefined || 0', '(() => 1)()', 'function () { return 1 }()', 'void 0 || 1', 'String(1)', 'Symbol.iterator.description',
+  'undefined || 0', '(() => 1)()', 'void 0 || 1', 'String(1)', 'Symbol.iterator.description',
   '"é"', '"\u00a0"', 'Object.create(null)', '{toString: 1}', '{"__proto__": {}}', '{0: 1, 1: "x"}',
   // Rejected
   'null', '{a: null}', '{a: {b: null}}', '{a: null, b: 1}', '(null)', 'undefined', 'void 0', '{a: undefined}',
   '() => 1', 'x => x', 'async () => 1', 'function () {}', 'function* g() {}', 'class {}', 'class A {}',
-  '{a: () => 1}', '{a: function () {}}', '1n', '-1n', '0x1fn', '{a: 1n}', '+1n', 'Symbol()', '{f() {}}',
+  '{a: () => 1}', '{a: function () {}}', '1n', '-1n', '0x1fn', '{a: 1n}', 'Symbol()', '{f() {}}',
   '{get a() { return null }}', '{...{a: null}}', '{["a"]: null}', 'Math.max', 'x => x / 2', 'Object', '1n + 1',
   'foo', 'foo()', 'missing.field', '1 // note', '1 <!-- note', '[1, // note', '"a" // "b"', '1 /* note',
   '1;', '1; 2', '(1', '1)', '[1,', '{', '{a: 1', '"unterminated', "'unterminated", '`unterminated', '= 1',
@@ -74,7 +77,7 @@ const LINES = [
   '{set $a = 1}', '$a = 1 \r 2', '\u00a0$a = 1', '$a = 1\u00a0', '$a = 1\u2028', '$a = 1\u2028 2',
 ];
 
-describe('SP207 / SP204 agree with Spindle\'s parseStoryVariables', () => {
+describe('SP207 agrees with Spindle\'s parseStoryVariables', () => {
   for (const sigil of ['$', '%'] as const) {
     it(`flags only lines Spindle rejects, line by line (${PASSAGE[sigil]})`, () => {
       const missed: string[] = [];
@@ -88,8 +91,10 @@ describe('SP207 / SP204 agree with Spindle\'s parseStoryVariables', () => {
           flagged++;
           expect({ line, runtime }).toEqual({ line, runtime: expect.any(String) });
           if (lsp.startsWith(PASSAGE[sigil])) {
-            // SP207 quotes Spindle's message (adding the field of a nested value).
-            expect(lsp.replace(/ \([$%][\w.]+\)/, '')).toContain(runtime);
+            // SP207 quotes Spindle's message. For a value no variable can hold, the tooling
+            // API names the initializer where Spindle names the value it evaluates to.
+            const [type] = runtime.split(' for value ');
+            expect(lsp, line).toContain(runtime.includes(' for value ') ? type : runtime);
           }
         } else if (runtime !== undefined) {
           missed.push(line);
@@ -99,14 +104,37 @@ describe('SP207 / SP204 agree with Spindle\'s parseStoryVariables', () => {
       const swap = (s: string) => (sigil === '$' ? s : s.replace(/[$%]/g, c => (c === '$' ? '%' : '$')));
       // Rejected only when evaluated, or not certainly rejected by reading the text.
       expect(missed).toEqual([
-        '(null)', '+1n', 'Symbol()', '{f() {}}', '{get a() { return null }}', '{...{a: null}}',
-        '{["a"]: null}', 'Math.max', 'x => x / 2', 'Object', '1n + 1', 'foo', 'foo()', 'missing.field',
+        'void 0', 'Symbol()', 'Math.max', 'Object', '1n + 1', 'foo', 'foo()', 'missing.field',
         '/unterminated', '\u00a01',
       ].map(v => swap(`$a = ${v}`)).concat([
         '$a\u00a0= 1', '$a = 1 \r 2', '\u00a0$a = 1', '$a = 1\u00a0',
       ].map(swap)));
     });
   }
+
+  // parseDeclarations (the tooling API) disagrees with parseStoryVariables on these three
+  // values. Each is its own test so that the differential above stays meaningful; they fail
+  // until Spindle's `parseDeclarations` reads them as the runtime does (reported upstream).
+  describe('values the tooling API reads differently from the runtime (UPSTREAM)', () => {
+    it('{a: undefined, a: 1}: the later key replaces the unsupported value, so Spindle accepts it', () => {
+      const line = '$a = {a: undefined, a: 1}';
+      expect(runtimeError(line, '$')).toBeUndefined();
+      expect(lspFindings(line, '$').get(0)).toBeUndefined();
+    });
+
+    it('a function expression that is called is a value, not a function', () => {
+      const line = '$a = function () { return 1 }()';
+      expect(runtimeError(line, '$')).toBeUndefined();
+      expect(lspFindings(line, '$').get(0)).toBeUndefined();
+    });
+
+    it('+1n fails to evaluate (a BigInt has no unary plus), as Spindle words it', () => {
+      const line = '$a = +1n';
+      const runtime = runtimeError(line, '$');
+      expect(runtime).toMatch(/Failed to evaluate/);
+      expect(lspFindings(line, '$').get(0)).toContain(runtime!);
+    });
+  });
 
   it('reads each line on its own: values do not continue on the next line', () => {
     const content = '$a = [1,\n2]\n$b = {\n  c: 1\n}\n$d = 1';

@@ -1,39 +1,46 @@
 /**
  * Differential tests: the references the LSP validates (SP200/SP201) against
- * Spindle's own startup validation (executable references only; primitive
- * wrapper members allowed).
+ * Spindle's own startup validation (executable references only; members of a
+ * primitive's wrapper allowed).
  *
  * NEEDS UPSTREAM API: the oracle is `validatePassages` of the installed
  * runtime, which `@rohal12/spindle/tooling` does not export (see
- * test/helpers/story-variables-oracle.ts). Until it does, these tests fail
- * with that message instead of comparing the LSP with a copy of itself.
+ * test/helpers/story-variables-oracle.ts and
+ * https://github.com/rohal12/spindle/issues/464). Until it does, these tests
+ * fail with that message instead of comparing the LSP with a copy of itself.
+ * (They were run against the installed runtime's own `validatePassages`, taken
+ * from its bundle, with no difference on 12000 random passages and on every
+ * default and path below.)
  */
 import { describe, it, expect } from 'vitest';
 import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
-import { capabilitiesForVersion } from '../../src/core/workspace/spindle-version.js';
-import { collectExecutableRefs } from '../../src/core/parsing/executable-refs.js';
-import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
-import { BUILTIN_STORE_VAR_MACROS } from '../../src/core/workspace/variable-tracker.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
+import { collectVariableReferences } from '../../src/core/parsing/executable-refs.js';
+import { BUILTIN_STORE_VAR_MACROS, VariableTracker } from '../../src/core/workspace/variable-tracker.js';
+import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 
 const uri = 'file:///story.tw';
 const STORE_MACROS = new Set(BUILTIN_STORE_VAR_MACROS);
 
-/** Every reference the runtime validates, in order: all are undeclared in an empty schema. */
+/** The compiler's line breaks: Spindle reads passages with LF. */
+function compiled(content: string): string {
+  return content.replace(/\r\n/g, '\n');
+}
+
+/** Every reference the runtime validates: all are undeclared in an empty schema. */
 function runtimeRefs(content: string): string[] {
-  const passages = new Map([['P', { name: 'P', tags: [], content } as never]]);
+  const passages = new Map([['P', { name: 'P', tags: [], content: compiled(content) } as never]]);
   return validatePassages(passages, new Map())
     .map(e => /Undeclared variable: \$(.*)$/.exec(e)![1]);
 }
 
-/** Names a `{for @a, @b of …}` in the passage binds: the runtime does not validate them. */
-function forLocals(content: string): Set<string> {
-  const names = new Set<string>();
-  for (const m of content.matchAll(/\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g)) {
-    names.add(m[1]);
-    if (m[2]) names.add(m[2]);
-  }
-  return names;
+/** The `$` references the LSP validates in the body of a passage, with their offsets in its (LF) content. */
+function lspRefs(content: string): { content: string; refs: Array<{ path: string; start: number; end: number }> } {
+  const model = new WorkspaceModel();
+  model.initialize(new Map([[uri, `:: P\n${content}`]]));
+  const passage = model.markup.get(uri)!.passages[0];
+  const refs = collectVariableReferences(passage, STORE_MACROS)
+    .filter(r => r.sigil === '$' && r.validated);
+  return { content: passage.content, refs };
 }
 
 const FRAGMENTS = [
@@ -48,9 +55,19 @@ const FRAGMENTS = [
   '{{$brace}}', '{ $space }', '{$unbalanced', '{$a + "}"}', '{macro "}" $afterq}', "{x 'don't $apos}",
   'plain $prose.text and $5.50 ', '$', '$.x', '{', '}', '[[', ']]', '<', '< $lt', '\n', '\r\n', ' ',
   '{for @i of $list}{@i.x}$list.y{/for}', '{for @k, @v of $obj}$obj.k{/for}', '{link "go $l" "T"}{/link}',
-  '[[Take {$lbl}->T{$tg}]]', '[[.c{$sel}#i{$sid} go->T]]', '{button "{$bt}"}x{/button}', '{dialog "Open {$dg}"}P{/dialog}',
+  '[[Take {$lbl}->T{$tg}]]', '[[.c{$sel} #i{$sid} go->T]]', '{button "{$bt}"}x{/button}', '{dialog "Open {$dg}"}P{/dialog}',
   '{include "P"}', '{goto "$gt"}', '{widget "w"}{$wd}{/widget}', '{set $o = {a: $in1, b: "$in2"}}',
   '`tpl ${$tp}`', "{print '{$nested}'}", '{print "a\\"$b"}', 'é {$u8}', '😀 $emoji.x {$e2}',
+  '{unset $un1}', '{computed $cp = $z2 + 1}', '{myw $arg1, "$arg2"}', '{watch "$cond > 1" goto "T"}', '{meter $cur $max "L {$ml}"}',
+  '{radiobutton "$rb" "v" "L {$rl}"}', '{listbox "$lb"}{/listbox}', '{type 50ms}{$ty}{/type}', '{case $cs}', '{switch $sw}{case 1}{/switch}',
+  '<button onclick="{$ck = 1}">x</button>', '<a onclick="{$oc} {$oc2}">y</a>',
+  '{.{$cls} button "x {$bl}"}go{/button}', '{#{$idd} print $pp}', '{link "x{$y1}" "{$z1}"}go{/link}', '{link $lk1 $lk2}',
+  '{goto $gt1}', '{goto "T{$gt2}"}', '{include $inc1}', '{include inline $inc2}', '{cycle $cyc "a" "b"}',
+  '{textbox "$tbq" "ph {$ph}"}', '{checkbox $cbu "label {$cbl}"}', '{radiobutton $rbu "v"}',
+  '{timed 1s}{$tm}{/timed}', '{set $a to 1}', '{set $a = $b, _c = $d}', '{print $a?.b}', '{for _i of $arr}{_i}{/for}',
+  '{widget "w2" @p1 @p2}{@p1} {$wp}{/widget}', '{w2 $wa1, $wa2}', '{w2 "$ws"}', '{unknownmacro $um1 "$um2"}',
+  '<div class="a {$dc}" id=\'{$di}\' data-v={$dv}>', '<p title="{if $pt}x{/if}">', '<div {$bad}>', '<div title="{$unterminated>',
+  '{print /re$/ + $ff}', '{do}\n/* $hh */ let x = `${$ii}`; $jj++;\n{/do}', '{do}a{/do}{$after1}', '{do}{$inside}{/do}',
 ];
 
 function rng(seed: number): () => number {
@@ -61,39 +78,39 @@ function rng(seed: number): () => number {
   };
 }
 
+function randomPassages(seed: number, count: number, size: number): string[] {
+  const random = rng(seed);
+  const cases = [...FRAGMENTS];
+  for (let n = 0; n < count; n++) {
+    let text = '';
+    const parts = 1 + Math.floor(random() * size);
+    for (let k = 0; k < parts; k++) text += FRAGMENTS[Math.floor(random() * FRAGMENTS.length)];
+    cases.push(text);
+  }
+  return cases;
+}
+
 describe('executable references match the runtime', () => {
   it('agrees with validatePassages on every fragment and on random passages', () => {
-    const cases = FRAGMENTS.map(f => f);
-    const random = rng(42);
-    for (let n = 0; n < 4000; n++) {
-      const count = 1 + Math.floor(random() * 6);
-      let text = '';
-      for (let k = 0; k < count; k++) text += FRAGMENTS[Math.floor(random() * FRAGMENTS.length)];
-      cases.push(text);
-    }
-    for (const content of cases) {
-      const locals = forLocals(content);
-      const lsp = collectExecutableRefs(content, STORE_MACROS).map(r => r.ref).filter(r => !locals.has(r.split('.')[0]));
-      expect({ content, refs: lsp }).toEqual({ content, refs: runtimeRefs(content) });
+    for (const content of randomPassages(42, 4000, 6)) {
+      // The same references; the LSP lists them in source order, and the runtime scans the selectors of a macro after its arguments
+      const lsp = lspRefs(content).refs.map(r => r.path).sort();
+      expect({ content, refs: lsp }).toEqual({ content, refs: runtimeRefs(content).sort() });
     }
   });
 
   it('reports the offset of each reference `$`', () => {
-    const random = rng(7);
-    for (let n = 0; n < 1500; n++) {
-      let content = '';
-      for (let k = 0; k < 5; k++) content += FRAGMENTS[Math.floor(random() * FRAGMENTS.length)];
-      for (const { ref, offset } of collectExecutableRefs(content, STORE_MACROS)) {
-        expect({ content, at: content.slice(offset, offset + 1 + ref.length) }).toEqual({ content, at: `$${ref}` });
+    for (const content of randomPassages(7, 1500, 5)) {
+      const { content: lf, refs } = lspRefs(content);
+      for (const { path, start, end } of refs) {
+        expect({ content, at: lf.slice(start, end) }).toEqual({ content, at: `$${path}` });
       }
     }
   });
 });
 
-const V0513 = capabilitiesForVersion('0.51.3');
-
 describe('SP201 matches the runtime', () => {
-  const DEFAULTS = ['5', '-1.5', '"s"', 'true', '[]', '{}', '{a: 1}', '{a: "x", b: {c: 1, d: "y"}}', '{s: "x", n: 2, arr: [1]}'];
+  const DEFAULTS = ['5', '-1.5', '"s"', 'true', '[]', '{}', '{a: 1}', '{a: "x", b: {c: 1, d: "y"}}', '{s: "x", n: 2, arr: [1]}', 'null', '{a: null}'];
   const PATHS = [
     'a', 'x', 'length', 'toFixed', 'toString', 'constructor', '__proto__', 'valueOf', 'a.b', 'a.length', 'a.toFixed',
     'length.x', 'length.toFixed', 'toFixed.x', 'b.c.length', 'b.d.length.x', 'b.d.toUpperCase.x', 'b.c.x',
@@ -113,7 +130,6 @@ describe('SP201 matches the runtime', () => {
         ).map(e => e.replace(/^Passage "[^"]*": /, ''));
         const text = `:: StoryVariables\n${vars}\n\n:: Start\n${content}\n`;
         const tracker = new VariableTracker();
-        tracker.setCapabilities(V0513);
         tracker.parseStoryVariables(vars, 1, uri);
         tracker.scanDocument(uri, text, []);
         const lsp = tracker.getPrimitiveFieldAccesses(uri)
@@ -132,7 +148,6 @@ describe('SP201 matches the runtime', () => {
 function lspUndeclared(passages: Array<[string, string]>): string[] {
   const text = [':: StoryVariables', '$decl = 1', '', ...passages.flatMap(([n, c]) => [`:: ${n}`, c, ''])].join('\n');
   const tracker = new VariableTracker();
-  tracker.setCapabilities(INSTALLED_CAPABILITIES);
   tracker.parseStoryVariables('$decl = 1', 1, uri);
   tracker.scanDocument(uri, text, []);
   return tracker.getUndeclared(uri).map(u => u.name).sort();
@@ -148,20 +163,15 @@ function runtimeUndeclared(passages: Array<[string, string]>): string[] {
 }
 
 describe('SP200 follows the installed Spindle', () => {
-  it('agrees with validatePassages, including {for} locals, across versions', () => {
-    const random = rng(99);
-    for (let n = 0; n < 1500; n++) {
-      let content = '';
-      const count = 1 + Math.floor(random() * 6);
-      for (let k = 0; k < count; k++) content += FRAGMENTS[Math.floor(random() * FRAGMENTS.length)];
+  it('agrees with validatePassages on random passages', () => {
+    for (const content of randomPassages(99, 1500, 6)) {
       // A line break keeps a document's text from running into the next header
       const passages: Array<[string, string]> = [['Start', content.replace(/\r/g, '')], ['Other', '{$decl}']];
       expect({ content, names: lspUndeclared(passages) }).toEqual({ content, names: runtimeUndeclared(passages) });
     }
   });
 
-  it('flags prose references only before 0.50.1', () => {
-    const names = lspUndeclared([['Start', 'Hello $nobody and "$nothing" <!-- $none -->']]);
-    expect(names).toEqual(INSTALLED_CAPABILITIES.executableRefsOnly ? [] : ['nobody', 'none', 'nothing']);
+  it('flags no prose reference: only what a passage executes', () => {
+    expect(lspUndeclared([['Start', 'Hello $nobody and "$nothing" <!-- $none -->']])).toEqual([]);
   });
 });

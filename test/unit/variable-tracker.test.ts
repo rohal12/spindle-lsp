@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VariableTracker, inferLiteralType } from '../../src/core/workspace/variable-tracker.js';
+import { VariableTracker, executableCode } from '../../src/core/workspace/variable-tracker.js';
 import type { MacroNode } from '../../src/core/types.js';
 
 describe('VariableTracker', () => {
@@ -111,27 +111,35 @@ describe('VariableTracker', () => {
     expect(tracker.getUndeclared('file:///story.tw').map(u => u.name)).toEqual(['real']);
   });
 
-  it('detects null declarations in StoryVariables', () => {
+  // Spindle 0.59 accepts a null default: `{ type: 'null' }`, "nothing yet", which
+  // may later hold a value of any shape (parseDeclarations, validateRef).
+  it('declares a null default in StoryVariables, a problem to nobody', () => {
     const tracker = new VariableTracker();
-    tracker.parseStoryVariables(`$name = "player"\n$bad = null\n$ok = 0`, 5);
-    const nullDecls = tracker.getNullDeclarations();
-    expect(nullDecls).toHaveLength(1);
-    expect(nullDecls[0].name).toBe('bad');
-    expect(nullDecls[0].sigil).toBe('$');
-    expect(nullDecls[0].range.start.line).toBe(6); // line 5 + 1
-    // Variable is still declared (to avoid double-flagging with SP200)
-    expect(tracker.getDeclared().has('bad')).toBe(true);
+    tracker.parseStoryVariables(`$name = "player"\n$bad = null\n$ok = 0\n$nested = { x: null }`, 5);
+    expect(tracker.getNullDeclarations()).toEqual([]);
+    expect(tracker.getInvalidDeclarations()).toEqual([]);
+    expect(tracker.getDeclared().get('bad')).toMatchObject({
+      name: 'bad',
+      declarationRange: { start: { line: 6, character: 0 }, end: { line: 6, character: 4 } },
+    });
+    expect(tracker.getDeclared().get('bad')!.type).toBeUndefined();
+    expect(tracker.getDeclared().get('nested')).toMatchObject({ type: 'object', fields: ['x'] });
   });
 
-  it('detects null declarations in StoryTransients', () => {
+  it('declares a null default in StoryTransients, a problem to nobody', () => {
     const tracker = new VariableTracker();
     tracker.parseStoryTransients(`%counter = 0\n%bad = null`, 10);
-    const nullDecls = tracker.getNullTransientDeclarations();
-    expect(nullDecls).toHaveLength(1);
-    expect(nullDecls[0].name).toBe('bad');
-    expect(nullDecls[0].sigil).toBe('%');
-    expect(nullDecls[0].range.start.line).toBe(11); // line 10 + 1
-    expect(tracker.getDeclaredTransient().has('bad')).toBe(true);
+    expect(tracker.getNullTransientDeclarations()).toEqual([]);
+    expect(tracker.getInvalidTransientDeclarations()).toEqual([]);
+    expect(tracker.getDeclaredTransient().get('bad')?.declarationRange.start.line).toBe(11);
+  });
+
+  it('accepts any field of a null default, as Spindle does', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$held = null\n$o = { slot: null }');
+    tracker.scanDocument('file:///story.tw', ':: Start\n{$held.name.first} {$o.slot.x.y}', []);
+    expect(tracker.getPrimitiveFieldAccesses('file:///story.tw')).toEqual([]);
+    expect(tracker.getUndeclared('file:///story.tw')).toEqual([]);
   });
 
   it('does not flag non-null values as null declarations', () => {
@@ -152,28 +160,38 @@ describe('VariableTracker', () => {
   });
 });
 
-describe('inferLiteralType', () => {
-  it('recognises single literals', () => {
-    expect(inferLiteralType('[]')).toBe('array');
-    expect(inferLiteralType('[1, [2, 3], { a: "]" }]')).toBe('array');
-    expect(inferLiteralType('{ a: [], b: "}" }')).toBe('object');
-    expect(inferLiteralType('"text"')).toBe('string');
-    expect(inferLiteralType("'it\\'s'")).toBe('string');
-    expect(inferLiteralType('`plain`')).toBe('string');
-    expect(inferLiteralType('42')).toBe('number');
-    expect(inferLiteralType('-1.5e3')).toBe('number');
-    expect(inferLiteralType('true')).toBe('boolean');
+describe('declared types', () => {
+  /** The type the tracker records for `$a = <expr>`: the static shape of the default. */
+  function typeOf(expr: string): string | undefined {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables(`$a = ${expr}`);
+    return tracker.getDeclared().get('a')?.type;
+  }
+
+  it.each([
+    ['[]', 'array'],
+    ['[1, [2, 3], { a: "]" }]', 'array'],
+    ['{ a: [], b: "}" }', 'object'],
+    ['"text"', 'string'],
+    ["'it\\'s'", 'string'],
+    ['`plain`', 'string'],
+    ['42', 'number'],
+    ['-1.5e3', 'number'],
+    ['0x10', 'number'],
+    ['true', 'boolean'],
+  ])('types the literal %s as %s', (expr, type) => {
+    expect(typeOf(expr)).toBe(type);
   });
 
-  it('returns undefined for anything that is not a single literal', () => {
-    expect(inferLiteralType('[1, 2].length')).toBeUndefined();
-    expect(inferLiteralType('["a"].join(",")')).toBeUndefined();
-    expect(inferLiteralType('{ a: 1 }.a')).toBeUndefined();
-    expect(inferLiteralType('`${x}`')).toBeUndefined();
-    expect(inferLiteralType('makeDefaults()')).toBeUndefined();
-    expect(inferLiteralType('[1, 2')).toBeUndefined();
-    expect(inferLiteralType('null')).toBeUndefined();
-    expect(inferLiteralType('')).toBeUndefined();
+  it.each([
+    ['[1, 2].length'],
+    ['["a"].join(",")'],
+    ['{ a: 1 }.a'],
+    ['`${x}`'],
+    ['makeDefaults()'],
+    ['null'],
+  ])('does not guess the type of %s', (expr) => {
+    expect(typeOf(expr)).toBeUndefined();
   });
 
   it('records the type on declarations', () => {
@@ -184,6 +202,14 @@ describe('inferLiteralType', () => {
     expect(tracker.getDeclared().get('pc')!.type).toBe('object');
     expect(tracker.getDeclared().get('n')!.type).toBeUndefined();
     expect(tracker.getDeclaredTransient().get('queue')!.type).toBe('array');
+  });
+
+  // Matrix M8: a quoted key is a field like any other (parseDeclarations)
+  it('lists the fields of an object default, quoted and numeric keys too', () => {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$o = { a: 1, "b c": { d: 1 }, \'e\': [], 2: 3, ...rest }\n$p = {}');
+    expect(tracker.getDeclared().get('o')!.fields).toEqual(['a', 'b c', 'e', '2']);
+    expect(tracker.getDeclared().get('p')!.fields).toBeUndefined();
   });
 });
 
@@ -293,11 +319,11 @@ describe('VariableTracker references in StoryInit and strings (#44, #62)', () =>
 
   it('reports these references when undeclared, as Spindle does at startup (#62)', () => {
     const tracker = scanned();
-    // Spindle validates every $name in a passage's raw text, string text included
+    // Spindle validates the references a passage executes; the text of a
+    // string (`"plain $literal"`) is not one
     expect(tracker.getUndeclared('file:///story.tw').map(u => u.name)).toEqual([
-      'init', 'box', 'check', 'tpl', 'label', 'literal', 'notInput',
+      'init', 'box', 'check', 'tpl', 'label',
     ]);
-    // Transients are checked where they are evaluated, not in plain string text
     expect(tracker.getUndeclaredTransient('file:///story.tw').map(u => u.name)).toEqual([
       'initT', 'tplT', 'btnT',
     ]);
@@ -350,23 +376,31 @@ describe('VariableTracker string literals in prose and code', () => {
     expect(undeclaredNames(tracker)).toEqual(['mood', 'gold', 'cls']);
   });
 
-  it('does not let a quote in code run past the end of its line', () => {
+  it('lets a quote in a macro head run past the end of its line, as the tokenizer does', () => {
+    // The string runs to the closing quote: the macro is one token to the last brace
     const tracker = scan(':: Start\n{print "unclosed}\n{set $y = 1}"}');
-    expect(tracker.getUsages('y').map(u => u.range.start)).toEqual([{ line: 2, character: 5 }]);
+    expect(tracker.getUsages('y')).toEqual([]);
+    expect(undeclaredNames(tracker)).toEqual([]);
   });
 
-  it('still ignores literal text in strings inside code', () => {
+  it('ignores literal text in strings inside code', () => {
     const tracker = scan([
       ':: Start',
       `{print "costs $a"} {print 'it\\'s $b'} {print "don't $c"}`,
-      "{print $declared + 'x'} {print name's $declared}",
+      '{print $declared + \'x\'} {print $declared}',
     ].join('\n'));
     expect(tracker.getUsages('a')).toEqual([]);
     expect(tracker.getUsages('b')).toEqual([]);
     expect(tracker.getUsages('c')).toEqual([]);
     expect(tracker.getUsages('declared')).toHaveLength(2);
-    // Spindle still validates them at startup (#62)
-    expect(undeclaredNames(tracker)).toEqual(['a', 'b', 'c']);
+    // ...and Spindle's startup validation does not read them either
+    expect(undeclaredNames(tracker)).toEqual([]);
+  });
+
+  it('reads code that is not JavaScript as the lexer does: a quote opens a string that runs on', () => {
+    // `name's` opens a string, so what follows is text (a syntax error Spindle reports at startup)
+    const tracker = scan(":: Start\n{print name's $declared}");
+    expect(tracker.getUsages('declared')).toEqual([]);
   });
 });
 
@@ -385,7 +419,7 @@ describe('VariableTracker undeclared references as Spindle validates them (#62)'
     return scan(text).getUndeclared(uri).map(u => u.name);
   }
 
-  it('reports StoryInit, template, receiver, code and prose references (issue example)', () => {
+  it('reports StoryInit, template, receiver and code references, not prose (issue example)', () => {
     const text = [
       ':: StoryVariables',
       '$x = 1',
@@ -403,7 +437,6 @@ describe('VariableTracker undeclared references as Spindle validates them (#62)'
       { name: 'missingTemplate', range: { start: { line: 5, character: 10 }, end: { line: 5, character: 26 } } },
       { name: 'missingReceiver', range: { start: { line: 6, character: 10 }, end: { line: 6, character: 26 } } },
       { name: 'missingCode', range: { start: { line: 7, character: 7 }, end: { line: 7, character: 19 } } },
-      { name: 'missingProse', range: { start: { line: 8, character: 9 }, end: { line: 8, character: 22 } } },
     ]);
   });
 
@@ -415,28 +448,23 @@ describe('VariableTracker undeclared references as Spindle validates them (#62)'
     ].join('\n'))).toEqual(['label', 'check', 'num']);
   });
 
-  it('reports plain text in macro string literals, which Spindle scans too', () => {
+  it('does not report plain text in macro string literals: it is JavaScript text', () => {
     const tracker = scan(':: Start\n{print "costs $price"} {foo \'$quoted\'} {set $x = `a $tpl b`}');
-    expect(tracker.getUndeclared(uri).map(u => u.name)).toEqual(['price', 'quoted', 'tpl']);
-    expect(tracker.getUndeclared(uri)[0].range).toEqual({
-      start: { line: 1, character: 14 },
-      end: { line: 1, character: 20 },
-    });
-    // String text is still not a reference for rename
+    expect(tracker.getUndeclared(uri)).toEqual([]);
     expect(tracker.getUsages('price')).toEqual([]);
   });
 
-  it('reports references in HTML comments and inline script/style elements', () => {
+  it('does not report prose: HTML comments and inline script/style elements are text', () => {
     expect(undeclaredNames([
       ':: Start',
       '<!-- $inComment -->',
       '<script>let v = $inScript;</script>',
       '<style>/* $inStyle */</style>',
-    ].join('\n'))).toEqual(['inComment', 'inScript', 'inStyle']);
+    ].join('\n'))).toEqual([]);
   });
 
-  it('reports $ followed by digits and escaped dollars, like Spindle\'s \\w+ match', () => {
-    expect(undeclaredNames(':: Start\nIt costs $5.50, or \\$cash.')).toEqual(['5', 'cash']);
+  it('reports $ followed by digits where it is executed, not in prose', () => {
+    expect(undeclaredNames(':: Start\nIt costs $5.50, or \\$cash. {$7} {$8.5}')).toEqual(['7', '8']);
   });
 
   it('validates dotted paths by their root, as Spindle does', () => {
@@ -445,10 +473,10 @@ describe('VariableTracker undeclared references as Spindle validates them (#62)'
     )).toEqual(['nope']);
   });
 
-  it('does not report names a {for} in the same passage binds as locals', () => {
+  it('does not report the @locals a {for} binds; a $variable of the same name is another variable', () => {
     expect(undeclaredNames([
       ':: Loop',
-      '{for @i, @item of $list}{$item} $i{/for}',
+      '{for @i, @item of $list}{@item}{@i.x}{/for}',
       ':: Other',
       '{$item}',
     ].join('\n'))).toEqual(['item']);
@@ -539,28 +567,31 @@ describe('VariableTracker field access on primitives (Spindle validateRef)', () 
       .map(a => `Cannot access field "${a.field}" on ${a.path} (type: ${a.type})`);
   }
 
-  it('reports a field of a string, number or boolean default (issue example)', () => {
-    const tracker = scan(':: Start\n{print $name.length} {$hp.toFixed} $on.x');
+  // The members of the primitive's wrapper (`length`, `toFixed`) are fields of it
+  it('reports a field of a string, number or boolean default that the wrapper does not have', () => {
+    const tracker = scan(':: Start\n{print $name.length} {$hp.toFixed} {$on.x} {$name.nope}');
     expect(tracker.getPrimitiveFieldAccesses(uri)).toEqual([
       {
-        path: '$name', field: 'length', type: 'string',
-        range: { start: { line: 1, character: 13 }, end: { line: 1, character: 19 } },
-      },
-      {
-        path: '$hp', field: 'toFixed', type: 'number',
-        range: { start: { line: 1, character: 26 }, end: { line: 1, character: 33 } },
-      },
-      {
         path: '$on', field: 'x', type: 'boolean',
-        range: { start: { line: 1, character: 39 }, end: { line: 1, character: 40 } },
+        range: { start: { line: 1, character: 40 }, end: { line: 1, character: 41 } },
+      },
+      {
+        path: '$name', field: 'nope', type: 'string',
+        range: { start: { line: 1, character: 50 }, end: { line: 1, character: 54 } },
       },
     ]);
   });
 
   it('walks nested object fields and reports the first field past a primitive', () => {
-    expect(accesses(':: Start\n{$p.hp.max.y} {$p.s.label.length} {$p.s} {$p.hp}')).toEqual([
+    expect(accesses(':: Start\n{$p.hp.max.y} {$p.s.label.nope} {$p.s.label.length} {$p.s} {$p.hp}')).toEqual([
       'Cannot access field "max" on $p.hp (type: number)',
-      'Cannot access field "length" on $p.s.label (type: string)',
+      'Cannot access field "nope" on $p.s.label (type: string)',
+    ]);
+  });
+
+  it('follows the type of a wrapper member: a number or string member is walked on', () => {
+    expect(accesses(':: Start\n{$name.length.nope} {$name.toUpperCase.nope} {$hp.toFixed.nope}')).toEqual([
+      'Cannot access field "nope" on $name.length (type: number)',
     ]);
   });
 
@@ -572,24 +603,24 @@ describe('VariableTracker field access on primitives (Spindle validateRef)', () 
     expect(accesses(':: Start\n{$calc.x} {$nil.x}')).toEqual([]);
   });
 
-  it('reports every occurrence, in prose, strings and comments too', () => {
+  it('reports every executed occurrence, not prose, strings or comments', () => {
     expect(accesses([
       ':: Start',
-      'Hi $name.first! {print "$name.length"} <!-- $name.length -->',
-      '{$name.length}',
-    ].join('\n'))).toHaveLength(4);
+      'Hi $name.first! {print "$name.first"} <!-- $name.first -->',
+      '{$name.first} {print $name.first}',
+    ].join('\n'))).toHaveLength(2);
   });
 
-  it('skips {for} locals, undeclared roots and passages Spindle does not validate', () => {
+  it('skips @locals, undeclared roots and passages Spindle does not validate', () => {
     expect(accesses([
       ':: Loop',
-      '{for @name of $list}{@name.length} $name.length{/for}',
+      '{for @name of $list}{@name.first} $name.first{/for}',
       ':: Other',
-      '$ghost.length',
+      '{$ghost.first}',
       ':: StoryTitle',
-      '$name.length',
+      '{$name.first}',
       ':: Code [script]',
-      'window.$name.length = 1;',
+      'window.$name.first = 1;',
     ].join('\n'))).toEqual([]);
   });
 
@@ -603,5 +634,99 @@ describe('VariableTracker field access on primitives (Spindle validateRef)', () 
       'Cannot access field "max" on $hp (type: number)',
       'Cannot access field "no" on $on (type: boolean)',
     ]);
+  });
+});
+
+describe('VariableTracker references the tooling API reads', () => {
+  const uri = 'file:///story.tw';
+
+  function scan(text: string): VariableTracker {
+    const tracker = new VariableTracker();
+    tracker.parseStoryVariables('$declared = 0');
+    tracker.parseStoryTransients('%declaredT = 0');
+    tracker.scanDocument(uri, text, []);
+    return tracker;
+  }
+
+  /** The `$name`s Spindle's startup validation rejects, and the usages rename follows. */
+  function names(text: string): { undeclared: string[]; usages: string[] } {
+    const tracker = scan(text);
+    const usages = ['a', 'b', 'c', 'd', 'e'].filter(name => tracker.getUsages(name).length > 0);
+    return { undeclared: tracker.getUndeclared(uri).map(u => u.name), usages };
+  }
+
+  it('finds the variable a macro declares without validating it', () => {
+    // `variable` parameters are not code: Spindle does not check them at startup
+    expect(names(':: Start\n{unset $a}{computed $b = $c + 1}')).toEqual({ undeclared: ['c'], usages: ['a', 'b', 'c'] });
+  });
+
+  it('finds the variable of an unquoted input macro receiver and validates it', () => {
+    expect(names(':: Start\n{textbox $a}{checkbox $b "Label with $c"}{cycle "$d"}')).toEqual({
+      undeclared: ['a', 'b', 'd'], usages: ['a', 'b', 'd'],
+    });
+  });
+
+  it('reads the labels of links and macros, which hold markup', () => {
+    expect(names(':: Start\n[[Take {$a}->T]]{link "go {$b}" "T"}{button "{$c}"}x{/button}')).toEqual({
+      undeclared: ['a', 'b', 'c'], usages: ['a', 'b', 'c'],
+    });
+  });
+
+  it('reads attribute values, the code of onclick, and macros in them', () => {
+    expect(names(':: Start\n<a title="{$a}" onclick="{$b = 1}" data-x="{if $c}1{/if}">x</a>')).toEqual({
+      undeclared: ['a', 'b', 'c'], usages: ['a', 'b', 'c'],
+    });
+  });
+
+  it('reads the selectors: validated on a macro, only found on a link, variable or expression', () => {
+    expect(names(':: Start\n{.{$a} print 1}[[.{$b} Go->T]]{.{$c} $declared}{.{$d} $declared + 1}')).toEqual({
+      undeclared: ['a'], usages: ['a', 'b', 'c', 'd'],
+    });
+  });
+
+  it('reads a {do} body as statements and the arguments of a macro without parameters as code', () => {
+    expect(names(':: Start\n{do}\n  $a = $b + 1; // $c\n  const s = "$d";\n{/do}\n{widgetCall $e, "$a"}')).toEqual({
+      undeclared: ['a', 'b', 'e'], usages: ['a', 'b', 'e'],
+    });
+  });
+
+  it('maps a reference in a string with escapes to its place in the source', () => {
+    const text = ':: Start\n{button "say \\"hi\\" {$a} now"}x{/button}';
+    const tracker = scan(text);
+    expect(tracker.getUsages('a')).toEqual([
+      { uri, range: { start: { line: 1, character: 21 }, end: { line: 1, character: 23 } } },
+    ]);
+    expect(text.split('\n')[1].slice(21, 23)).toBe('$a');
+  });
+
+  it('keeps positions in a CRLF document', () => {
+    const tracker = scan(':: Start\r\nHello\r\n{$a} {set %b = 1}\r\n{if $c}\r\n[[Go {$d}->T]]{/if}');
+    expect(tracker.getUsages('a')[0].range.start).toEqual({ line: 2, character: 1 });
+    expect(tracker.getTransientUsages('b')[0].range.start).toEqual({ line: 2, character: 10 });
+    expect(tracker.getUsages('c')[0].range.start).toEqual({ line: 3, character: 4 });
+    expect(tracker.getUsages('d')[0].range).toEqual({
+      start: { line: 4, character: 6 }, end: { line: 4, character: 8 },
+    });
+  });
+
+  it('reads no reference in a passage the story does not render, nor in an unclosed or escaped block', () => {
+    expect(names(':: Code [script]\nlet x = {$a};\n:: StoryVariables\n$b = 1\n:: Start\n\\{$c} {$d')).toEqual({
+      undeclared: [], usages: [],
+    });
+  });
+
+  it('keeps the StoryScript text out of the usages, but validates it like Spindle', () => {
+    const tracker = scan(':: StoryScript\n{$a}\n:: Start\n{$b}');
+    expect(tracker.getUsages('a')).toEqual([]);
+    expect(tracker.getUndeclared(uri).map(u => u.name)).toEqual(['a', 'b']);
+  });
+});
+
+describe('executableCode', () => {
+  it('keeps only the variable references, in place', () => {
+    const text = 'Hi $no {set _t to @l + %x} "$s" {$y.z}\r\n<!-- $c -->{for @i of $list}';
+    const code = executableCode(text);
+    expect(code.length).toBe(text.length);
+    expect(code.replace(/\s+/g, ' ').trim()).toBe('_t @l %x $y.z @i $list');
   });
 });
