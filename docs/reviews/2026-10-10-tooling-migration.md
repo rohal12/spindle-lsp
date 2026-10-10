@@ -1,8 +1,40 @@
 # Migration to the Spindle tooling API (0.59.x)
 
-Status: in progress. spindle-lsp's minimum Spindle is 0.59.20 (devDependency
-0.59.23). Its parsing is being moved from hand-written mirrors of the runtime's
-rules onto `@rohal12/spindle/tooling` (see `docs/tooling.md` in Spindle).
+Status: **complete on the branch, with four tests waiting on upstream**.
+spindle-lsp's minimum Spindle is 0.59.20 (`MINIMUM_SPINDLE_VERSION`; devDependency
+0.59.25, bundled into the executable). Its parsing, which was a set of
+hand-written mirrors of the runtime's rules checked by differential tests, is
+now `@rohal12/spindle/tooling` read through `workspace.markup`
+(`src/core/markup`): the tolerant tokens with sub-spans, the paired tree, the
+code/passage/text pieces, declarations, widget definitions, variable
+references and validation, and the markup validation behind the diagnostics.
+
+## Final state
+
+| Measure | Before (main, Spindle 0.45.1) | After |
+| --- | --- | --- |
+| Matrix (`npm run review:convergence`) | 3,995 cells | 5,209 cells, all pass (`docs/reviews/2026-10-06-cross-consumer-results.json` regenerated; cell names unchanged, cells added by earlier reviews retained) |
+| Unit + integration | 2,070 tests | 1,956 tests, 1,952 pass; 4 fail, all waiting on spindle#466 (see below) |
+| `src/` | about 10,800 lines | about 7,500 lines; `core/parsing` mirrors deleted: macro-parser, html-scanner, code-scanner, attribute-blocks, widget-arguments, the literal reader, the tracker's validation |
+| Per-release behavior | 6 capability flags, packed-release matrix | none; releases below 0.59.20 get a warning |
+
+The "State" cells in the per-scope tables below record the state when that
+scope landed; the matrix is green as a whole.
+
+### Upstream tickets (rohal12/spindle)
+
+Delivered and used: #241, #446-#451 (stateless checks, diagnostic codes and
+ranges, pairing, declarations, token sub-spans, passage pieces), #462
+(widget definitions), #464 (variable validation).
+Open, with the local code that waits on each:
+
+| Ticket | What | Waiting |
+| --- | --- | --- |
+| #466 | `parseDeclarations` disagrees with the runtime on some initializers | 4 tests: `declaration-runtime` (3), `field-access-runtime` (1) |
+| #467 | `widgetDefinitions` says `block:false` for `{@children}` in an attribute value | docs/behavior mismatch only |
+| #468 | complete variable references (`{unset}`/`{computed}` receivers, selector names) and a static reading of `Story.defineMacro` | `executable-refs.ts` extras, `macro-discovery.ts` |
+| #469 | `validateStoryMarkup` should go past a malformed tag | the `wellFormed` workaround in `diagnostics.ts` is to be deleted |
+| #470 | `parseWidgetDef` keeps the comma of `@a,` | none |
 
 ## Runtime changes since the 0.45.1/0.51.3 audit that change contracts
 
@@ -63,11 +95,9 @@ Capabilities the oracle layer cannot get from `@rohal12/spindle/tooling` (or
 ### Cell dispositions
 
 Matrix cell names, dimensions and properties are unchanged; none is skipped,
-inverted or weakened. A cell listed as "fails" disagrees with the runtime
-because `src/` still carries the old mirror, and stays failing until `src/`
-follows. `docs/reviews/2026-10-06-cross-consumer-results.json` has not been
-regenerated: it still records the old statuses (run the matrix with
-`REVIEW_PARTIAL=1` until `src/` is done).
+inverted or weakened. The State column is the state when the scope landed
+(a cell that "fails" there disagreed with the runtime because `src/` still had
+the old mirror); every cell passes now and the results file is regenerated.
 
 | Cell / family | Old rule | New rule | Evidence | State |
 | --- | --- | --- | --- | --- |
@@ -75,8 +105,6 @@ regenerated: it still records the old statuses (run the matrix with
 | `B/ordinary/goto-template` [passage-oracle] | a backtick literal is a static name | only `"..."` and `'...'` are names; a template is an expression | `passageTarget` of a backtick literal is an expression | fails |
 | `A/*/bracket-in-comment`, `B/ordinary/goto-in-comment`, `B/ordinary/widget-in-comment`, `B/ordinary/html-comment-multiline` | `[[x]]`, `{goto}` and `{widget}` inside `<!-- -->` are tokens | a closed HTML comment is one `text` token (`comment: true`) | `tokenizeMarkupTolerant('<!-- [[x]] -->')` is one comment text token; `validateMarkup` reports no missing passage for it | the semantic-token halves (`[macro-oracle]` of `goto-in-comment`) pass since `semantic-tokens.ts` reads `macroTokens`; the reference halves fail until the reference scanners follow |
 | `B/ordinary/macro-in-attr`, `B/ordinary/widget-in-attr`, `B/ordinary/link-label-interpolation` | a macro in an HTML attribute value is text; the label of a link is not interpolated | attribute values and labels hold markup; macros and variables in them are real | `passagePieces` reports `text` pieces with their tokens; `collectStoryPassageReferences` returns a `{goto 'X'}` in a `title` attribute | `link-label-interpolation [tokens]` now fails too: the semantic tokens (correctly) mark `$v` in the label, the variable tracker does not record it yet, and that cell requires a `$` token to be a reference to some consumer; passes when the tracker follows (its `[rename]` cell fails for the same reason) |
-| `B/ordinary/goto-bare-identifier`, `B/ordinary/include-bare`, `C/include-widget-other-bare/*`, `C/include-widget-other-flag-before/*` [passage-oracle, rename] | a bare `{goto Old}` navigates to `Old` (text fallback when evaluating throws) | the bare word is an expression; evaluating it throws, so it is not a reference (the oracle lists none) and a rename must quote | `passageTarget('Old')` is `{kind:'expression'}`; `validateMarkup` reports `unquoted-passage-name`; `collectStoryPassageReferences` returns nothing | fails (src reads bare names) |
-| `B/ordinary/goto-template` [passage-oracle] | a backtick literal is a static name | only `"..."` and `'...'` are names; a template is an expression | `passageTarget` of a backtick literal is an expression | fails |
 | `A/*/bracket-in-comment`, `B/ordinary/goto-in-comment`, `B/ordinary/widget-in-comment`, `B/ordinary/html-comment-multiline` | `[[x]]`, `{goto}` and `{widget}` inside `<!-- -->` are tokens | a closed HTML comment is one `text` token (`comment: true`) | `tokenizeMarkupTolerant('<!-- [[x]] -->')` is one comment text token; `validateMarkup` reports no missing passage for it | fails |
 | `B/ordinary/macro-in-attr`, `B/ordinary/widget-in-attr`, `B/ordinary/link-label-interpolation` | a macro in an HTML attribute value is text; the label of a link is not interpolated | attribute values and labels hold markup; macros and variables in them are real | `passagePieces` reports `text` pieces with their tokens; `collectStoryPassageReferences` returns a `{goto 'X'}` in a `title` attribute | fails |
 
@@ -127,8 +155,6 @@ of a project (`findSpindleTarget`: installed copy, then StoryData) only warns
 when it is older than `MINIMUM_SPINDLE_VERSION` (CLI: stderr; MCP: a `warning`
 field; LSP: the existing startup log, window message and SP001).
 
-| Test | Old rule | New rule |
-| --- | --- | --- |
 | `integration/cli.test.ts` "reports undeclared variables in StoryInit..." (#62), `integration/lsp.test.ts` "publishes SP200 ..." (#62) | pre-0.50.1 raw-text validation reports `$missingProse` and `$missingLiteral` (prose and a string literal) | Spindle >= 0.50.1 validates the variables the code reads (`variable-reads-oracle`: `lexJs` leaves `$x` in a string literal alone, prose is text): only `missingInit`, `missingTemplate`, `missingReceiver`, `missingCode` |
 | `unit/format-brace-reading` Q-format-0.50.0 | a stray `{` in a string extends the macro to the next `}` | removed: one reading; the macro ends at its own `}` (Q-format-stray-brace) |
 | `unit/placeholders-oracle` K66-scan fixtures | the hand scan was compared with the tokenizer | the scan is the tokenizer's; the oracle is `deepTokens` (`passagePieces` for attribute values), plus `{do}`-body fixtures |
@@ -233,7 +259,6 @@ are gone. Discovered macros carry the typed `parameters` of their
 tell code from text in the arguments of a project's macro.
 
 | Test / cell | Old rule | New rule | Evidence |
-| --- | --- | --- | --- |
 | `B/ordinary/widget-in-comment` [macro-oracle], `widget-in-attr` [macro-oracle] [rename] | widget calls come from a regex over the text (a call in a comment counts, one in an attribute value does not) | the calls the tokenizer reads: none in a comment, those in attribute values and labels | `tokenizeMarkupTolerant`, `passagePieces`; `findWidgetReferences` agrees with the oracle's heads |
 | `B/ordinary/widget-in-comment` [rename] | rename edits `{wid}` in `<!-- ... -->` too | the comment is text: it is not edited; SP100 on the now unknown `{wid}` in a comment is a diagnostics defect (the scanner there still reads macros in comments) | fails until SP100 reads macro tokens (diagnostics scope) |
 | `widget-registry`, `hover` "declared sigil", `completions` "parameters of its widgets", `diagnostics` "recognizes widgets..." | `$a`, `_b`, `@c` after a widget's name are parameters (the old regex scan of Spindle's 0.4x startup) | only the `@` names are (`parseWidgetDef`); `@children` is kept when written, as the runtime returns it | `parseWidgetDef('"mix" $a _b @c junk')` is `{name: 'mix', params: ['@c']}` |
@@ -273,7 +298,6 @@ Needs upstream API / observed upstream behavior (W2b):
 the markup:
 
 | Diagnostics | Source |
-| --- | --- |
 | SP100, SP105, SP106, SP109, SP113, SP300, and the malformed markup in a label or an attribute value | `validateStoryMarkup` over every passage of the workspace (once per version of the workspace's markup, kept per workspace), through `PassageMarkup.range` |
 | SP101, SP102, SP104, SP105, SP107 (`misplaced-branch`) for the tags of a passage | `PassageMarkup.tokenization.errors` and `.pairing.errors`: all of them, where `validateStoryMarkup` reports the first of a passage |
 | SP200, SP201, SP203, SP208 | `validateVariableReferences` with the declarations of `parseDeclarations`, per passage |
@@ -303,8 +327,6 @@ element, quote a bare passage name, declare an undeclared variable.
 
 Unit tests whose expectation changed with the runtime:
 
-| Test | Old rule | New rule | Evidence |
-| --- | --- | --- | --- |
 | `diagnostics`, `diagnostics-*`, `do-body`, `macro-head-differential`, `markup-contexts`, `passage-references`, `variable-declarations`, `macro-discovery`, integration `cli`/`lsp`/`mcp` (messages) | the LSP worded SP100 "Unrecognized macro: {x}", SP101 "Malformed container: ...", SP102 "Malformed element: ...", SP104 "Illegal closing tag: ...", SP200 "Variable '$x' is not declared in StoryVariables", SP300 "Passage "X" not found in workspace" | Spindle's wording: "Unknown macro {x}. Did you mean {y}?", "Unclosed {if}: no {/if} closes it", "{/x} closes nothing: no {x} is open here", "{/if} found where </p> should close the <p> opened at line 1, column 8", "Undeclared variable: $x", `No passage named "X" in [[X]].` (the label or attribute value a diagnostic is in is named first: "In the class attribute of <span>: ...") | `MarkupDiagnostic.message` |
 | `diagnostics-malformed-element`, `diagnostics-containers`, `diagnostics-contracts` X71 | SP102 stops at the first error of a passage; `<a href = "x">` is text; a closed `<!-- <div> -->` holds tags; `[[unclosed` is text; macros in a link label are text; `{/}` is a macro closer | every pairing error is reported, the tag with spaces around `=` is a tag, a comment is one text token, an unclosed `[[`, `{$` or `{name` is SP105, macros in labels and attribute values are macros (paired, checked, SP101/SP100/SP107 in them), `{/}` is SP104 and reading goes on | `pairMarkup`, `tokenizeMarkupTolerant` |
 | `diagnostics-validation`, `diagnostics-containers` {timed}/{next} | the LSP's argument schema (`macro-supplements.json`) rejected `{goto}`, `{include}`, `{textbox 42 "x"}`, `{dialog "Open" extra}`, `{timed 1s 2s}` (SP108-SP111); `{goto Chapter 1}` and `{include Name}` fell back to the text | Spindle declares the parameters of its macros and reports only `argument-error` (SP109, e.g. `{link Go}`); the others are not rejected by the runtime. A bare word or several words is an expression: `unquoted-passage-name` (SP113) or `code-syntax` (SP106). The schema checks configured macros only | `validateStoryMarkup` |
@@ -394,7 +416,6 @@ new: every case that went through the tracker's `getUndeclared`,
 `computeDiagnostics` with the range of the reference):
 
 | Test | What happened | Reason |
-| --- | --- | --- |
 | `variable-schema.test.ts` (whole file) | deleted | `findPrimitiveFieldAccess` is gone; SP201 against the runtime is `field-access-runtime` and `executable-refs` "SP201 matches the runtime" (both now through `computeDiagnostics`) |
 | `variable-tracker.test.ts` "detects undeclared variables" | deleted | `diagnostics.test` "produces SP200" |
 | same, "reports these references when undeclared ... (#62)" | ported | `diagnostics-variables` (StoryInit, template, label, receiver, transients) and `diagnostics.test` #62 |
