@@ -57,11 +57,12 @@ describe('computeCodeActions', () => {
     expect(action.edits[0].newText).toContain('$unknown = 0');
   });
 
-  it('declares a $ followed by digits, which Spindle reads as a variable (#62)', () => {
-    const content = ':: StoryVariables\n$health = 100\n\n:: Start\nIt costs $5.';
+  it('declares a $ followed by digits in code, which Spindle reads as a variable (#62)', () => {
+    // In prose `$5` is text; in code it is a variable
+    const content = ':: StoryVariables\n$health = 100\n\n:: Start\nIt costs $5. {print $5}';
     const ws = createWorkspace({ name: 'test.tw', content });
     const sp200 = computeDiagnostics('file:///test.tw', ws).filter(d => d.code === 'SP200');
-    expect(sp200.map(d => d.message)).toEqual(["Variable '$5' is not declared in StoryVariables"]);
+    expect(sp200.map(d => d.message)).toEqual(['Undeclared variable: $5']);
 
     const actions = computeCodeActions('file:///test.tw', sp200, ws);
     expect(actions.map(a => a.title)).toEqual(["Declare '$5' in StoryVariables"]);
@@ -115,14 +116,14 @@ describe('computeCodeActions', () => {
   it('returns no actions for non-actionable diagnostics', () => {
     const ws = createWorkspace({
       name: 'test.tw',
-      content: ':: TestPassage\n{if $x}missing closing tag',
+      content: ':: TestPassage\n{/set}',
     });
     const diags = computeDiagnostics('file:///test.tw', ws);
-    // SP101 (malformed container) has no quick fix
-    const sp101 = diags.filter(d => d.code === 'SP101');
-    expect(sp101.length).toBeGreaterThan(0);
+    // SP104 (a closing tag that closes nothing) has no quick fix
+    const sp104 = diags.filter(d => d.code === 'SP104');
+    expect(sp104.length).toBeGreaterThan(0);
 
-    const actions = computeCodeActions('file:///test.tw', sp101, ws);
+    const actions = computeCodeActions('file:///test.tw', sp104, ws);
     expect(actions).toHaveLength(0);
   });
 
@@ -153,48 +154,82 @@ describe('computeCodeActions', () => {
   });
 });
 
-describe('computeCodeActions for SP103 (macro in an HTML attribute)', () => {
-  const vars = ':: StoryVariables\n$n = 1\n$s = "a"\n';
+/** Apply the first action of `title` to the story and return the codes reported afterwards. */
+function applyAndDiagnose(ws: WorkspaceModel, uri: string, diagnostics: ReturnType<typeof computeDiagnostics>, title: string | RegExp) {
+  const actions = computeCodeActions(uri, diagnostics, ws);
+  const action = actions.find(a => (typeof title === 'string' ? a.title === title : title.test(a.title)));
+  expect(action, `${title} among ${JSON.stringify(actions.map(a => a.title))}`).toBeDefined();
+  const doc = TextDocument.create(uri, 'twee', 0, ws.documents.getText(uri)!);
+  const edits = action!.edits.filter(e => e.uri === uri).map(e => ({ range: e.range, newText: e.newText }));
+  ws.documents.update(uri, TextDocument.applyEdits(doc, edits));
+  return computeDiagnostics(uri, ws);
+}
 
-  function fixes(line: string) {
-    const ws = createWorkspace({ name: 'test.tw', content: `${vars}:: Start\n${line}\n` });
-    const diags = computeDiagnostics('file:///test.tw', ws).filter(d => d.code === 'SP103');
-    return { diags, actions: computeCodeActions('file:///test.tw', diags, ws) };
-  }
+describe('computeCodeActions on the diagnostics of the tooling API', () => {
+  const uri = 'file:///test.tw';
+  const vars = ':: StoryVariables\n$x = 1\n\n';
 
-  it('rewrites {if C}A{else}B{/if} as {C ? \'A\' : \'B\'}', () => {
-    const { diags, actions } = fixes('<span class="{if @d.delta > 0}delta-positive{else}delta-negative{/if}">x</span>');
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toMatchObject({
-      title: "Rewrite as {@d.delta > 0 ? 'delta-positive' : 'delta-negative'}",
-      kind: 'quickfix',
-      diagnosticCodes: ['SP103'],
-    });
-    expect(actions[0].edits).toEqual([{
-      uri: 'file:///test.tw',
-      range: diags[0].range,
-      newText: "{@d.delta > 0 ? 'delta-positive' : 'delta-negative'}",
-    }]);
+  it('changes an unknown macro to the closest known one (SP100)', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: `${vars}:: Start\n{sett $x = 2}\n{.cls prnt $x}` });
+    const sp100 = computeDiagnostics(uri, ws).filter(d => d.code === 'SP100');
+    expect(sp100).toHaveLength(2);
+    const titles = computeCodeActions(uri, sp100, ws).map(a => a.title);
+    expect(titles).toEqual(expect.arrayContaining(["Change to '{set}'", "Change to '{print}'"]));
+
+    const after = applyAndDiagnose(ws, uri, [sp100[0]], "Change to '{set}'");
+    expect(ws.documents.getText(uri)).toContain('{set $x = 2}');
+    expect(after.filter(d => d.code === 'SP100').map(d => d.message)).toEqual([expect.stringContaining('{prnt}')]);
+    // the selectors of the second macro stay where they are
+    const fixed = applyAndDiagnose(ws, uri, after.filter(d => d.code === 'SP100'), "Change to '{print}'");
+    expect(ws.documents.getText(uri)).toContain('{.cls print $x}');
+    expect(fixed).toEqual([]);
   });
 
-  it('rewrites {if C}A{/if} with an empty else branch', () => {
-    const { actions } = fixes(`<div class='card {if $s == "a"}active{/if}'>x</div>`);
-    expect(actions.map(a => a.edits[0].newText)).toEqual([`{$s == "a" ? 'active' : ''}`]);
+  it('closes an unclosed block where the passage ends (SP101)', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: `${vars}:: Start\n{if $x}\none\n\n:: Other\ntwo\n` });
+    const sp101 = computeDiagnostics(uri, ws).filter(d => d.code === 'SP101');
+    expect(sp101).toHaveLength(1);
+    const after = applyAndDiagnose(ws, uri, sp101, 'Insert {/if}');
+    expect(ws.documents.getText(uri)).toBe(`${vars}:: Start\n{if $x}\none{/if}\n\n:: Other\ntwo\n`);
+    expect(after).toEqual([]);
   });
 
-  it('rewrites {print E} as {E}', () => {
-    const { diags, actions } = fixes(`<span class="d {print $n > 0 ? 'pos' : 'neg'}">x</span>`);
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toMatchObject({ title: "Rewrite as {$n > 0 ? 'pos' : 'neg'}", diagnosticCodes: ['SP103'] });
-    expect(actions[0].edits).toEqual([{ uri: 'file:///test.tw', range: diags[0].range, newText: "{$n > 0 ? 'pos' : 'neg'}" }]);
+  it('closes an unclosed element too (SP102), in a CRLF document', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\r\n<div>\r\none\r\n\r\n:: Other\r\ntwo\r\n' });
+    const sp102 = computeDiagnostics(uri, ws).filter(d => d.code === 'SP102');
+    expect(sp102).toHaveLength(1);
+    const after = applyAndDiagnose(ws, uri, sp102, 'Insert </div>');
+    expect(ws.documents.getText(uri)).toBe(':: Start\r\n<div>\r\none</div>\r\n\r\n:: Other\r\ntwo\r\n');
+    expect(after).toEqual([]);
   });
 
-  it('offers no fix for other blocks', () => {
-    expect(fixes('<span class="{print !$n}">x</span>').actions).toEqual([]);
-    expect(fixes('<span class="{print $s + \'}\'}">x</span>').actions).toEqual([]);
-    expect(fixes('<span class="{if !$n}a{/if}">x</span>').actions).toEqual([]);
-    expect(fixes('<span class="{if $n}a{elseif $s}b{/if}">x</span>').actions).toEqual([]);
-    expect(fixes('<span class="{for _i range 3}a{/for}">x</span>').actions).toEqual([]);
-    expect(fixes(`<span class="{!$n ? 'a' : 'b'}">x</span>`).actions).toEqual([]);
+  it('quotes a bare passage name (SP113)', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n{goto Other}\n:: Other\ntwo\n' });
+    const sp113 = computeDiagnostics(uri, ws).filter(d => d.code === 'SP113');
+    expect(sp113).toHaveLength(1);
+    const after = applyAndDiagnose(ws, uri, sp113, 'Quote the passage name: "Other"');
+    expect(ws.documents.getText(uri)).toBe(':: Start\n{goto "Other"}\n:: Other\ntwo\n');
+    expect(after).toEqual([]);
+  });
+
+  it('creates the passage of a broken link, or changes the link to a close name (SP300)', () => {
+    const create = createWorkspace({ name: 'test.tw', content: ':: Start\n[[Go->Nowhere [1]]]\n' });
+    const broken = computeDiagnostics(uri, create).filter(d => d.code === 'SP300');
+    expect(broken).toHaveLength(1);
+    const created = applyAndDiagnose(create, uri, broken, "Create passage 'Nowhere [1'");
+    expect(create.documents.getText(uri)).toContain('\n:: Nowhere \\[1\n');
+    expect(created.filter(d => d.code === 'SP300')).toEqual([]);
+
+    const change = createWorkspace({ name: 'test.tw', content: ':: Start\n[[Hal]] {goto "Hal"} {link "x" \'Hal\'}y{/link}\n:: Hall\nx\n' });
+    const links = computeDiagnostics(uri, change).filter(d => d.code === 'SP300');
+    expect(links).toHaveLength(3);
+    const titles = computeCodeActions(uri, links, change).map(a => a.title);
+    expect(titles).toContain("Change to 'Hall'");
+    // each keeps the way its name is written
+    for (let i = 0; i < 3; i++) {
+      const left = computeDiagnostics(uri, change).filter(d => d.code === 'SP300');
+      applyAndDiagnose(change, uri, [left[0]], /^Change to 'Hall'$/);
+    }
+    expect(change.documents.getText(uri)).toBe(':: Start\n[[Hall]] {goto "Hall"} {link "x" \'Hall\'}y{/link}\n:: Hall\nx\n');
   });
 });

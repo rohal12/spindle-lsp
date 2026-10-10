@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { passageTarget, splitArgs } from '@rohal12/spindle/tooling';
+import { passageTarget, splitArgs, splitIncludeFlag } from '@rohal12/spindle/tooling';
 import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../src/core/types.js';
@@ -21,7 +21,6 @@ import { findPassageReferences } from '../../src/plugins/references.js';
 import { getDefinition } from '../../src/plugins/definition.js';
 import { computeDocumentLinks } from '../../src/plugins/document-link.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
-import { resolveIncludeTarget } from '../../src/plugins/diagnostics.js';
 import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
 import { decodeStringLiteralBody, encodeStringLiteralBody } from '../../src/core/parsing/js-string-literal.js';
 
@@ -284,10 +283,16 @@ describe('L77 (extra): static literal decoding', () => {
   it('L77-malformed-dynamic: malformed and dynamic targets are not static references', () => {
     expect(refsOf(':: StoryVariables\n:: Next\nhello\n:: Start\n{goto "\\u00"} {goto "\\u004e" + $x} {include `\\u004e${$x}`}')).toEqual([]);
   });
-  it('L77-diagnostics: the include-target resolver decodes like the reference parser', () => {
-    expect(resolveIncludeTarget('"\\u004eext"')).toBe('Next');
-    expect(resolveIncludeTarget('"\\x4eext" inline')).toBe('Next');
-    expect(resolveIncludeTarget('"\\u00"')).toBeNull();
+  it('L77-diagnostics: SP302 decodes the include target like the reference parser', () => {
+    const sp302 = (args: string) => {
+      const model = new WorkspaceModel();
+      model.initialize(new Map([[uri, `:: StoryVariables\n:: Next [widget]\n{widget "greet"}hi{/widget}\n:: Start\n{include ${args}}\n`]]));
+      models.push(model);
+      return computeDiagnostics(uri, model).filter(d => d.code === 'SP302').length;
+    };
+    expect(sp302('"\\u004eext"')).toBe(1);
+    expect(sp302('"\\x4eext" inline')).toBe(1);
+    expect(sp302('"\\u00"')).toBe(0);
   });
   it('L77-range: the reference range keeps the original escaped spelling', () => {
     const [ref] = refsOf(':: Start\n{goto "\\u004eext"}');
@@ -345,14 +350,15 @@ describe('L77 (include target identity): references and SP302 read {include}', (
     });
   }
 
-  it('L77/include-inline-resolver-flags: the resolver reads the flag as splitIncludeFlag does', () => {
-    expect(resolveIncludeTarget('"Other" inline')).toBe('Other');
-    expect(resolveIncludeTarget('inline "Other"')).toBe('Other');
-    expect(resolveIncludeTarget('Other inline')).toBeNull();
-    expect(resolveIncludeTarget('$x')).toBeNull();
-    expect(resolveIncludeTarget('"\\u00"')).toBeNull();
-    expect(resolveIncludeTarget('"inline"')).toBe('inline');
-    expect(resolveIncludeTarget('"inline" inline')).toBe('inline');
+  it('L77/include-inline-resolver-flags: the flag is read as splitIncludeFlag does', () => {
+    // SP302 fires for exactly the arguments whose passage is a quoted name, after the flag is taken off
+    for (const args of ['"Other" inline', 'inline "Other"', 'Other inline', '$x', '"\\u00"', '"inline"', '"inline" inline']) {
+      const target = passageTarget(splitIncludeFlag(args).passage ?? '');
+      const name = target.kind === 'name' ? target.name : undefined;
+      const got = identity(args, name ?? 'Other');
+      expect(got.names, args).toEqual(name === undefined ? [] : [name]);
+      expect(got.sp302, args).toBe(name === undefined ? 0 : 1);
+    }
   });
 
   it('L77/include-inline-range: the reference keeps the original escaped spelling', () => {

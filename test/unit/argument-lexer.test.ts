@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lexArguments, countArguments, ArgType } from '../../src/core/parsing/argument-lexer.js';
+import { lexArguments, ArgType } from '../../src/core/parsing/argument-lexer.js';
 
 describe('lexArguments', () => {
   it('lexes double-quoted string', () => {
@@ -167,19 +167,5 @@ describe('lexArguments', () => {
     const args = lexArguments('[img[photo.jpg]]');
     expect(args).toHaveLength(1);
     expect(args[0].type).toBe(ArgType.Image);
-  });
-});
-
-describe('countArguments', () => {
-  it('counts zero args', () => {
-    expect(countArguments('')).toBe(0);
-  });
-
-  it('counts one arg', () => {
-    expect(countArguments('"hello"')).toBe(1);
-  });
-
-  it('counts multiple args', () => {
-    expect(countArguments('"a" "b" 42')).toBe(3);
   });
 });

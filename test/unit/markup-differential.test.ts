@@ -3,26 +3,22 @@
  * (the public tooling API), and the closest public equivalent of its
  * interpolate() (test/helpers/interpolation-oracle.ts).
  *
- *  - D3: where `[[` is a link and where a macro head is a macro, with HTML
- *    attribute values in between (attributeValueSpans, parseMacros,
- *    findBracketLinks) — quoted, single-quoted and unquoted values, `>` in
- *    values, multiline and unterminated values, macros inside values.
- *  - D1: macro-looking bracket-link labels are link text; the variables a
- *    link reads are the ones interpolate() reads.
+ *  - D3: where `[[` is a link, with HTML attribute values in between — quoted,
+ *    single-quoted and unquoted values, `>` in values, multiline and
+ *    unterminated values, macros inside values: the passage names the
+ *    language server reads are the ones the tokenizer reads.
+ *  - D1: bracket-link labels hold markup; the passage names and the variables
+ *    a link reads are the ones Spindle reads.
  *
  * Every fixture runs with LF and CRLF line endings.
  */
 import { describe, expect, it } from 'vitest';
 import { collectStoryPassageReferences } from '@rohal12/spindle/tooling';
-import { builtinMacros, deepTokens, tokenize, type Token } from '../helpers/tooling.js';
+import { builtinMacros, tokenize } from '../helpers/tooling.js';
 import { runtimeBracketLink } from '../helpers/link-macro-oracle.js';
 import { runtimeVariableReads } from '../helpers/variable-reads-oracle.js';
-import { attributeValueSpans } from '../../src/core/parsing/html-scanner.js';
-import { findBracketLinks } from '../../src/core/parsing/link-parser.js';
 import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { buildLineStarts, parseMacros } from '../../src/core/parsing/macro-parser.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 
 /** The passage names written out in `text`, read as the body of a passage. */
@@ -34,44 +30,9 @@ function passageRefsOf(text: string) {
   return refs;
 }
 
-interface Facts {
-  links: Array<[number, number]>;
-  macros: Array<[number, string, boolean]>;
-  attributes: string[];
-}
-
-/** What Spindle's tokenizer reads from one passage's text. */
-function oracle(text: string): Facts {
-  const tokens = tokenize(text);
-  return {
-    links: tokens.filter((t): t is Extract<Token, { type: 'link' }> => t.type === 'link').map(t => [t.start, t.end]),
-    // Spindle 0.59 reads the markup in link labels and attribute values too: its macros are macros
-    macros: deepTokens(text)
-      .map(({ token }) => token)
-      .filter((t): t is Extract<Token, { type: 'macro' }> => t.type === 'macro')
-      .sort((a, b) => a.start - b.start)
-      .map(t => [t.start, t.name, t.isClose]),
-    attributes: tokens
-      .filter((t): t is Extract<Token, { type: 'html' }> => t.type === 'html' && !t.isClose)
-      .flatMap(t => Object.values(t.attributes))
-      .filter(value => value !== ''),
-  };
-}
-
-/** What the language server reads from the same text, counting braces as the installed release does. */
-function ours(text: string): Facts {
-  const lineStarts = buildLineStarts(text);
-  const reading = INSTALLED_CAPABILITIES;
-  return {
-    links: findBracketLinks(text, reading).map(link => [link.start, link.end]),
-    macros: parseMacros(text, reading).map(m => [lineStarts[m.range.start.line] + m.range.start.character, m.name, !m.open]),
-    attributes: attributeValueSpans(text, reading).map(([start, end]) => text.slice(start, end)).filter(value => value !== ''),
-  };
-}
-
 const eols = [['LF', '\n'], ['CRLF', '\r\n']] as const;
 
-describe('D3: [[ inside HTML attribute values, against tokenize()', () => {
+describe('D3: [[ inside HTML attribute values, against the tokenizer', () => {
   const fixtures: Array<[string, string]> = [
     ['double-quoted', '<a title="[[x]]">{goto "A"}</a> [[y->B]]'],
     ['single-quoted', "<a title='[[x]]'>{goto \"A\"}</a> [[y->B]]"],
@@ -109,39 +70,8 @@ describe('D3: [[ inside HTML attribute values, against tokenize()', () => {
         expect(passageRefsOf(text).map(r => r.name).sort()).toEqual(targets.sort());
       });
 
-      it(`D3 ${name} (${eolName})`, () => {
-        const text = source.replace(/\n/g, eol);
-        expect(ours(text)).toEqual(oracle(text));
-      });
     }
   }
-
-  it('D3-fuzz: random markup built from tag, link, macro and quote fragments agrees with tokenize()', () => {
-    const fragments = [
-      '[[', ']]', '{if $x}', '{/if}', '{goto "A"}', '<a href="', '">', "<div class='", "'>", '<p title=', ' ', '>',
-      '"', "'", '{', '}', 'x', '\n', '\r\n', '<img src="a" ', '/>', '{$v}', '|', '->', '<b>', '</b>',
-      '{set $a = "[["}', '{.c if}', '\\{', '\\', '[[a->b]]', '<span class="{if $x}a{/if}">', '<a title="[[x]]">',
-      '=', 'a="', "a='", '[', ']', '<', '/', '<!-- ', ' -->', '{_t}', '{@l}', '{%t}', '{.a#b $x}', '{#i{$k} goto "Z"}',
-    ];
-    let seed = 20261006;
-    const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-    let compared = 0;
-    for (let n = 0; n < 6000; n++) {
-      let text = '';
-      for (let k = 1 + Math.floor(random() * 10); k > 0; k--) text += fragments[Math.floor(random() * fragments.length)];
-      // Out of scope here: attributes that repeat a name (tokenize() keeps
-      // the last). Braces and quotes are compared as the installed release
-      // reads them: every brace counts before 0.50.1, strings are skipped from it.
-      if (/(\w+)=[\s\S]*\b\1=/.test(text)) continue;
-      compared++;
-      const [expected, actual] = [oracle(text), ours(text)];
-      // Macro heads with names outside the macro grammar ({a=b}) are not compared
-      expect(actual.links, JSON.stringify(text)).toEqual(expected.links);
-      expect(actual.attributes, JSON.stringify(text)).toEqual(expected.attributes);
-      expect(actual.macros, JSON.stringify(text)).toEqual(expected.macros.filter(([, name]) => /^[A-Za-z][\w-]*$/.test(name)));
-    }
-    expect(compared).toBeGreaterThan(3000);
-  });
 });
 
 describe('D1: macros in bracket-link labels are macros (a label holds markup)', () => {
@@ -208,11 +138,6 @@ describe('D1: macros in bracket-link labels are macros (a label holds markup)', 
       it(`D1 ${name} (${eolName})`, () => {
         const text = source.replace(/\n/g, eol);
 
-        // Macros: the ones the tokenizer reads, including those in link labels (markup of their own)
-        const macroNames = deepTokens(text).flatMap(({ token }) => (token.type === 'macro' ? [token] : []))
-          .sort((a, b) => a.start - b.start).map(t => t.name);
-        expect(parseMacros(text).map(m => m.name)).toEqual(macroNames);
-
         // Variable usages: what Spindle reads
         expect(oursReads(text)).toEqual(oracleReads(text));
       });
@@ -241,9 +166,5 @@ describe('C-D1-quote: the link macro reads its arguments as JavaScript string li
     expect(tokenize(text)[0]).toMatchObject({ type: 'link', target: 'Target' });
     // the {goto "X"} in the label is markup of its own, so it is a macro and a reference too
     expect(passageRefsOf(text).map(r => r.name).sort()).toEqual(['Target', 'X']);
-  });
-
-  it('C-D1-quote: the macro in the label is a macro', () => {
-    expect(parseMacros('[[{goto "X"}->Target]]').map(m => m.name)).toEqual(['goto']);
   });
 });

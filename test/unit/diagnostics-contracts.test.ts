@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { tokenize } from '../helpers/tooling.js';
+import { deepTokens } from '../helpers/tooling.js';
 import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
@@ -22,29 +22,45 @@ afterEach(() => { for (const model of models.splice(0)) model.dispose(); });
 const diags = (model: WorkspaceModel, u = uri) => computeDiagnostics(u, model);
 const codes = (model: WorkspaceModel, u = uri) => diags(model, u).map(d => d.code);
 
-describe('X71: macro-looking link labels remain labels (#71)', () => {
-  it('X71: {if} in a label causes no SP101', () => {
-    const body = '[[{if true}label|Next]]';
-    expect(tokenize(body).filter(t => t.type === 'macro')).toHaveLength(0);
+describe('X71: macros in link labels are macros (#71)', () => {
+  // The label of a link holds markup (Spindle 0.59): a macro in it is a real macro, paired and checked like any other
+  // (before, a macro-looking label was text, so none of these were diagnosed)
+  const macrosIn = (body: string) => deepTokens(body).filter(t => t.token.type === 'macro');
+
+  it('X71: an {if} in a label pairs with its {/if}', () => {
+    const body = '[[{if true}label{/if}|Next]]';
+    expect(macrosIn(body).every(t => t.nested)).toBe(true);
+    expect(macrosIn(body)).toHaveLength(2);
     const model = workspace(`:: StoryVariables\n:: Next\nhello\n:: Start\n${body}`);
-    expect(codes(model)).not.toContain('SP101');
+    expect(codes(model)).toEqual([]);
   });
-  for (const [id, label] of [['unknown', '{unknown}'], ['closing', '{/if}'], ['arrow', '{if true}']]) {
-    it(`X71-${id}: ${label} label is neither SP100 nor SP101/SP104`, () => {
+  it('X71: an unclosed {if} in a label is SP101, at the macro', () => {
+    const body = '[[{if true}label|Next]]';
+    expect(macrosIn(body)).toHaveLength(1);
+    const model = workspace(`:: StoryVariables\n:: Next\nhello\n:: Start\n${body}`);
+    const found = diags(model);
+    expect(found.map(d => d.code)).toEqual(['SP101']);
+    expect(found[0].message).toBe('In the label of a link: Unclosed {if}: no {/if} closes it');
+    expect(found[0].range).toEqual({ start: { line: 4, character: 2 }, end: { line: 4, character: 11 } });
+  });
+  for (const [id, label, expected] of [['unknown', '{unknown}', 'SP100'], ['closing', '{/if}', 'SP101'], ['arrow', '{if true}', 'SP101']]) {
+    it(`X71-${id}: a ${label} label is a macro, diagnosed as ${expected}`, () => {
       const body = id === 'arrow' ? `[[${label}label->Next]]` : `[[${label}x|Next]]`;
-      expect(tokenize(body).filter(t => t.type === 'macro')).toHaveLength(0);
+      expect(macrosIn(body)).toHaveLength(1);
       const model = workspace(`:: StoryVariables\n:: Next\nhello\n:: Start\n${body}`);
-      expect(codes(model).filter(c => c !== 'SP300')).toEqual([]);
+      expect(codes(model)).toEqual([expected]);
     });
   }
-  it('C-X71: a real if block next to a link still pairs and is diagnosed', () => {
-    expect(codes(workspace(':: StoryVariables\n:: Next\nhi\n:: Start\n{if true}[[{if true}a|Next]]{/if}'))).toEqual([]);
+  it('C-X71: a real if block around a link with a macro label pairs both', () => {
+    expect(codes(workspace(':: StoryVariables\n:: Next\nhi\n:: Start\n{if true}[[{if true}a{/if}|Next]]{/if}'))).toEqual([]);
+    // the {if} in the label does not close the block around the link
+    expect(codes(workspace(':: StoryVariables\n:: Next\nhi\n:: Start\n{if true}[[{if true}a|Next]]{/if}'))).toEqual(['SP101']);
     const model = workspace(':: StoryVariables\n:: Next\nhi\n:: Start\n[[a|Next]] {if true} [[b|Next]]');
     expect(codes(model)).toContain('SP101');
   });
   it('C-X71: an unclosed link does not mask the rest of the passage', () => {
     const model = workspace(':: StoryVariables\n:: Start\n[[oops {if true}');
-    expect(codes(model)).toContain('SP101');
+    expect(codes(model)).toEqual(['SP105', 'SP101']);
   });
   it('C-X71: a link inside macro arguments does not hide following macros', () => {
     const model = workspace(':: StoryVariables\n:: Next\nhi\n:: Start\n{print "[["} {if true} ]] ');

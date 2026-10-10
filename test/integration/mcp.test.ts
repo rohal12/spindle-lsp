@@ -71,7 +71,7 @@ describe('MCP spindle_check', () => {
       // Should detect the malformed container (missing /if)
       const containerError = results.find(r => r.code === 'SP101');
       expect(containerError).toBeDefined();
-      expect(containerError!.message).toContain('Malformed container');
+      expect(containerError!.message).toContain('Unclosed {if}');
     } finally {
       workspace.dispose();
     }
@@ -261,14 +261,14 @@ describe('MCP spindle_check custom macro sources (#47)', () => {
     // Macro sources are loaded for discovery, not reported on
     expect(new Set(results.map(r => r.file))).toEqual(new Set(['story/a.tw']));
     expect(results.filter(r => r.code === 'SP100').map(r => r.message)).toEqual([
-      'Unrecognized macro: {vendored}',
+      'Unknown macro {vendored}.',
     ]);
   });
 
   it('finds the project\'s macro sources from a subdirectory', async () => {
     const results = await checkFiles('a.tw', undefined, join(tmpDir, 'story'));
     expect(results.filter(r => r.code === 'SP100').map(r => r.message)).toEqual([
-      'Unrecognized macro: {vendored}',
+      'Unknown macro {vendored}.',
     ]);
   });
 });

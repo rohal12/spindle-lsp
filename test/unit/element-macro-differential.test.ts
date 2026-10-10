@@ -11,11 +11,10 @@
  *  - diagnostics (SP101 container, SP102 element, SP104 closer): none when
  *    the runtime accepts the passage; otherwise one at the tag the pairing
  *    reports first (or, for an unclosed node, at the innermost one);
- *  - folding ranges: the pairs the runtime makes, up to its first error;
+ *  - folding ranges: the pairs `pairMarkup` makes, recovered ones included;
  *  - widget heads (references, definition, rename): an opener always; a
  *    closer when pairMarkup pops it, or when a container of its name is open
- *    (written out of order), but not a stray one;
- *  - the pairing every one of them shares (pairMacros / parseDocumentMacros).
+ *    (written out of order), but not a stray one.
  *
  * Tokens after the first error are never rendered, so nothing is asserted
  * about them.
@@ -23,7 +22,8 @@
 import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { isBlockMacro } from '@rohal12/spindle/tooling';
-import { tokenize, type Token } from '../helpers/tooling.js';
+import { pair, tokenize, type Token } from '../helpers/tooling.js';
+import { walkNodes } from '../../src/core/markup/tree.js';
 import { runtimeMarkupFailure } from '../helpers/runtime-ast.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
@@ -31,7 +31,6 @@ import { computeFoldingRanges } from '../../src/plugins/folding-range.js';
 import { findWidgetReferences } from '../../src/plugins/references.js';
 import { getDefinition } from '../../src/plugins/definition.js';
 import { computeRename } from '../../src/plugins/rename.js';
-import { parseDocumentMacros } from '../../src/core/parsing/macro-parser.js';
 
 /** The widget `wrap` is a block widget (its body renders {@children}); the built-in blocks are Spindle's. */
 const isBlock = (name: string) => name.toLowerCase() === 'wrap' || isBlockMacro(name);
@@ -206,29 +205,21 @@ for (const [eolName, eol, max] of [['LF', '\n', 5], ['CRLF', '\r\n', 4]] as cons
 }
 
 for (const [label, symbols, max] of [['six symbols', SYMBOLS, 5], ['eight symbols, two element names', WIDE, 4]] as const) {
-describe(`folding and pairing against pairMarkup (${label})`, () => {
-  it('folds the pairs pairMarkup makes, up to its first error', () => {
+describe(`folding against pairMarkup (${label})`, () => {
+  it('folds the pairs pairMarkup makes, the ones it recovers after an error included', () => {
     for (const sequence of sequences(max, symbols)) {
       const body = sequence.join('\n');
       const story = `:: Start\n${body}`;
-      const v = verdict(body);
-      const tokens = tokenize(body).filter(t => t.type === 'macro' || t.type === 'html');
-      // one token per line: line = token index + 1 (the header)
-      const line = (index: number) => index + 1;
+      const lineOf = (offset: number) => body.slice(0, offset).split('\n').length;
+      const expected = [...walkNodes(pair(body, isBlock).nodes)]
+        .filter(node => node.token.type === 'macro' && node.body?.close)
+        .map(node => `${lineOf(node.token.start)}-${lineOf(node.body!.close!.start)}`);
       const ws = workspaceFor(story);
       const folds = computeFoldingRanges(storyUri, ws)
         .filter(r => r.kind === undefined)
         .map(r => `${r.startLine}-${r.endLine}`);
       ws.dispose();
-      const limit = v.failing === -1 ? tokens.length : v.failing + 1;
-      const all = new Map(v.pairs);
-      if (v.failing !== -1 && v.rejectedPairs !== undefined && v.rejectedPairs !== -1) all.set(v.failing, v.rejectedPairs);
-      const expected = [...all.entries()]
-        .filter(([closer, opener]) => closer < limit && tokens[closer].type === 'macro' && tokens[opener].type === 'macro')
-        .map(([closer, opener]) => `${line(opener)}-${line(closer)}`);
-      // folds that lie wholly up to the failing token
-      const got = folds.filter(f => Number(f.split('-')[1]) <= line(limit - 1));
-      expect(got.sort(), `${JSON.stringify(body)}: ${v.message}`).toEqual(expected.sort());
+      expect(folds.sort(), `${JSON.stringify(body)}: ${verdict(body).message ?? 'ok'}`).toEqual(expected.sort());
     }
   });
 });
@@ -281,35 +272,6 @@ describe(`widget heads against pairMarkup (${label})`, () => {
       expect(definitions, `definition ${label}`).toEqual(expected);
       if (tokens.some(t => t.type === 'macro' && t.name === 'wrap' && !t.isClose)) {
         expect(renamed.sort((a, b) => a - b), `rename ${label}`).toEqual(expected);
-      }
-    }
-  });
-});
-
-describe(`the shared pairing against pairMarkup (${label})`, () => {
-  it('pairs every closer pairMarkup accepts with the opener it pops', () => {
-    for (const sequence of sequences(max, symbols)) {
-      const body = sequence.join('');
-      const story = `:: Start\n${body}`;
-      const v = verdict(body);
-      const tokens = tokenize(body).filter(t => t.type === 'macro' || t.type === 'html');
-      const ws = workspaceFor(story);
-      const macros = parseDocumentMacros(story, ws.passages.getPassagesInDocument(storyUri), name => ws.isContainer(name));
-      ws.dispose();
-      const limit = v.failing === -1 ? tokens.length : v.failing + 1;
-      const macroTokens = tokens.map((t, i) => ({ t, i })).filter(({ t }) => t.type === 'macro');
-      // macros[k] corresponds to macroTokens[k] while the parser and the tokenizer agree
-      for (let k = 0; k < macroTokens.length; k++) {
-        const { t, i } = macroTokens[k];
-        if (i >= limit || t.type !== 'macro' || !t.isClose) continue;
-        const accepted = v.pairs.get(i) ?? (i === v.failing ? v.rejectedPairs : undefined);
-        if (accepted === undefined) continue;
-        if (accepted === -1) {
-          expect(macros[k].pair, `${JSON.stringify(body)}: rejected closer ${k}`).toBe(-1);
-          continue;
-        }
-        const opener = macroTokens.findIndex(m => m.i === accepted);
-        expect(macros[k].pair, `${JSON.stringify(body)}: closer ${k}`).toBe(opener);
       }
     }
   });

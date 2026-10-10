@@ -79,8 +79,8 @@ describe('arrow link forms', () => {
 
   it('reports SP300 with the target name when it is missing', () => {
     expect(sp300Messages(':: Start\n[[go->Nowhere]]\n[[Gone<-go]]')).toEqual([
-      'Passage "Nowhere" not found in workspace',
-      'Passage "Gone" not found in workspace',
+      'No passage named "Nowhere" in [[go->Nowhere]].',
+      'No passage named "Gone" in [[Gone<-go]].',
     ]);
   });
 
