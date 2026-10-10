@@ -4,6 +4,7 @@ import { PassageIndex } from './passage-index.js';
 import { MacroRegistry } from './macro-registry.js';
 import { VariableTracker, BUILTIN_STORE_VAR_MACROS } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
+import { MarkupIndex } from '../markup/markup-index.js';
 import { parseDocumentMacros, type MacroHeadPairing } from '../parsing/macro-parser.js';
 import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
@@ -45,6 +46,8 @@ export class WorkspaceModel extends EventEmitter {
   readonly macros: MacroRegistry;
   readonly variables: VariableTracker;
   readonly widgets: WidgetRegistry;
+  /** Every document's markup, read through Spindle's tooling API. */
+  readonly markup: MarkupIndex;
 
   /** True after initialize() has completed (full workspace scan done). */
   initialized = false;
@@ -78,6 +81,14 @@ export class WorkspaceModel extends EventEmitter {
     this.macros = new MacroRegistry();
     this.variables = new VariableTracker();
     this.widgets = new WidgetRegistry();
+    this.markup = new MarkupIndex({
+      text: (uri) => this.documents.getText(uri),
+      passages: (uri) => this.passages.getPassagesInDocument(uri),
+      context: () => ({
+        macros: this.macros.toolingMacros(),
+        isBlock: (name) => this.isContainer(name),
+      }),
+    });
 
     this.workspaceRoot = config?.workspaceRoot;
     this.installedVersion = this.workspaceRoot ? readInstalledSpindleVersion(this.workspaceRoot) : undefined;
@@ -86,7 +97,7 @@ export class WorkspaceModel extends EventEmitter {
 
     // Load builtins + supplements eagerly so macros are available
     // even before initialize() is called (LSP didOpen may arrive first)
-    this.macros.loadBuiltins(config?.workspaceRoot);
+    this.macros.loadBuiltins();
     this.macros.loadSupplements(supplements as Record<string, any>);
 
     // Bind event handlers
@@ -369,6 +380,9 @@ export class WorkspaceModel extends EventEmitter {
     // Rescan widgets
     const allPassages = this.passages.getAllPassages();
     this.widgets.scan(allPassages, (uri) => this.documents.getText(uri));
+
+    // Macros and widgets decide how every document's markup pairs and what it runs
+    this.markup.invalidate();
   }
 
   /** Debounce modelReady emission. */

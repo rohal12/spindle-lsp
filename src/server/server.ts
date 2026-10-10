@@ -98,8 +98,6 @@ export function startServer(args: string[]): void {
     // Create workspace model
     workspace = new WorkspaceModel(workspaceRoot ? { workspaceRoot } : undefined);
     console.error('[spindle-lsp] workspaceRoot:', workspaceRoot ?? 'undefined');
-    console.error('[spindle-lsp] builtin macros:', workspace.macros.builtinsPath ?? 'not found');
-    for (const warning of workspace.macros.warnings) console.error('[spindle-lsp]', warning);
     const target = workspace.capabilities;
     console.error('[spindle-lsp] target Spindle:', target.version ? `${target.version} (${target.source})` : 'not detected');
     if (!target.supported) {

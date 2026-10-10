@@ -1,3 +1,5 @@
+import type { ParameterDef } from '@rohal12/spindle/tooling';
+
 export interface Position {
   line: number;
   character: number;
@@ -46,6 +48,8 @@ export interface MacroInfo {
   source: 'builtin' | 'user';
   description?: string;
   parameters?: string[];
+  /** The typed parameters Spindle declares for the macro (tooling API); they tell which arguments are code. */
+  parameterDefs?: readonly ParameterDef[];
   /** Descriptive name and help for each argument position of `parameters`. */
   parameterDocs?: ParameterDoc[];
   children?: ChildConstraint[];

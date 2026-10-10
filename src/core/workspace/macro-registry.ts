@@ -1,6 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { builtinMacros, type ToolingMacro } from '@rohal12/spindle/tooling';
 import type { MacroInfo, ChildConstraint, ParameterDoc } from '../types.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 
@@ -19,21 +17,10 @@ interface SupplementEntry {
   skipArgs?: boolean;
 }
 
-/** Shape of entries in @rohal12/spindle's macro-registry.json */
-interface BuiltinMacroEntry {
-  name: string;
-  block: boolean;
-  subMacros: string[];
-  storeVar?: boolean;
-  interpolate?: boolean;
-  merged?: boolean;
-  source: string;
-}
-
 /**
  * Registry of all known macros, merging data from four tiers
  * (later tiers win for the fields they set):
- * 1. Builtins — @rohal12/spindle's macro-registry.json (the project's copy)
+ * 1. Builtins — the `builtinMacros` of @rohal12/spindle/tooling
  * 2. Supplements — macro-supplements.json (descriptions, parameters, children)
  * 3. Discovered — Story.defineMacro() calls found in the workspace
  *    (see setDiscoveredMacros). At runtime these replace a built-in of the
@@ -59,68 +46,23 @@ export class MacroRegistry {
   /** Tier 4: user config entries, kept so they can be re-applied over discovered macros. */
   private configEntries = new Map<string, SupplementEntry>();
 
-  /** Warnings collected during loadBuiltins for logging. */
-  readonly warnings: string[] = [];
-
-  /** Path of the macro-registry.json the builtins were loaded from, if any. */
-  builtinsPath: string | null = null;
-
   /**
-   * Load built-in macro metadata from @rohal12/spindle's macro-registry.json.
-   * This is the base layer that provides name, block, subMacros, flags, source.
-   *
-   * The project's own Spindle is authoritative: the registry is resolved from
-   * `workspaceRoot` first, and from this package's install location (a
-   * development copy, or one installed for the peer dependency) only when the
-   * workspace has none.
+   * Load the built-in macros: name, block, sub-macros, flags and typed
+   * parameters, from Spindle's tooling API (the release the LSP is built on).
+   * This is the base layer the other tiers overlay.
    */
-  loadBuiltins(workspaceRoot?: string): void {
-    let builtinMacros: BuiltinMacroEntry[] = [];
-
-    try {
-      const thisDir = dirname(fileURLToPath(import.meta.url));
-      const registryPath = (workspaceRoot ? findRegistryPath(workspaceRoot) : null)
-        ?? findRegistryPath(thisDir);
-      if (!registryPath) {
-        this.warnings.push(
-          'macro-registry.json not found: install @rohal12/spindle in the project. Continuing with supplements only.',
-        );
-      } else {
-        this.builtinsPath = registryPath;
-        const raw = readFileSync(registryPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) {
-          this.warnings.push(
-            `macro-registry.json: expected array, got ${typeof parsed}. Continuing with supplements only.`,
-          );
-        } else {
-          builtinMacros = parsed;
-        }
-      }
-    } catch (err: unknown) {
-      // Malformed or unreadable registry — log and continue with supplements only
-      const message = err instanceof Error ? err.message : String(err);
-      this.warnings.push(
-        `Failed to load builtin macros: ${message}. Continuing with supplements only.`,
-      );
-    }
-
+  loadBuiltins(): void {
     for (const m of builtinMacros) {
-      try {
-        const key = m.name.toLowerCase();
-        this.macros.set(key, {
-          name: m.name,
-          block: m.block,
-          subMacros: m.subMacros ?? [],
-          storeVar: m.storeVar,
-          interpolate: m.interpolate,
-          merged: m.merged,
-          source: m.source === 'builtin' ? 'builtin' : 'user',
-        });
-      } catch {
-        // Skip malformed entries
-        this.warnings.push(`Skipped malformed builtin macro entry: ${JSON.stringify(m)}`);
-      }
+      this.macros.set(m.name.toLowerCase(), {
+        name: m.name,
+        block: m.block,
+        subMacros: [...m.subMacros],
+        storeVar: m.storeVar,
+        interpolate: m.interpolate,
+        merged: m.merged,
+        source: m.source === 'builtin' ? 'builtin' : 'user',
+        parameterDefs: m.parameters,
+      });
     }
   }
 
@@ -216,6 +158,7 @@ export class MacroRegistry {
       merged: info.merged ?? existing?.merged,
       description: info.description ?? existing?.description,
       parameters: info.parameters ?? existing?.parameters,
+      parameterDefs: info.parameterDefs ?? existing?.parameterDefs,
       parameterDocs: info.parameterDocs ?? existing?.parameterDocs,
       children: info.children ?? existing?.children,
       parents: info.parents ?? existing?.parents,
@@ -237,6 +180,17 @@ export class MacroRegistry {
   isSubMacro(name: string): boolean {
     const info = this.getMacro(name);
     return (info?.parents != null && info.parents.length > 0);
+  }
+
+  /** The macros as the tooling API reads them (`passagePieces`, `validateStoryMarkup`). */
+  toolingMacros(): ToolingMacro[] {
+    return this.getAllMacros().map((m) => ({
+      name: m.name,
+      block: m.block,
+      subMacros: m.subMacros,
+      interpolate: m.interpolate,
+      parameters: m.parameterDefs,
+    }));
   }
 
   /** Get all registered macros. */
@@ -316,23 +270,5 @@ export class MacroRegistry {
         });
       }
     }
-  }
-}
-
-/**
- * Find @rohal12/spindle's macro-registry.json the way Node resolves a package:
- * check `node_modules` in `startDir` and each of its ancestors. (The file is
- * not an export of the package, and its `./tooling` export is import-only, so
- * `require.resolve` cannot locate it.)
- */
-export function findRegistryPath(startDir: string): string | null {
-  const target = join('node_modules', '@rohal12', 'spindle', 'dist', 'pkg', 'macro-registry.json');
-  let dir = resolve(startDir);
-  for (;;) {
-    const candidate = join(dir, target);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
   }
 }
