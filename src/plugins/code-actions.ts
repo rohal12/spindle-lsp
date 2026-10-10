@@ -527,7 +527,8 @@ export const codeActionsPlugin: SpindlePlugin = {
             start: { line: d.range.start.line, character: d.range.start.character },
             end: { line: d.range.end.line, character: d.range.end.character },
           },
-          message: d.message,
+          // LSP 3.18 lets a message be markup; our diagnostics are always plain text
+          message: typeof d.message === 'string' ? d.message : d.message.value,
           severity: d.severity === 1 ? 'error' as const
             : d.severity === 2 ? 'warning' as const
             : d.severity === 3 ? 'info' as const

@@ -3,7 +3,7 @@ import {
   ProposedFeatures,
   DidChangeWatchedFilesNotification,
   FileChangeType,
-} from 'vscode-languageserver/node.js';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';

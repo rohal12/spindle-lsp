@@ -11,7 +11,7 @@ import {
   StreamMessageWriter,
   type MessageConnection,
   type Diagnostic as LspDiagnostic,
-} from 'vscode-languageserver/node.js';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';

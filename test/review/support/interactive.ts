@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import {
   createMessageConnection, StreamMessageReader, StreamMessageWriter, type MessageConnection,
-} from 'vscode-languageserver/node.js';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { CompletionItem } from 'vscode-languageserver';
 import { isBlockMacro } from '@rohal12/spindle/tooling';
