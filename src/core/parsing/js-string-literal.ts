@@ -1,10 +1,11 @@
 /**
- * Static decoding and encoding of JavaScript string-literal bodies.
+ * Writing a passage name as the body of a JavaScript string literal.
  *
- * `{goto}` and `{include}` hand their arguments to Spindle's expression
- * evaluator, so a quoted target is a JavaScript string literal and its
- * passage identity is the literal's value. These helpers compute that value
- * (and write a value back) without evaluating any author code.
+ * `{goto}`, `{include}` and `{link}` read a quoted `passage` argument as a
+ * JavaScript string literal (`passageTarget`), so a name is spelled with the
+ * escapes that read it back. Reading a literal is the tooling API's
+ * (`passageTarget`, `readQuoted`); the decoder below stays only for
+ * plugins/diagnostics.ts, which has not moved to it yet.
  */
 
 export type JsQuote = '"' | "'" | '`';
@@ -17,8 +18,8 @@ const SIMPLE_ESCAPES: Record<string, string> = {
  * The value of a string literal's body (the text between the quotes), or
  * null when the literal is not statically decidable: a malformed escape,
  * a legacy octal escape, an unescaped line break in a quoted (non-template)
- * literal, or an unescaped delimiter. Spindle falls back to the raw text for
- * such arguments, which is not the passage identity this decoder reports.
+ * literal, or an unescaped delimiter.
+ * @deprecated Use `passageTarget` / `readQuoted` from the tooling API; kept for plugins/diagnostics.ts.
  */
 export function decodeStringLiteralBody(body: string, quote: JsQuote): string | null {
   let out = '';
@@ -79,9 +80,9 @@ export function decodeStringLiteralBody(body: string, quote: JsQuote): string | 
 
 /**
  * Spell `value` as the body of a string literal delimited by `quote`, so
- * that decodeStringLiteralBody() returns `value` again.
+ * that `passageTarget` reads `value` again.
  */
-export function encodeStringLiteralBody(value: string, quote: JsQuote): string {
+export function encodeStringLiteralBody(value: string, quote: '"' | "'"): string {
   let out = '';
   for (let i = 0; i < value.length; i++) {
     const ch = value[i];
@@ -90,7 +91,6 @@ export function encodeStringLiteralBody(value: string, quote: JsQuote): string {
     else if (ch === '\r') out += '\\r';
     else if (ch === ' ') out += '\\u2028';
     else if (ch === ' ') out += '\\u2029';
-    else if (quote === '`' && ch === '$' && value[i + 1] === '{') out += '\\$';
     else out += ch;
   }
   return out;

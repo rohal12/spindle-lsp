@@ -1,70 +1,52 @@
+import { builtinMacros, passagePieces } from '@rohal12/spindle/tooling';
+
 /**
- * What Spindle's `{link}` macro reads from its arguments, ported from
- * `components/macros/MacroLink.tsx` (`parseArgs`). A bracket link is rendered
- * as that macro: the tokenizer splits `[[display->target]]` and buildAST
- * builds the arguments from the two strings. The macro then reads them back
- * with a quote regex, so the two readings can differ:
+ * What Spindle's `{link}` macro reads from its arguments. Every bracket link
+ * is rendered as that macro: the AST turns `[[display->target]]` into
+ * `{link "display" "target"}`, quoting both with `quoteArg`, and the macro
+ * reads the arguments as it reads any macro's (`passagePieces` with the
+ * built-in `link` declaration: `text` is a quoted string holding markup,
+ * `passage` a quoted JavaScript string literal or an expression).
  *
- *  - Spindle < 0.51.1 builds `"display" "target"` and reads it with
- *    `/(["'])(.*?)\1/g`: no escaping, and `.` does not match a line break. A
- *    `"` or a line break in the display or the target moves the passage the
- *    click navigates to (`[[He said "hi"->T]]` navigates nowhere,
- *    `[[{goto "X"}->Target]]` navigates to `}`, a two-line label navigates
- *    nowhere).
- *  - Spindle >= 0.51.1 escapes backslashes and double quotes when building
- *    the arguments and reads backslash escapes (and line breaks), so a
- *    bracket link always reads back unchanged. `{link}` written by hand now
- *    decodes `\"`, `\'` and `\\` (and only those).
- *
- * Verified against the installed runtime by `link-runtime.test.ts`.
+ * A bracket link therefore reads back as written, except where the quoted
+ * target is not a string literal: a raw line break in it makes the macro read
+ * an expression, and a click on the link fails.
  */
 export interface LinkRead {
   display: string;
-  /** The passage the click navigates to; null when it navigates nowhere. */
+  /** The passage the click navigates to; null when it navigates nowhere (no name, or an expression). */
   passage: string | null;
 }
 
-/** The quoted strings of `{link}` arguments, as MacroLink collects them. */
-export function linkMacroStrings(rawArgs: string, escapes: boolean): Array<{ text: string; start: number; end: number; quote: '"' | "'" }> {
-  const re = escapes ? /(["'])((?:\\[^]|(?!\1)[^\\])*)\1/g : /(["'])(.*?)\1/g;
-  const found: Array<{ text: string; start: number; end: number; quote: '"' | "'" }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(rawArgs)) !== null) {
-    const raw = m[2];
-    found.push({
-      text: escapes ? raw.replace(/\\(["'\\])/g, '$1') : raw,
-      start: m.index + 1,
-      end: m.index + 1 + raw.length,
-      quote: m[1] as '"' | "'",
-    });
-  }
-  return found;
-}
-
-/** `parseArgs` of MacroLink. */
-export function readLinkMacroArgs(rawArgs: string, escapes: boolean): LinkRead {
-  const parts = linkMacroStrings(rawArgs, escapes).map(s => s.text);
-  if (parts.length >= 2) return { display: parts[0], passage: parts[1] };
-  if (parts.length === 1) return { display: parts[0], passage: null };
-  return { display: rawArgs.trim(), passage: null };
-}
-
-/** buildAST's `quoteArg` (0.51.1): escape `\` and `"` so MacroLink reads the value back. */
-function quoteArg(value: string): string {
+/** The AST's `quoteArg`: `value` as a quoted macro argument, `\` and `"` escaped. */
+export function quoteArg(value: string): string {
   return `"${value.replace(/[\\"]/g, '\\$&')}"`;
 }
 
+/** What the link macro reads from `{link ...rawArgs}`. */
+export function readLinkMacro(rawArgs: string): LinkRead {
+  const pieces = passagePieces(`{link ${rawArgs}}`, builtinMacros).filter(piece => !piece.nested);
+  const label = pieces.find(piece => piece.kind === 'text');
+  const name = pieces.find(piece => piece.kind === 'passage');
+  return {
+    display: label?.kind === 'text' ? label.text : '',
+    passage: name?.kind === 'passage' ? name.name : null,
+  };
+}
+
 /** What the link macro reads from the bracket link with this display and target. */
-export function readBracketLink(display: string, target: string, escapes: boolean): LinkRead {
-  const rawArgs = escapes ? `${quoteArg(display)} ${quoteArg(target)}` : `"${display}" "${target}"`;
-  return readLinkMacroArgs(rawArgs, escapes);
+export function readBracketLink(display: string, target: string): LinkRead {
+  return readLinkMacro(`${quoteArg(display)} ${quoteArg(target)}`);
 }
 
 /**
  * The runtime reading of a bracket link when it is not the link the source
  * says (display and target as the tokenizer splits them), else null.
+ * `escapes` is ignored: the minimum Spindle always escapes (callers still
+ * passing it should stop).
  */
-export function bracketLinkMismatch(display: string, target: string, escapes: boolean): LinkRead | null {
-  const read = readBracketLink(display, target, escapes);
+export function bracketLinkMismatch(display: string, target: string, escapes?: boolean): LinkRead | null {
+  void escapes;
+  const read = readBracketLink(display, target);
   return read.display === display && read.passage === target ? null : read;
 }

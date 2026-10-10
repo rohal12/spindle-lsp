@@ -2,7 +2,7 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
-import { findPassageRefAt } from '../core/parsing/link-parser.js';
+import { passageRefAt } from '../core/markup/passage-refs.js';
 
 // ---------------------------------------------------------------------------
 // Core definition function (no LSP dependency)
@@ -17,8 +17,8 @@ export interface DefinitionResult {
  * Compute go-to-definition for the symbol at the given position.
  *
  * Supports:
- *  - Passage name in [[link]] -> jump to passage header
- *  - Passage name in macro args (goto, include, link) -> jump to passage
+ *  - Passage name written out ([[link]], a quoted goto/include/link/watch/dialog
+ *    argument, in labels and attribute values too) -> jump to passage header
  *  - Widget name in {widgetName} -> jump to widget definition
  */
 export function getDefinition(
@@ -33,8 +33,8 @@ export function getDefinition(
   if (position.line >= lines.length) return null;
   const line = lines[position.line];
 
-  // --- Passage ref in [[link]] or macro args (goto, include, link) ---
-  const passageResult = getPassageRefDefinition(uri, text, position, workspace);
+  // --- Passage name written out: [[link]] or a quoted macro argument ---
+  const passageResult = getPassageRefDefinition(uri, position, workspace);
   if (passageResult) return passageResult;
 
   // --- Widget name -> definition ---
@@ -50,11 +50,11 @@ export function getDefinition(
 
 function getPassageRefDefinition(
   uri: string,
-  text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  const ref = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
+  const doc = workspace.markup.get(uri);
+  const ref = doc && passageRefAt(doc, position);
   if (!ref) return null;
   const passage = workspace.passages.getPassage(ref.name);
   if (!passage) return null;
