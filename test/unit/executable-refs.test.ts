@@ -1,25 +1,16 @@
 /**
  * Differential tests: the references the LSP validates (SP200/SP201) against
- * Spindle's own startup validation (executable references only; members of a
- * primitive's wrapper allowed).
- *
- * NEEDS UPSTREAM API: the oracle is `validatePassages` of the installed
- * runtime, which `@rohal12/spindle/tooling` does not export (see
- * test/helpers/story-variables-oracle.ts and
- * https://github.com/rohal12/spindle/issues/464). Until it does, these tests
- * fail with that message instead of comparing the LSP with a copy of itself.
- * (They were run against the installed runtime's own `validatePassages`, taken
- * from its bundle, with no difference on 12000 random passages and on every
- * default and path below.)
+ * Spindle's own startup validation (`validateVariableReferences`, through
+ * test/helpers/story-variables-oracle.ts): executable references only;
+ * members of a primitive's wrapper allowed.
  */
 import { describe, it, expect } from 'vitest';
 import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
 import { collectVariableReferences } from '../../src/core/parsing/executable-refs.js';
-import { BUILTIN_STORE_VAR_MACROS, VariableTracker } from '../../src/core/workspace/variable-tracker.js';
+import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 
 const uri = 'file:///story.tw';
-const STORE_MACROS = new Set(BUILTIN_STORE_VAR_MACROS);
 
 /** The compiler's line breaks: Spindle reads passages with LF. */
 function compiled(content: string): string {
@@ -38,7 +29,7 @@ function lspRefs(content: string): { content: string; refs: Array<{ path: string
   const model = new WorkspaceModel();
   model.initialize(new Map([[uri, `:: P\n${content}`]]));
   const passage = model.markup.get(uri)!.passages[0];
-  const refs = collectVariableReferences(passage, STORE_MACROS)
+  const refs = collectVariableReferences(passage)
     .filter(r => r.sigil === '$' && r.validated);
   return { content: passage.content, refs };
 }

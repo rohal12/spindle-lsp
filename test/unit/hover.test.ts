@@ -93,11 +93,11 @@ describe('getHoverInfo', () => {
     expect(result!.contents).toContain('**Widget** `Greeting`');
   });
 
-  it('shows the declared sigil of $ and _ widget params', () => {
+  it('shows the @ parameters of a widget, the only ones the runtime reads (parseWidgetDef)', () => {
     const ws = createWorkspace(
       {
         name: 'widgets.tw',
-        content: ':: Widgets [widget]\n{widget bye $who _how}Bye{/widget}',
+        content: ':: Widgets [widget]\n{widget bye $who _how @whom}Bye{/widget}',
       },
       {
         name: 'test.tw',
@@ -106,7 +106,8 @@ describe('getHoverInfo', () => {
     );
     const result = getHoverInfo('file:///test.tw', { line: 1, character: 2 }, ws);
     expect(result).not.toBeNull();
-    expect(result!.contents).toContain('Parameters: $who, _how');
+    expect(result!.contents).toContain('Parameters: @whom');
+    expect(result!.contents).not.toContain('$who');
   });
 
   it('returns null for plain text', () => {

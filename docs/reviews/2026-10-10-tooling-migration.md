@@ -208,3 +208,61 @@ Needs upstream API / upstream defects found (B1):
    (`declaration-check.ts`); wanted: a `syntax` error code.
 5. `void 0` and other expressions that are certainly `undefined` are not
    recognised (the old mirror flagged `void 0`).
+
+### Registries, variable tracker internals and the workspace model (scope W2b)
+
+`WidgetRegistry` reads the definitions of the workspace with `widgetDefinitions`
+(`StoryInit` and the passages tagged `widget`, as the runtime registers them;
+name, `@` parameters, block-ness and the spans of the tag, the name and the
+closer), and the widgets a document calls from the macro tokens of
+`workspace.markup` (the top-level ones and those in labels and attribute
+values), no regex scan. The calls the widget navigation lists
+(`src/core/markup/macro-heads.ts`: references, definition, prepare rename,
+rename) are the macro heads of the paired tree. The workspace cascade starts
+with `markup.invalidate()`, scans the widgets, and then reads the variable
+usages and invocations from the same markup, which pairs its tags with the
+widgets just defined. The variable tracker's `$`/`%` references are the tooling
+API's `variableReferences` (macros carry `storeVar`; the registry's tooling
+macros now pass it), plus the two kinds of reference the API does not return and
+rename needs (not validated): the variable a macro with a `variable` parameter
+names (`{unset $x}`, `{computed $x = ...}`) and the `{$name}` of a link's
+selectors. `_` and `@` references have no consumer any more (the
+`executableCode` text blanker was only used by a function nothing called) and
+are gone. Discovered macros carry the typed `parameters` of their
+`Story.defineMacro` call (`parameterDefs`), which is what lets `passagePieces`
+tell code from text in the arguments of a project's macro.
+
+| Test / cell | Old rule | New rule | Evidence |
+| --- | --- | --- | --- |
+| `B/ordinary/widget-in-comment` [macro-oracle], `widget-in-attr` [macro-oracle] [rename] | widget calls come from a regex over the text (a call in a comment counts, one in an attribute value does not) | the calls the tokenizer reads: none in a comment, those in attribute values and labels | `tokenizeMarkupTolerant`, `passagePieces`; `findWidgetReferences` agrees with the oracle's heads |
+| `B/ordinary/widget-in-comment` [rename] | rename edits `{wid}` in `<!-- ... -->` too | the comment is text: it is not edited; SP100 on the now unknown `{wid}` in a comment is a diagnostics defect (the scanner there still reads macros in comments) | fails until SP100 reads macro tokens (diagnostics scope) |
+| `widget-registry`, `hover` "declared sigil", `completions` "parameters of its widgets", `diagnostics` "recognizes widgets..." | `$a`, `_b`, `@c` after a widget's name are parameters (the old regex scan of Spindle's 0.4x startup) | only the `@` names are (`parseWidgetDef`); `@children` is kept when written, as the runtime returns it | `parseWidgetDef('"mix" $a _b @c junk')` is `{name: 'mix', params: ['@c']}` |
+| `widget-registry` "marks widgets whose body contains {@children}" | a `{@children}` anywhere in the body (text search) | decided on tokens: in a comment it does not count, in a label it does | `widgetDefinitions` (`block`) |
+| `navigation-contracts` C-W74 | an HTML attribute value is text: `<a title="{greeting}">` is no call | it holds markup: it is a call (the string of `{print}` and a comment are not) | `passagePieces` |
+| `markup-contexts` L4 (crossed containers), `element-macro-differential` widget heads | the closer of a container that is closed out of order stays with it | unchanged: `pairMarkup` leaves what is inside a closed-over container unclosed and drops its later closer as stray; the heads re-attach that stray closer to the unclosed macro of its name written before it (`macro-heads.ts`) | `pairMarkup` errors |
+| `variable-tracker` references in a passage with a malformed tag | not validated (the story does not start) | validated: `variableReferences` is tolerant, as `validateVariableReferences` is | tooling API |
+| `macro-registry` "reads the registry of the Spindle installed in the workspace", "falls back to the LSP's own copy" | the registry was read from the workspace's `dist/pkg/macro-registry.json` | deleted with the file reader: the built-in macros are the tooling API's `builtinMacros` | `loadBuiltins()` |
+| `variable-tracker` `executableCode` | text blanker keeping only variable references (`_`, `@` too) | deleted with `executableCodeLines` (references.ts): nothing used them | no consumer |
+
+The oracle of the differential tests that needed `validatePassages`
+(`executable-refs`, `field-access-runtime`, `link-interpolation` Q-validation)
+is now `validateVariableReferences` (`test/helpers/story-variables-oracle.ts`);
+those cases pass again except for the upstream defects above (spindle#466).
+
+Needs upstream API / observed upstream behavior (W2b):
+
+1. `widgetDefinitions` decides `block` on tokens, and the documentation says a
+   `{@children}` in an attribute value or a label counts; in an HTML attribute
+   value (`<p title="{@children}">`) it does not (`block: false`); in a label
+   (`{button "{@children}"}`) it does. One of them is wrong.
+2. `variableReferences` returns neither the variable a macro declares
+   (`{unset $x}`, `{computed $x ...}`), as documented, nor the `{$name}` of a
+   link's selectors (`[[.c{$sel} go->T]]`). Rename and references need them; they
+   are read locally (`executable-refs.ts`), marked not validated. An option to
+   return every reference (also those the story start does not check) would let
+   them go.
+3. There is no static reading of `Story.defineMacro({...})` calls
+   (name, flags, typed `parameters`) in the tooling API: `macro-discovery.ts`
+   reads the config object with `findCodeEnd`, `splitTopLevel` and `readQuoted`
+   (comments and nested objects are handled), the parameters with the table of
+   `ParameterType`s of the documentation.
