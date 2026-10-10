@@ -208,3 +208,107 @@ Needs upstream API / upstream defects found (B1):
    (`declaration-check.ts`); wanted: a `syntax` error code.
 5. `void 0` and other expressions that are certainly `undefined` are not
    recognised (the old mirror flagged `void 0`).
+
+### Diagnostics and code actions (scope W2a)
+
+`computeDiagnostics` is assembled from the tooling API instead of re-reading
+the markup:
+
+| Diagnostics | Source |
+| --- | --- |
+| SP100, SP105, SP106, SP109, SP113, SP300, and the malformed markup in a label or an attribute value | `validateStoryMarkup` over every passage of the workspace (once per version of the workspace's markup, kept per workspace), through `PassageMarkup.range` |
+| SP101, SP102, SP104, SP105, SP107 (`misplaced-branch`) for the tags of a passage | `PassageMarkup.tokenization.errors` and `.pairing.errors`: all of them, where `validateStoryMarkup` reports the first of a passage |
+| SP200, SP201, SP203, SP208 | `validateVariableReferences` with the declarations of `parseDeclarations`, per passage |
+| SP207 | the variable tracker (`parseDeclarations` errors plus the syntax check), unchanged |
+| SP107 (`{option}`, `{stop}`, configured parents), SP114, SP115, SP205 | the paired tree of the passage (`pairing.nodes`) and the registry's `children`/`parents` |
+| SP301, SP302, SP303 | `widgetDefinitions`, `splitArgs`, the `include` pieces of `passagePieces` |
+| SP304, SP305 | `findLinkRuntimeMismatches`, `findLiteralLinkInterpolations` (link-parser.ts) |
+| SP001, SP202, SP206, SP500 | as before (version target, tracker, array members, line length) |
+
+`validateStoryMarkup` stops at the first malformed tag of a passage (the story
+does not start there) and checks nothing else of it. The editor wants the rest
+(an unknown macro or a broken link beside an unclosed `{if}`), so each malformed
+passage is validated in a copy whose malformed or unpaired tags are replaced by
+spaces (`wellFormed`; every offset stays), and its tags are reported from the
+tolerant tokenizer and `pairMarkup`, which report all of them. See "Needs
+upstream API" below.
+
+New codes: SP105 (`unclosed-link|expression|macro`), SP106 (`code-syntax`),
+SP113 (`unquoted-passage-name`), SP208 (`reserved-name`); SP109 now is Spindle's
+`argument-error`. Removed: SP103, SP204 (below), SP112 (never reported). SP108,
+SP110, SP111 stay for a macro that only the project's configuration describes
+(`parameters` in the registry's format), not for the macros Spindle defines.
+Every diagnostic carries `data` (`DiagnosticData`) for the quick fixes: change an
+unknown macro or broken link to the closest name (`suggestions`), create the
+passage of a broken link, insert the missing closing tag of an unclosed block or
+element, quote a bare passage name, declare an undeclared variable.
+
+Unit tests whose expectation changed with the runtime:
+
+| Test | Old rule | New rule | Evidence |
+| --- | --- | --- | --- |
+| `diagnostics`, `diagnostics-*`, `do-body`, `macro-head-differential`, `markup-contexts`, `passage-references`, `variable-declarations`, `macro-discovery`, integration `cli`/`lsp`/`mcp` (messages) | the LSP worded SP100 "Unrecognized macro: {x}", SP101 "Malformed container: ...", SP102 "Malformed element: ...", SP104 "Illegal closing tag: ...", SP200 "Variable '$x' is not declared in StoryVariables", SP300 "Passage "X" not found in workspace" | Spindle's wording: "Unknown macro {x}. Did you mean {y}?", "Unclosed {if}: no {/if} closes it", "{/x} closes nothing: no {x} is open here", "{/if} found where </p> should close the <p> opened at line 1, column 8", "Undeclared variable: $x", `No passage named "X" in [[X]].` (the label or attribute value a diagnostic is in is named first: "In the class attribute of <span>: ...") | `MarkupDiagnostic.message` |
+| `diagnostics-malformed-element`, `diagnostics-containers`, `diagnostics-contracts` X71 | SP102 stops at the first error of a passage; `<a href = "x">` is text; a closed `<!-- <div> -->` holds tags; `[[unclosed` is text; macros in a link label are text; `{/}` is a macro closer | every pairing error is reported, the tag with spaces around `=` is a tag, a comment is one text token, an unclosed `[[`, `{$` or `{name` is SP105, macros in labels and attribute values are macros (paired, checked, SP101/SP100/SP107 in them), `{/}` is SP104 and reading goes on | `pairMarkup`, `tokenizeMarkupTolerant` |
+| `diagnostics-validation`, `diagnostics-containers` {timed}/{next} | the LSP's argument schema (`macro-supplements.json`) rejected `{goto}`, `{include}`, `{textbox 42 "x"}`, `{dialog "Open" extra}`, `{timed 1s 2s}` (SP108-SP111); `{goto Chapter 1}` and `{include Name}` fell back to the text | Spindle declares the parameters of its macros and reports only `argument-error` (SP109, e.g. `{link Go}`); the others are not rejected by the runtime. A bare word or several words is an expression: `unquoted-passage-name` (SP113) or `code-syntax` (SP106). The schema checks configured macros only | `validateStoryMarkup` |
+| `diagnostics` SP301 ($/_ params) | `{widget bye $who}` takes one argument | only `@` names are parameters (`parseWidgetDef`); `$who` and `_name` are none | `widgetDefinitions` |
+| `diagnostics` SP302, `literal-contracts` L77 (include) | `{include ActResist}` falls back to the passage name `ActResist`, and `resolveIncludeTarget` resolved it | a bare word is an expression (SP113): only a quoted name is a target; the flag is `splitIncludeFlag` | `passageTarget`, `splitIncludeFlag` |
+| `diagnostics` SP200/SP203 (#62) | `$missingProse` in prose and `$missingLiteral` in a string are undeclared; the first usage of a name is reported | the variables the code reads are validated (`variableReferences`); prose and strings are text; every reference is reported | `validateVariableReferences` |
+| `diagnostics` SP201 | `$name.length` on a string is rejected; the range is the field | members of a primitive's wrapper are allowed; the range is the whole reference (`$name.nope`) | `validateVariableReferences` |
+| `diagnostics` SP108 (`{else "extra"}`) | the LSP's schema rejects arguments of `{else}` | the runtime ignores them; SP108 is for configured macros (`ban`) | `validateStoryMarkup` |
+| `markup-contexts` L1-passages | `[[open` and `{if $x` in a passage are text | each is never closed: SP105 twice | `tokenizeMarkupTolerant` |
+| `code-actions` #62 | `It costs $5.` declares `$5` | `$5` in prose is text; `{print $5}` is a variable | `variableReferences` |
+| `cli` "#63 HTML attributes", `diagnostics-attribute-blocks` | SP103 warned that a macro or a non-sigil expression in an attribute value is output as text | the value holds markup and Spindle evaluates both: no diagnostic. Errors in it are reported like any other, naming the attribute. `diagnostics-attribute-markup` replaces the file | `passagePieces` (`text` pieces) |
+| `cli` "another format" | `<</if>>` is a stray closing tag (SP102) | it is text; the fixture uses a stray `</b>` | `tokenizeMarkupTolerant` |
+| `runtime-pitfalls.tw` | `{include ActResist}` | `{include "ActResist"}` | `passageTarget` |
+| integration `lsp` "SP110" cross-file tests | `{goto "PageTwo"}` with the LSP's `passage` schema reports SP110 for a passage that does not exist | SP300 (`unknown-passage`) does; the tests probe it and no longer register a schema for `{goto}` | `validateStoryMarkup` |
+| `test/helpers/story-variables-oracle.ts` `validatePassages` | threw "needs upstream API" | `validateVariableReferences` (0.59.25). `executable-refs` and `field-access-runtime` now run against it | `validateVariableReferences` |
+
+Tests deleted (each with the code it tested):
+
+- `attribute-blocks`, `attribute-blocks-runtime`, `diagnostics-attribute-blocks`:
+  `findUnevaluatedBlocks`, `conditionalExpression`, `printExpression`
+  (`attribute-blocks.ts`) and SP103, whose premise is gone (above).
+- `widget-arguments`: `splitWidgetArguments` mirrored the runtime's `splitArgs`.
+- `diagnostics`: the `resolveIncludeTarget` cases (replaced by `passageTarget`
+  and `splitIncludeFlag`, covered by SP302 and L77); the four `parseMacros`
+  robustness cases (a mirror; the same inputs go through `computeDiagnostics`).
+- `do-body`: D-mask (`maskRawDoBodies`), the per-release D-before/D-after cases
+  (replaced by D-body/D-syntax), `INSTALLED_CAPABILITIES`.
+- `markup-differential`: the D3 `ours` vs `tokenize` cases and the fuzz, the D1
+  `parseMacros` comparison and C-D1-quote "the macro in the label is a macro"
+  (they compared `parseMacros`, `attributeValueSpans` and `findBracketLinks`,
+  mirrors that go away). D3-refs, D1-refs, the variable reads and the quote
+  cases stay.
+- `element-macro-differential`: "the shared pairing against pairMarkup" (compared
+  `parseDocumentMacros`); the folding case now compares with `pairMarkup`'s own
+  pairs (recovered ones included).
+- `parameter-validator`, `argument-lexer`: `argCountRange` and `countArguments`
+  (no consumer).
+- `diagnostic-codes`: SP103.
+
+Matrix cells: `C/include-widget-other-bare/*` and `-flag-before/*` pass (the bare
+word is an expression: no reference, no SP302). Three cells still fail for the
+widget registry, which this scope does not own: `B/ordinary/widget-in-comment`
+[macro-oracle] (a `{wid}` in a closed HTML comment is a reference),
+`B/ordinary/widget-in-attr` [macro-oracle] and [rename] (a `{wid}` in an
+attribute value is not renamed, so SP100 appears). `C/sigil-transient/var`
+[rename] fails on a new diagnostic: renaming `%tr` to `5` writes `{set %5 = 1}`,
+which does not parse (`%5` is a modulo in code); Spindle reports SP106. Rename
+should reject a digit-leading name for a `%` variable (a digit-leading `$`
+name is a valid identifier); the property's comment calls `%5` "valid in code".
+
+Needs upstream API (W2a):
+
+1. `validateStoryMarkup`/`validateMarkup` check nothing else of a passage with
+   a malformed tag (the first `MarkupError` of `parseMarkup` ends it). An editor
+   wants unknown macros, passage names and code errors alongside, as
+   `passagePieces` and `collectStoryPassageReferences` already read half-typed
+   markup. Wanted: a `tolerant` option that goes on (and reports every tag
+   error, as `tokenizeMarkupTolerant`/`pairMarkup` do), so that `wellFormed()`
+   (a copy with the malformed tags blanked) can go.
+2. `parseWidgetDef` keeps the comma in `@a,` (`{widget "x" @a, @b}` has the
+   parameters `@a,` and `@b`); the count is right, the name is not.
+
+The shared layer lacks `storeVar` in `MacroRegistry.toolingMacros()` (and so in
+`MarkupContext.macros`): `variableReferences` and `validateVariableReferences`
+need it for the input macros, so diagnostics adds it from the registry.
