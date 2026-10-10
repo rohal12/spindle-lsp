@@ -2,10 +2,9 @@ import type { Hover, Range as LspRange } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { buildLineStarts, macroNameRange, parseDocumentMacros } from '../core/parsing/macro-parser.js';
-import { executableCodeLines, variableAt } from './references.js';
-import { isMarkupPassage } from '../core/parsing/passage-parser.js';
-import { inAttributeValue } from '../core/parsing/html-scanner.js';
+import type { PassageMarkup } from '../core/markup/passage-markup.js';
+import { positionToOffset } from '../core/text.js';
+import { macroTokens, variableUses, type VariableUse } from './markup-symbols.js';
 
 // ---------------------------------------------------------------------------
 // Core hover function (no LSP dependency)
@@ -24,58 +23,35 @@ export interface HoverResult {
  *  - Variables -> "Story variable" / "Temp variable" / "Local variable" + type info
  *  - Widget names -> widget info with params
  *
- * Macros and widgets written inside an HTML attribute value get no hover:
- * Spindle outputs them there as text (SP103).
+ * The symbols are those Spindle's tooling API reads in the passage's markup
+ * (see markup-symbols.ts), the same ones the semantic tokens highlight:
+ * macros and variables in a label or an HTML attribute value count, text in
+ * a comment, a string or prose does not.
  */
 export function getHoverInfo(
   uri: string,
   position: Position,
   workspace: WorkspaceModel,
 ): HoverResult | null {
-  const text = workspace.documents.getText(uri);
-  if (text === undefined || !workspace.hasPassages(uri)) return null;
+  const doc = workspace.markup.get(uri);
+  if (!doc) return null;
+  const passage = doc.passageAt(position);
+  if (!passage) return null;
+  const offset = positionToOffset(position, doc.lineStarts);
+  if (offset < passage.bodyStart) return null;
+  const at = passage.contentOffset(offset);
 
-  const lines = text.split('\n');
-  if (position.line >= lines.length) return null;
-  const line = lines[position.line];
-  // Only variables mean something outside story markup (the declarations of
-  // StoryVariables/StoryTransients); macros and widgets are not called in
-  // script, stylesheet or data passages
-  const markup = isMarkupPassage(workspace.passages.getPassageAt(uri, position.line) ?? {});
-
-  // Spindle outputs macros and widgets inside an attribute value as text
-  const offset = (buildLineStarts(text)[position.line] ?? 0) + position.character;
-  const inAttribute = inAttributeValue(text, offset, workspace.capabilities);
-
-  // --- Macro name hover ---
-  // Check if cursor is on a macro name inside {macroName ...} or {/macroName}
-  const macroResult = inAttribute || !markup ? null : getMacroHover(uri, text, position, workspace);
-  if (macroResult) return macroResult;
-
-  // --- Variable hover ---
-  const code = executableCodeLines(lines, workspace.passages.getPassagesInDocument(uri), workspace.capabilities)[position.line] ?? '';
-  const varResult = getVariableHover(uri, line, code, position, workspace);
-  if (varResult) return varResult;
-
-  return null;
+  return getMacroHover(passage, at, workspace) ?? getVariableHover(passage, at, workspace);
 }
 
 // ---------------------------------------------------------------------------
 // Sub-functions
 // ---------------------------------------------------------------------------
 
-function getMacroHover(
-  uri: string,
-  text: string,
-  position: Position,
-  workspace: WorkspaceModel,
-): HoverResult | null {
-  // The macros Spindle's tokenizer reads (the one grammar every consumer shares):
-  // `{wid.cls}` is a macro named `wid.cls`, and an unterminated `{goto "x` is text
-  const macros = parseDocumentMacros(text, workspace.passages.getPassagesInDocument(uri), undefined, workspace.capabilities);
-  for (const macro of macros) {
-    const { start, end } = macroNameRange(macro);
-    if (position.line !== start.line || position.character < start.character || position.character > end.character) continue;
+function getMacroHover(passage: PassageMarkup, at: number, workspace: WorkspaceModel): HoverResult | null {
+  for (const macro of macroTokens(passage)) {
+    if (at < macro.nameStart || at > macro.nameEnd) continue;
+    const range = passage.range(macro.nameStart, macro.nameEnd);
 
     const info = workspace.macros.getMacro(macro.name);
     if (info) {
@@ -87,105 +63,45 @@ function getMacroHover(
       if (info.parameters && info.parameters.length > 0) {
         parts.push('', `Parameters: \`${info.parameters.join(' ')}\``);
       }
-      return { contents: parts.join('\n'), range: { start, end } };
+      return { contents: parts.join('\n'), range };
     }
 
     const widget = workspace.widgets.getWidget(macro.name);
-    if (widget) return buildWidgetHover(widget, start.line, start.character, end.character);
+    if (widget) return buildWidgetHover(widget, range);
   }
   return null;
 }
 
-function getVariableHover(
-  uri: string,
-  line: string,
-  code: string,
-  position: Position,
-  workspace: WorkspaceModel,
-): HoverResult | null {
-  // `$` and `%` variables are the ones the variable tracker records (the same
-  // list references, rename and highlighting use); `_` and `@` are the ones in code
-  const tracked = variableAt(uri, position, workspace);
-  // Story variables: $name
-  if (tracked?.sigil === '$') {
-    const decl = workspace.variables.getDeclared().get(tracked.name);
-    const typeInfo = decl?.fields && decl.fields.length > 0
-      ? `\n\nFields: ${decl.fields.map(f => `\`${f}\``).join(', ')}`
-      : '';
-    return {
-      contents: `**Story variable** \`${line.slice(tracked.range.start.character, tracked.range.end.character)}\`${typeInfo}`,
-      range: tracked.range,
-    };
-  }
+const VARIABLE_KINDS: Record<VariableUse['sigil'], string> = {
+  $: 'Story variable',
+  _: 'Temp variable',
+  '@': 'Local variable',
+  '%': 'Transient variable',
+};
 
-  // Temp variables: _name
-  {
-    const re = /(?<!\w)_([A-Za-z_$][\w$]*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(code)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        return {
-          contents: `**Temp variable** \`_${match[1]}\``,
-          range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
-          },
-        };
-      }
-    }
-  }
+function getVariableHover(passage: PassageMarkup, at: number, workspace: WorkspaceModel): HoverResult | null {
+  // A cursor between two adjacent variables (`$a$b`) belongs to the first, as for any token that ends there
+  const use = variableUses(passage).find(candidate => candidate.start <= at && at <= candidate.end);
+  if (!use) return null;
 
-  // Local variables: @name
-  {
-    const re = /(?<!\w)@([A-Za-z_$][\w$]*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(code)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (position.character >= start && position.character <= end) {
-        return {
-          contents: `**Local variable** \`@${match[1]}\``,
-          range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
-          },
-        };
-      }
-    }
-  }
-
-  // Transient variables: %name
-  if (tracked?.sigil === '%') {
-    const decl = workspace.variables.getDeclaredTransient().get(tracked.name);
-    const typeInfo = decl?.fields && decl.fields.length > 0
-      ? `\n\nFields: ${decl.fields.map(f => `\`${f}\``).join(', ')}`
-      : '';
-    return {
-      contents: `**Transient variable** \`${line.slice(tracked.range.start.character, tracked.range.end.character)}\`${typeInfo}`,
-      range: tracked.range,
-    };
-  }
-
-  return null;
+  const declared = use.sigil === '$' ? workspace.variables.getDeclared()
+    : use.sigil === '%' ? workspace.variables.getDeclaredTransient()
+    : undefined;
+  const fields = declared?.get(use.name)?.fields;
+  const typeInfo = fields && fields.length > 0 ? `\n\nFields: ${fields.map(f => `\`${f}\``).join(', ')}` : '';
+  return {
+    contents: `**${VARIABLE_KINDS[use.sigil]}** \`${passage.content.slice(use.start, use.end)}\`${typeInfo}`,
+    range: passage.range(use.start, use.end),
+  };
 }
 
-function buildWidgetHover(
-  widget: import('../core/types.js').WidgetDef,
-  line: number,
-  nameStart: number,
-  nameEnd: number,
-): HoverResult {
+function buildWidgetHover(widget: import('../core/types.js').WidgetDef, range: Range): HoverResult {
   const sig = widget.params.length > 0
     ? widget.params.join(', ')
     : 'no parameters';
   return {
     contents: `**Widget** \`${widget.name}\`\n\nParameters: ${sig}\n\nDefined in: \`${widget.uri}\``,
-    range: {
-      start: { line, character: nameStart },
-      end: { line, character: nameEnd },
-    },
+    range,
   };
 }
 

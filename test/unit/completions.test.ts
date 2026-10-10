@@ -161,22 +161,84 @@ describe('getCompletions', () => {
   });
 });
 
-// Spindle outputs a macro inside an attribute value as text (SP103).
-describe('getCompletions inside HTML attribute values', () => {
-  // With the closing brace typed for the author: an unbalanced brace makes
-  // Spindle 0.45.1 read the value on past the closing quote.
-  it('offers no macro names after a brace in an attribute value', () => {
-    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n<span class="{}">t</span>\n' });
-    expect(getCompletions('file:///test.tw', { line: 1, character: 14 }, '{', ws)).toEqual([]);
+// An HTML attribute value holds markup of its own (Spindle 0.59): `{` starts a macro there,
+// `[[` is text, and a closer closes what the value itself opened.
+describe('getCompletions inside HTML attribute values and labels', () => {
+  const at = (content: string, line: number, character: number) =>
+    getCompletions('file:///test.tw', { line, character }, undefined, createWorkspace({ name: 'test.tw', content })).map(i => i.label);
+
+  it('offers macro names after a brace in an attribute value', () => {
+    expect(at(':: Start\n<span class="{}">t</span>\n', 1, 14)).toEqual(expect.arrayContaining(['if', 'set']));
+  });
+
+  it('offers macro names after a brace in the label of a link or a button', () => {
+    expect(at(':: Start\n[[Go {->Start]]', 1, 6)).toEqual(expect.arrayContaining(['if']));
+    expect(at(':: Start\n{button "Go {"}x{/button}', 1, 13)).toEqual(expect.arrayContaining(['if']));
   });
 
   it('offers no closing tags in an attribute value', () => {
-    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n{if true}<span class="{/}">t</span>\n' });
-    expect(getCompletions('file:///test.tw', { line: 1, character: 24 }, '/', ws)).toEqual([]);
+    expect(at(':: Start\n{if true}<span class="{/}">t</span>\n', 1, 24)).toEqual([]);
+  });
+
+  it('offers the closers of what the attribute value itself opened', () => {
+    expect(at(':: Start\n<span class="{if true}x{/}">t</span>\n', 1, 25)).toEqual(['{/if}']);
+  });
+
+  it('offers no passage names after [[ in an attribute value: it is text there', () => {
+    expect(at(':: Start\n<span class="[[">t</span>\n', 1, 15)).toEqual([]);
   });
 
   it('still offers variables in an attribute value', () => {
-    const ws = createWorkspace({ name: 'test.tw', content: ':: StoryVariables\n$hp = 1\n:: Start\n<span class="{$}">t</span>\n' });
-    expect(getCompletions('file:///test.tw', { line: 3, character: 15 }, '$', ws).map(i => i.label)).toContain('$hp');
+    const labels = at(':: StoryVariables\n$hp = 1\n:: Start\n<span class="{$}">t</span>\n', 3, 15);
+    expect(labels).toContain('$hp');
+  });
+});
+
+describe('getCompletions in half-typed and non-markup text', () => {
+  const at = (content: string, line: number, character: number) =>
+    getCompletions('file:///test.tw', { line, character }, undefined, createWorkspace({ name: 'test.tw', content })).map(i => i.label);
+
+  it('offers macro names for a macro head typed inside the arguments of an unclosed macro', () => {
+    expect(at(':: Start\n{set $x = {', 1, 12)).toEqual(expect.arrayContaining(['if']));
+  });
+
+  it('offers nothing after a brace in a comment, after an escaped brace or in a macro string', () => {
+    expect(at(':: Start\n<!-- {i -->', 1, 7)).toEqual([]);
+    expect(at(':: Start\n\\{i', 1, 3)).toEqual([]);
+    expect(at(':: Start\n{print "{i"}', 1, 10)).toEqual([]);
+  });
+
+  it('offers nothing after a brace in a {do} body', () => {
+    expect(at(':: Start\n{do}var o = {i{/do}', 1, 14)).toEqual([]);
+  });
+
+  it('closes the innermost block that is still open, also with a closer after the cursor', () => {
+    expect(at(':: Start\n{if $x}{for @i of []}x{/', 1, 28)).toEqual(['{/for}', '{/if}']);
+    expect(at(':: Start\n{if $x}{for @i of []}x{/}{/if}', 1, 28)).toEqual(['{/for}', '{/if}']);
+  });
+
+  it('closes a block through a branch of the block', () => {
+    expect(at(':: Start\n{if $x}a{else}b{/', 1, 18)).toEqual(['{/if}']);
+  });
+
+  it('offers temp and local variables the document uses, and the parameters of its widgets', () => {
+    const doc = ':: Widgets [widget]\n{widget "w" @p _q}{@p}{/widget}\n:: Start\n{set _t = 1}{_';
+    expect(at(doc, 3, 15)).toEqual(expect.arrayContaining(['_t', '_q']));
+    expect(at(':: Widgets [widget]\n{widget "w" @p}{@p}{/widget}\n:: Start\n{@', 3, 2)).toEqual(['@p']);
+  });
+
+  it('offers nothing in a script passage, and edits CRLF documents at the right range', () => {
+    expect(at(':: Code [script]\nvar o = {', 1, 9)).toEqual([]);
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\r\n{if $x}\r\ntext {i' });
+    const items = getCompletions('file:///test.tw', { line: 2, character: 7 }, undefined, ws);
+    expect(items.find(i => i.label === 'if')?.textEdit).toMatchObject({ range: { start: { line: 2, character: 6 }, end: { line: 2, character: 7 } } });
+  });
+
+  it('offers passage names inside a link target only', () => {
+    const doc = ':: Start\n[[Go->Se]] [[Se<-Go]]\n:: Second\nx';
+    expect(at(doc, 1, 8)).toEqual(['Start', 'Second']);
+    expect(at(doc, 1, 3)).toEqual([]);
+    expect(at(doc, 1, 15)).toEqual(['Start', 'Second']);
+    expect(at(doc, 1, 18)).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { macroNameRange, parseDocumentMacros } from '../core/parsing/macro-parser.js';
-import { executableCodeLines, findTransientReferences, findVariableReferences } from './references.js';
+import type { PassageMarkup } from '../core/markup/passage-markup.js';
+import { macroTokens, variableUses, type VariableUse } from './markup-symbols.js';
 
 // ---------------------------------------------------------------------------
 // Token legend
@@ -23,6 +23,13 @@ const tokenTypeIndex = new Map<string, number>(
 const tokenModifierIndex = new Map<string, number>(
   tokenModifiersLegend.map((m, i) => [m, i]),
 );
+
+const VARIABLE_MODIFIERS: Record<VariableUse['sigil'], string[]> = {
+  $: ['global'],
+  _: ['local'],
+  '@': ['readonly'],
+  '%': ['defaultLibrary'],
+};
 
 function encodeType(type: string): number {
   return tokenTypeIndex.get(type) ?? 0;
@@ -53,12 +60,17 @@ export interface AbsoluteToken {
 /**
  * Compute semantic tokens for a document.
  *
- * Tokens emitted:
- *  - Macro names -> 'function' (with 'defaultLibrary' if known macro)
+ * Tokens emitted, from what Spindle's tooling API reads in each passage:
+ *  - Macro names -> 'function' (with 'defaultLibrary' if known macro), also
+ *    in the labels and attribute values that hold markup; a macro written in
+ *    an HTML comment, which is text, has none
  *  - Story variables ($var) -> 'variable' + 'global'
  *  - Temp variables (_var) -> 'variable' + 'local'
  *  - Local variables (@var) -> 'variable' + 'readonly'
  *  - Transient variables (%var) -> 'variable' + 'defaultLibrary'
+ *
+ * A variable is a token where code references it, or where StoryVariables /
+ * StoryTransients declares it; not in prose, comments or string contents.
  *
  * No keyword tokens: Spindle expressions are plain JavaScript with only the
  * `$ _ @ %` sigils rewritten (expression.ts), so words such as `is`, `to` or
@@ -72,32 +84,39 @@ export function computeSemanticTokensAbsolute(
   uri: string,
   workspace: WorkspaceModel,
 ): AbsoluteToken[] {
-  const text = workspace.documents.getText(uri);
+  const doc = workspace.markup.get(uri);
   // JavaScript/TypeScript sources and headerless text hold no story markup
-  if (text === undefined || !workspace.hasPassages(uri)) return [];
+  if (!doc || doc.passages.length === 0) return [];
 
-  const lines = text.split('\n');
   const tokens: AbsoluteToken[] = [];
+  /** A token over the `content` offsets `[start, end)` of `passage`; a name never spans lines. */
+  const push = (passage: PassageMarkup, start: number, end: number, tokenType: string, modifiers: string[]) => {
+    const range = passage.range(start, end);
+    if (range.start.line !== range.end.line) return;
+    tokens.push({
+      line: range.start.line,
+      startChar: range.start.character,
+      length: range.end.character - range.start.character,
+      tokenType: encodeType(tokenType),
+      tokenModifiers: encodeModifiers(modifiers),
+    });
+  };
 
-  // Find header lines for skipping during content scanning
-  const headerLines = new Set<number>();
-  const passages = workspace.passages.getPassagesInDocument(uri);
-  for (const passage of passages) {
-    const headerLine = passage.headerEnd.start.line;
-    headerLines.add(headerLine);
+  for (const passage of doc.passages) {
+    const headerLine = passage.passage.headerEnd.start.line;
 
     // Emit passage header tokens
     // :: token (behind the BOM a client's first line may start with)
     tokens.push({
       line: headerLine,
-      startChar: headerLine === 0 && text.charCodeAt(0) === 0xfeff ? 1 : 0,
+      startChar: headerLine === 0 && doc.text.charCodeAt(0) === 0xfeff ? 1 : 0,
       length: 2,
       tokenType: encodeType('namespace'),
       tokenModifiers: 0,
     });
 
     // passage name, as the passage parser delimits it (escapes included)
-    const { start, end } = passage.nameRange;
+    const { start, end } = passage.passage.nameRange;
     tokens.push({
       line: headerLine,
       startChar: start.character,
@@ -105,106 +124,12 @@ export function computeSemanticTokensAbsolute(
       tokenType: encodeType('namespace'),
       tokenModifiers: encodeModifiers(['declaration']),
     });
-  }
 
-  // Macro name tokens
-  const macros = parseDocumentMacros(text, passages, undefined, workspace.capabilities);
-  for (const macro of macros) {
-    const macroLine = macro.range.start.line;
-    if (headerLines.has(macroLine)) continue;
-
-    const isDefined = !!workspace.macros.getMacro(macro.name);
-
-    const nameRange = macroNameRange(macro);
-
-    tokens.push({
-      line: macroLine,
-      startChar: nameRange.start.character,
-      length: macro.name.length,
-      tokenType: encodeType('function'),
-      tokenModifiers: encodeModifiers(isDefined ? ['defaultLibrary'] : []),
-    });
-  }
-
-  // Variable tokens. A `$` or `%` variable is a token exactly where the
-  // variable tracker records a reference or declaration (the one list that
-  // navigation, rename and diagnostics share); `_temp` and `@local` have no
-  // tracker, so they are tokens in the code Spindle evaluates. Prose, comments,
-  // string contents and non-markup passages (script, stylesheet, StoryData) are not code.
-  const storyVarRegex = /\$(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
-  const tempVarRegex = /(?<!\w)_([A-Za-z_$][\w$]*)/g;
-  const localVarRegex = /(?<!\w)@([A-Za-z_$][\w$]*)/g;
-  const transientVarRegex = /(?<!\w)%(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
-
-  const tracked = new Set<string>();
-  const trackName = (sigil: '$' | '%', name: string) => {
-    const key = `${sigil}${name}`;
-    if (tracked.has(key)) return;
-    tracked.add(key);
-    const refs = sigil === '$' ? findVariableReferences(name, workspace, true) : findTransientReferences(name, workspace, true);
-    for (const r of refs) if (r.uri === uri) tracked.add(`${sigil}@${r.range.start.line}:${r.range.start.character}`);
-  };
-  const isTracked = (sigil: '$' | '%', name: string, line: number, character: number) => {
-    trackName(sigil, name);
-    return tracked.has(`${sigil}@${line}:${character}`);
-  };
-
-  const codeLines = executableCodeLines(lines, passages, workspace.capabilities);
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    if (headerLines.has(lineIndex)) continue;
-    const line = lines[lineIndex];
-
-    // Story vars ($var)
-    storyVarRegex.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = storyVarRegex.exec(line)) !== null) {
-      if (!isTracked('$', m[1].split('.')[0], lineIndex, m.index)) continue;
-      tokens.push({
-        line: lineIndex,
-        startChar: m.index,
-        length: m[0].length,
-        tokenType: encodeType('variable'),
-        tokenModifiers: encodeModifiers(['global']),
-      });
+    for (const macro of macroTokens(passage)) {
+      push(passage, macro.nameStart, macro.nameEnd, 'function', workspace.macros.getMacro(macro.name) ? ['defaultLibrary'] : []);
     }
-
-    // Temp vars (_var)
-    const code = codeLines[lineIndex];
-    tempVarRegex.lastIndex = 0;
-    while ((m = tempVarRegex.exec(code)) !== null) {
-      tokens.push({
-        line: lineIndex,
-        startChar: m.index,
-        length: m[0].length,
-        tokenType: encodeType('variable'),
-        tokenModifiers: encodeModifiers(['local']),
-      });
-    }
-
-    // Local vars (@var)
-    localVarRegex.lastIndex = 0;
-    while ((m = localVarRegex.exec(code)) !== null) {
-      tokens.push({
-        line: lineIndex,
-        startChar: m.index,
-        length: m[0].length,
-        tokenType: encodeType('variable'),
-        tokenModifiers: encodeModifiers(['readonly']),
-      });
-    }
-
-    // Transient vars (%var)
-    transientVarRegex.lastIndex = 0;
-    while ((m = transientVarRegex.exec(line)) !== null) {
-      if (!isTracked('%', m[1].split('.')[0], lineIndex, m.index)) continue;
-      tokens.push({
-        line: lineIndex,
-        startChar: m.index,
-        length: m[0].length,
-        tokenType: encodeType('variable'),
-        tokenModifiers: encodeModifiers(['defaultLibrary']),
-      });
+    for (const use of variableUses(passage)) {
+      push(passage, use.start, use.end, 'variable', VARIABLE_MODIFIERS[use.sigil]);
     }
   }
 

@@ -243,7 +243,10 @@ describe('variable names Spindle accepts (#62)', () => {
         { line: 3, character: 88 },
       ]);
       const tokens = computeSemanticTokensAbsolute(uri, ws).filter(t => t.line === 3).map(t => t.startChar);
-      expect(tokens).toEqual(expect.arrayContaining([88, 102]));
+      // `{%5}` is a variable display. In code, `%20` after `to` is Spindle's modulo operator, not a
+      // variable (lexJs finds no `%20` in `_t to %20`), so only `_t` is a token there.
+      expect(tokens).toEqual(expect.arrayContaining([88, 96]));
+      expect(tokens).not.toContain(102);
       for (const character of prose) {
         // Inside [[…]] the cursor is on a passage name, which is fine
         const pos = { line: 3, character: character + 1 };
@@ -279,7 +282,9 @@ describe('variable names Spindle accepts (#62)', () => {
     const varTokens = computeSemanticTokensAbsolute(uri, ws)
       .filter(t => t.line === 6)
       .map(t => [t.startChar, t.length]);
-    expect(varTokens).toEqual(expect.arrayContaining([[9, 2], [18, 2], [24, 2], [32, 2], [36, 2]]));
+    // `$5` in prose (column 9) is text to Spindle; the ones in code and displays are variables
+    expect(varTokens).toEqual(expect.arrayContaining([[18, 2], [24, 2], [32, 2], [36, 2]]));
+    expect(varTokens).not.toContainEqual([9, 2]);
 
     const fieldWs = createWorkspace({ name: 'test.tw', content: content + '\n{$9lives.' });
     const items = getCompletions(uri, { line: 7, character: 10 }, '.', fieldWs);

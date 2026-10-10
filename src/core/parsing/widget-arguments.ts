@@ -1,6 +1,10 @@
 /**
  * Argument boundaries of a widget invocation, as Spindle's runtime finds them.
  *
+ * Superseded by `splitArgs` of `@rohal12/spindle/tooling` (signature help
+ * uses it); diagnostics and inlay hints still call this mirror and should
+ * move to it, after which this file goes.
+ *
  * Mirrors `splitArgs` in Spindle's WidgetInvocation: the raw arguments are
  * split on top-level commas (outside quotes and (), [], {} nesting). Without
  * a top-level comma, a single expression is further split on top-level
@@ -55,16 +59,6 @@ export function splitWidgetArguments(raw: string): WidgetArg[] {
   }
 
   return args;
-}
-
-/**
- * The index of the widget argument being typed when the invocation's
- * arguments so far are `argsBefore`. A standalone placeholder stands in for
- * the next character, so trailing whitespace or a comma starts a new
- * argument only where Spindle would split there.
- */
-export function activeWidgetArgument(argsBefore: string): number {
-  return splitWidgetArguments(argsBefore + '$').length - 1;
 }
 
 function trimmed(raw: string, start: number, end: number): WidgetArg {
