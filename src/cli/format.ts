@@ -1,5 +1,4 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { glob } from 'glob';
 
 import { formatDocument } from '../plugins/format.js';

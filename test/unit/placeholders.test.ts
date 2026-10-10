@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks, scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
+import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks, scanSpindleMarkup } from '../../src/plugins/format/placeholders.js';
+
+const scanSpindleTokens = (text: string) => scanSpindleMarkup(text).tokens;
 
 /** Sequences String.prototype.replace interprets in a replacement string. */
 const REPLACEMENT_PATTERNS = ['$&', "$'", '$`', '$$', '$1', '$<name>'];

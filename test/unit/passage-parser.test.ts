@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePassageHeader, isSpecialPassage } from '../../src/core/parsing/passage-parser.js';
+import { parsePassageHeader } from '../../src/core/parsing/passage-parser.js';
 
 describe('parsePassageHeader', () => {
   it('parses a basic passage header', () => {
@@ -96,49 +96,5 @@ describe('parsePassageHeader', () => {
     const result = parsePassageHeader(':: Name {not valid json}', 0);
     // Invalid JSON meta should cause the line to not match as a valid header
     expect(result).toBeNull();
-  });
-});
-
-describe('isSpecialPassage', () => {
-  it('recognizes StoryVariables as special', () => {
-    expect(isSpecialPassage('StoryVariables')).toBe(true);
-  });
-
-  it('recognizes StoryInit as special', () => {
-    expect(isSpecialPassage('StoryInit')).toBe(true);
-  });
-
-  it('recognizes StoryData as special', () => {
-    expect(isSpecialPassage('StoryData')).toBe(true);
-  });
-
-  it('recognizes StoryTitle as special', () => {
-    expect(isSpecialPassage('StoryTitle')).toBe(true);
-  });
-
-  it('recognizes StoryBanner as special', () => {
-    expect(isSpecialPassage('StoryBanner')).toBe(true);
-  });
-
-  it('recognizes StoryCaption as special', () => {
-    expect(isSpecialPassage('StoryCaption')).toBe(true);
-  });
-
-  it('recognizes StoryMenu as special', () => {
-    expect(isSpecialPassage('StoryMenu')).toBe(true);
-  });
-
-  it('recognizes StoryInterface as special', () => {
-    expect(isSpecialPassage('StoryInterface')).toBe(true);
-  });
-
-  it('recognizes StoryAuthor as special', () => {
-    expect(isSpecialPassage('StoryAuthor')).toBe(true);
-  });
-
-  it('does not recognize regular names as special', () => {
-    expect(isSpecialPassage('Regular')).toBe(false);
-    expect(isSpecialPassage('Start')).toBe(false);
-    expect(isSpecialPassage('My Passage')).toBe(false);
   });
 });

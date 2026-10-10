@@ -105,13 +105,6 @@ export function parsePassageHeader(line: string, lineNumber: number): ParsedPass
   };
 }
 
-/**
- * Check whether a passage name is one of the special/system passages.
- */
-export function isSpecialPassage(name: string): boolean {
-  return SPECIAL_PASSAGES.has(name);
-}
-
 /** Tags whose passages hold JavaScript or CSS instead of story markup. */
 const CODE_PASSAGE_TAGS = new Set(['script', 'stylesheet']);
 

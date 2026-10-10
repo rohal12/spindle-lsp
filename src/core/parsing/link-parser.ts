@@ -48,36 +48,6 @@ function readText(text: string): DocumentMarkup {
   return new DocumentMarkup(TEXT_URI, text, passages, TEXT_CONTEXT);
 }
 
-/** A bracket link's target. */
-export interface LinkRef {
-  name: string;
-  /** The target as written. */
-  range: Range;
-  source: 'link';
-}
-
-/**
- * The targets of the bracket links of `text`, in order: `[[Target]]`,
- * `[[Display|Target]]`, `[[Display->Target]]`, `[[Target<-Display]]`, after
- * the optional `.class#id` prefix. A link with an empty target has none.
- *
- * @param text - a Twee document, or the body of one passage
- * @param lineOffset - added to every line number (default 0)
- */
-export function parseLinks(text: string, lineOffset: number = 0): LinkRef[] {
-  if (!text.includes('[[')) return [];
-  return documentPassageRefs(markupOfText(text))
-    .filter(ref => ref.form === 'bracket')
-    .map(ref => ({
-      name: ref.name,
-      range: {
-        start: { line: ref.range.start.line + lineOffset, character: ref.range.start.character },
-        end: { line: ref.range.end.line + lineOffset, character: ref.range.end.character },
-      },
-      source: 'link' as const,
-    }));
-}
-
 /** A bracket link whose runtime navigation differs from its source. */
 export interface LinkRuntimeMismatch {
   /** The whole `[[...]]` link. */

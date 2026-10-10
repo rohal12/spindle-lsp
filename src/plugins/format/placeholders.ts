@@ -74,11 +74,6 @@ export function scanSpindleMarkup(text: string): MarkupScan {
   return { tokens, tags, doBlocks };
 }
 
-/** The macros, variables, expressions and links of `text` (see {@link scanSpindleMarkup}). */
-export function scanSpindleTokens(text: string): TokenMatch[] {
-  return scanSpindleMarkup(text).tokens;
-}
-
 /**
  * The ranges of the string and template literals of the JavaScript `code`
  * that span lines (outermost only): their line breaks are part of the value.

@@ -370,3 +370,73 @@ Needs upstream API (W2a):
 The shared layer lacks `storeVar` in `MacroRegistry.toolingMacros()` (and so in
 `MarkupContext.macros`): `variableReferences` and `validateVariableReferences`
 need it for the input macros, so diagnostics adds it from the registry.
+
+## Cleanup: tracker validation mirror
+
+`computeDiagnostics` takes SP200, SP201 and SP203 from the runtime's
+`validateVariableReferences`, so the variable tracker no longer mirrors the
+story start's validation. Deleted from `variable-tracker.ts`: `getUndeclared`,
+`getUndeclaredTransient`, `getPrimitiveFieldAccesses` (+ `PrimitiveFieldAccess`),
+`getNullDeclarations`, `getNullTransientDeclarations` (+ `NullDeclaration`),
+the `undeclared()` helper, the per-declaration `schemas` map and the
+`validated`/`indexed` flags of a usage (a `StoryScript` passage is now skipped
+when usages are recorded, which is what `indexed` did); `variable-schema.ts`
+(`findPrimitiveFieldAccess`, a copy of the runtime's `validateRef`);
+`VariableReference.validated` in `executable-refs.ts`; the unused `_macros` and
+`_storeVarMacros` parameters of `scanDocument` (`scanDocument(uri, text, markup?)`
+now). Kept: declarations with spans, usages with ranges and paths (rename,
+references, hover, semantic tokens, inlay hints), `getArrayMemberAccesses`
+(SP206), the invalid-declaration lists (SP207).
+
+Tests deleted or ported (the end-to-end cover is `diagnostics-variables.test.ts`,
+new: every case that went through the tracker's `getUndeclared`,
+`getUndeclaredTransient` or `getPrimitiveFieldAccesses` now goes through
+`computeDiagnostics` with the range of the reference):
+
+| Test | What happened | Reason |
+| --- | --- | --- |
+| `variable-schema.test.ts` (whole file) | deleted | `findPrimitiveFieldAccess` is gone; SP201 against the runtime is `field-access-runtime` and `executable-refs` "SP201 matches the runtime" (both now through `computeDiagnostics`) |
+| `variable-tracker.test.ts` "detects undeclared variables" | deleted | `diagnostics.test` "produces SP200" |
+| same, "reports these references when undeclared ... (#62)" | ported | `diagnostics-variables` (StoryInit, template, label, receiver, transients) and `diagnostics.test` #62 |
+| same, "accepts any field of a null default", "declares a null default" (the `getNull*` lines), "does not flag non-null values as null declarations" | the `getNull*` assertions and the last test deleted, the null-field case ported | the methods returned `[]` always; "accepts any field of a null default" is in `diagnostics-variables` |
+| same, "skips passages tagged script or stylesheet" | the `getUndeclared` line replaced by `getUsages('real')`; no-SP200 case ported | `diagnostics-variables` "passage the story does not render" |
+| same, the describe "undeclared references as Spindle validates them (#62)" | ported (every case) | `diagnostics-variables` "SP200 for what a passage executes" |
+| same, `undeclaredNames` lines of "string literals in prose and code" and "CSS-prefixed variable displays (#58)" | the validation line removed, the usage lines stay | ported to `diagnostics-variables`; `diagnostics.test` #58 |
+| same, the describe "field access on primitives (Spindle validateRef)" | ported (every case, with the range of the whole reference as the tooling API reports it) | `diagnostics-variables` "SP201" |
+| same, "references the tooling API reads" | `names()` returns the usages only; the `undeclared` halves ported | `diagnostics-variables` |
+| same, "keeps the StoryScript text out of the usages, but validates it like Spindle" | the usage half stays; the validation half ported (`a` and `b` are both undeclared) | `diagnostics-variables` "StoryScript" |
+| `executable-refs.test.ts` "agrees with validatePassages on every fragment and on random passages" | deleted | it compared the tracker's `validated` references (= `variableReferences`) with the runtime; the same fragments and random passages are compared by the SP200 differential below |
+| same, "reports the offset of each reference `$`" | kept, over every reference found | no `validated` filter |
+| same, "SP201 matches the runtime", "SP200 follows the installed Spindle" | helper changed to `computeDiagnostics` | the tracker no longer reports them |
+| `field-access-runtime.test.ts` | `lspErrors` goes through `computeDiagnostics` (SP201 messages); no case deleted; the upstream-defect test (spindle#466) is unchanged and still fails | |
+| `link-interpolation.test.ts` Q-validation | `lspUndeclared` goes through `computeDiagnostics` | |
+| `macro-discovery.test.ts` "records the variables of an expression parameter" | `getUndeclared` replaced by the SP200 messages of `computeDiagnostics` | |
+
+Dead code removed (checked with `npx fallow dead-code` and grep over `src` and `test`):
+
+- `passageMacroHeads`, `passageRefs`, `quoteArg`, `readLinkMacro`,
+  `NON_MARKUP_PASSAGES`, `isSpindleFormatName`, `readStoryDataFormatVersion`:
+  no longer exported (used inside their module only).
+- `passage-parser.ts`: `HAS_PASSAGE_HEADER`, `PassageBody`, `passageBodies` (+ the
+  line counter), `isSpecialPassage`, `maskNonMarkupPassages` (its only caller was
+  the test "L2-masking" of `markup-contexts`, deleted with it: no consumer masks
+  passages any more; the rest of L2 covers what a non-markup passage holds).
+- `markup-symbols.ts`: its copies of `markupTokens` and `macroTokens` (importers
+  use `core/markup/tokens.ts`); `references.ts` `isTransientAt`; `MarkupIndex.remove`;
+  `DocumentMarkup.passageAtOffset`; `MacroNode` (`types.ts`); `parseLinks` and
+  `LinkRef` (`link-parser.ts`); `isPrettierAvailable`; `scanSpindleTokens`
+  (`scanSpindleMarkup(text).tokens`; the three test files keep a one-line helper);
+  `decodeStringLiteralBody` and `JsQuote` (`js-string-literal.ts`, deprecated and
+  no longer used by diagnostics); the `escapes` parameter of `bracketLinkMismatch`;
+  unused imports and locals.
+- Tests for them: `link-parser.test.ts` keeps all its cases, reading the bracket
+  links through `documentPassageRefs` (covered with the other forms by
+  `passage-refs.test.ts`); `passage-parser.test.ts` "isSpecialPassage" (the set is
+  exercised by the reserved-name tests of rename) and `prettier-bridge.test.ts`
+  "isPrettierAvailable" deleted; `literal-contracts.test.ts` "the remaining decoder
+  agrees with passageTarget" now states the expected values of `passageTarget`
+  (same inputs), the decoder assertions in "treats malformed or legacy escapes as
+  undecidable" were redundant with the `passageTarget` ones next to them.
+- Kept although `fallow` reports them: `MarkupCursor.enclosingMacro`,
+  `headBeingTyped`, `linkTarget` (called by signature help and completions) and the
+  `triggerChar` parameter of `getCompletions` (the review harness passes it).

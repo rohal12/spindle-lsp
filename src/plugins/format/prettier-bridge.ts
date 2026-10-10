@@ -14,10 +14,6 @@ async function loadPrettier(): Promise<Prettier | null> {
   return prettier;
 }
 
-export async function isPrettierAvailable(): Promise<boolean> {
-  return (await loadPrettier()) !== null;
-}
-
 async function getBaseConfig(): Promise<Record<string, unknown>> {
   const p = await loadPrettier();
   if (!p) return {};
