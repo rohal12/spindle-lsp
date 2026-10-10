@@ -31,14 +31,13 @@ import { runtimeVariableReads } from '../helpers/variable-reads-oracle.js';
 import { tokenize } from '../helpers/tooling.js';
 import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { LITERAL_ARGUMENT_MACROS, VariableTracker } from '../../src/core/workspace/variable-tracker.js';
+import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 import { findLiteralLinkInterpolations, findBracketLinks, linkSelectorInterpolationRanges } from '../../src/core/parsing/link-parser.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeRename } from '../../src/plugins/rename.js';
 import { findVariableReferences } from '../../src/plugins/references.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 import type { Range } from '../../src/core/types.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 import { runtimeBracketLink, runtimeLinkMacro } from '../helpers/link-macro-oracle.js';
 
 const uri = 'file:///story.tw';
@@ -74,15 +73,6 @@ describe('Q-source: what the installed runtime interpolates', () => {
     expect(markupStrings()).toEqual(['button:label', 'dialog:label', 'link:text', 'meter:label']);
     expect(['if', 'timed'].map(name => byName.get(name)?.interpolate)).toEqual([true, true]);
   });
-
-  it('Q-source-registry: every built-in macro is classified (a new one forces a decision)', () => {
-    const registry = builtinMacros;
-    const classified = new Set([...LITERAL_ARGUMENT_MACROS, 'button', 'dialog']);
-    expect(registry.map(m => m.name).filter(name => !classified.has(name))).toEqual([]);
-    // and the literal list holds nothing the runtime does not ship
-    const shipped = new Set(registry.map(m => m.name));
-    expect([...LITERAL_ARGUMENT_MACROS].filter(name => !shipped.has(name))).toEqual([]);
-  });
 });
 
 /** Whether interpolate() would change `template` (it evaluates some block in it). */
@@ -100,7 +90,6 @@ describe('Q-differential: variable usages are what the runtime interpolates', ()
 
   function oursReads(text: string): string[] {
     const tracker = new VariableTracker();
-    tracker.setCapabilities(INSTALLED_CAPABILITIES);
     tracker.scanDocument(uri, `:: P\n${text}`, []);
     return ['x', 'a', 'b', 't', 'u', 'k', 'y', 'n', 'item']
       .flatMap(name => [
@@ -343,7 +332,6 @@ describe('Q-validation: SP200 follows the installed startup validation', () => {
 
   function lspUndeclared(content: string): string[] {
     const tracker = new VariableTracker();
-    tracker.setCapabilities(INSTALLED_CAPABILITIES);
     tracker.parseStoryVariables('$decl = 1', 1, uri);
     tracker.scanDocument(uri, [':: StoryVariables', '$decl = 1', ':: Start', content, ''].join('\n'), []);
     return tracker.getUndeclared(uri).map(u => u.name).sort();
@@ -362,15 +350,15 @@ describe('Q-validation: SP200 follows the installed startup validation', () => {
     });
   }
 
-  it('Q-validation-versions: raw text before 0.50.1, the tokenizer after (link text included)', () => {
-    const names = lspUndeclared('[[Take {$nope}->T]]');
-    expect(names).toEqual(INSTALLED_CAPABILITIES.executableRefsOnly ? [] : ['nope']);
+  it('Q-validation-label: the label of a link is markup, so a variable in it is validated; its name is not', () => {
+    expect(lspUndeclared('[[Take {$nope}->T]]')).toEqual(['nope']);
+    expect(lspUndeclared('[[Take->T{$nope}]]')).toEqual([]);
   });
 
-  it('Q-validation-diagnostics: SP200 and SP305 are independent findings on the same link', () => {
-    const model = workspace(':: StoryVariables\n$decl = 1\n:: Start\n[[Take->T{$nope}]]\n:: T\nx\n');
+  it('Q-validation-diagnostics: SP200 (the label) and SP305 (the passage name) are independent findings on the same link', () => {
+    const model = workspace(':: StoryVariables\n$decl = 1\n:: Start\n[[Take {$nope}->T{$decl}]]\n:: T{$decl}\nx\n');
     const codes = computeDiagnostics(uri, model).map(d => d.code);
     expect(codes).toContain('SP305');
-    expect(codes.includes('SP200')).toBe(!INSTALLED_CAPABILITIES.executableRefsOnly);
+    expect(codes).toContain('SP200');
   });
 });

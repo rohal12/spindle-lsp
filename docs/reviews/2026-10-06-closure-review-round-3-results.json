@@ -1,0 +1,2424 @@
+{
+  "reviewedMain": "51c94c807fc514d0d98c0a4089b61da5661fd1bc",
+  "testedSourceCommit": "29602ac938f07436358cb0601d113a9b76df6efa",
+  "scope": "Closure validation with bounded lexical/target-identity expansion; additional observations are separate from the retained matrix.",
+  "retained": {
+    "historical": [
+      {
+        "id": "F66-1",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "F66-2",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "C-F66",
+        "pass": true,
+        "matches": 4
+      },
+      {
+        "id": "R67-double",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "R67-single",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "R67-slash",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "R67-template",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "C-R67",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "Q68",
+        "pass": true,
+        "matches": 8
+      },
+      {
+        "id": "Q69-$-value",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "Q69-$-header",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "Q69-$-newline",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "Q69-%-value",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "Q69-%-header",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "Q69-%-newline",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-macro-string-references",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-macro-string-rename",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-macro-string-definition",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-macro-string-document-links",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-macro-string-code-lenses",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-macro-string-diagnostics",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-attribute-references",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-attribute-rename",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-attribute-definition",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-attribute-document-links",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-attribute-code-lenses",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-attribute-diagnostics",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-script-references",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-script-rename",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-script-definition",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-script-document-links",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-script-code-lenses",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-script-diagnostics",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-stylesheet-references",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-stylesheet-rename",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-stylesheet-definition",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-stylesheet-document-links",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-stylesheet-code-lenses",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X70-stylesheet-diagnostics",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "C-X70",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X71",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X72-StoryVariables",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X72-StoryTransients",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "X72-StoryData",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "C-X72",
+        "pass": true,
+        "matches": 2
+      },
+      {
+        "id": "V73",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "W74-css",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "W74-hyphen",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "E75",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "L77-unicode-goto",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "L77-unicode-include",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "L77-hex-goto",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "L77-hex-include",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "D78",
+        "pass": true,
+        "matches": 5
+      },
+      {
+        "id": "C-D78",
+        "pass": true,
+        "matches": 5
+      },
+      {
+        "id": "H79-textbox",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "H79-radiobutton",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "H79-partial",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "S80",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "B76-default",
+        "pass": true,
+        "matches": 1
+      },
+      {
+        "id": "C-B76",
+        "pass": true,
+        "matches": 1
+      }
+    ],
+    "matrix": {
+      "previous": 3995,
+      "current": 5209,
+      "missing": [],
+      "changed": [],
+      "added": 1214
+    }
+  },
+  "peers": [
+    {
+      "version": "0.43.0",
+      "driverExit": 0,
+      "normalPassed": 2070,
+      "normalTotal": 2070,
+      "normalSuccess": true,
+      "typecheck": "tsc=0",
+      "matrixExit": 0
+    },
+    {
+      "version": "0.50.0",
+      "driverExit": 0,
+      "normalPassed": 2070,
+      "normalTotal": 2070,
+      "normalSuccess": true,
+      "typecheck": "tsc=0",
+      "matrixExit": 0
+    },
+    {
+      "version": "0.50.1",
+      "driverExit": 0,
+      "normalPassed": 2070,
+      "normalTotal": 2070,
+      "normalSuccess": true,
+      "typecheck": "tsc=0",
+      "matrixExit": 0
+    },
+    {
+      "version": "0.51.0",
+      "driverExit": 0,
+      "normalPassed": 2070,
+      "normalTotal": 2070,
+      "normalSuccess": true,
+      "typecheck": "tsc=0",
+      "matrixExit": 0
+    },
+    {
+      "version": "0.51.1",
+      "driverExit": 0,
+      "normalPassed": 2070,
+      "normalTotal": 2070,
+      "normalSuccess": true,
+      "typecheck": "tsc=0",
+      "matrixExit": 0
+    },
+    {
+      "version": "0.51.3",
+      "driverExit": 0,
+      "normalPassed": 2070,
+      "normalTotal": 2070,
+      "normalSuccess": true,
+      "typecheck": "tsc=0",
+      "matrixExit": 0
+    }
+  ],
+  "previousClosureProbes": [
+    {
+      "id": "F66/do-template-lf",
+      "before": "a\nb",
+      "after": "a\nb",
+      "formatted": ":: StoryVariables\n:: Start\n{do}\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "R67/goto-arithmetic-name",
+      "output": ":: 1 + 2\nhi\n:: StoryVariables\n:: Start\n{goto \"1 + 2\"}",
+      "edits": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 3
+            },
+            "end": {
+              "line": 0,
+              "character": 6
+            }
+          },
+          "newText": "1 + 2"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 4,
+              "character": 6
+            },
+            "end": {
+              "line": 4,
+              "character": 9
+            }
+          },
+          "newText": "\"1 + 2\""
+        }
+      ],
+      "runtimeTarget": "1 + 2"
+    },
+    {
+      "id": "R67/include-inline-name-0.45.1",
+      "output": ":: inline\nhi\n:: StoryVariables\n:: Start\n{include \"\\u0069nline\"}",
+      "edits": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 3
+            },
+            "end": {
+              "line": 0,
+              "character": 6
+            }
+          },
+          "newText": "inline"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 4,
+              "character": 10
+            },
+            "end": {
+              "line": 4,
+              "character": 13
+            }
+          },
+          "newText": "\\u0069nline"
+        }
+      ],
+      "runtimeTarget": "inline"
+    },
+    {
+      "id": "P70/raw-do-js-link-string-0.51.3",
+      "version": "0.51.3",
+      "runtimeTokens": [
+        "macro",
+        "text",
+        "macro"
+      ],
+      "references": [],
+      "links": [],
+      "renamed": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: New\nhi\n:: Start\n{do}\nconst note = \"[[Old]]\";\n{/do}\n"
+    },
+    {
+      "id": "C/variable-rename/internal-dollar",
+      "rejection": "Cannot rename to \"a$b\": a variable name must be word characters only (letters, digits and _; no `$`, `%`, `.` or spaces). (at file:///closure-review.tw:2:1)",
+      "parseError": "StoryVariables: Invalid declaration: \"$a$b = 1\". Expected: $name = value"
+    },
+    {
+      "id": "C/variable-rename/digit-name",
+      "runtimeSchema": {
+        "5": {
+          "type": "number",
+          "name": "5",
+          "default": 1
+        }
+      }
+    },
+    {
+      "id": "D/bom-first-header/raw-source-rename",
+      "output": "\ufeff:: New\nhi\n:: StoryVariables\n:: Start\n[[New]]",
+      "edits": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 4
+            },
+            "end": {
+              "line": 0,
+              "character": 7
+            }
+          },
+          "newText": "New"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 4,
+              "character": 2
+            },
+            "end": {
+              "line": 4,
+              "character": 5
+            }
+          },
+          "newText": "New"
+        }
+      ]
+    }
+  ],
+  "lexicalAndClosureBoundaryProbes": [
+    {
+      "id": "R67/bare-runtime-binding/New",
+      "output": ":: New\nhi\n:: StoryVariables\n:: Start\n{goto \"New\"} {include \"New\"}\n",
+      "args": "\"New\"",
+      "targets": [
+        "New",
+        "New"
+      ],
+      "pass": true
+    },
+    {
+      "id": "R67/bare-runtime-binding/_x1",
+      "output": ":: _x1\nhi\n:: StoryVariables\n:: Start\n{goto \"_x1\"} {include \"_x1\"}\n",
+      "args": "\"_x1\"",
+      "targets": [
+        "_x1",
+        "_x1"
+      ],
+      "pass": true
+    },
+    {
+      "id": "R67/bare-runtime-binding/URL",
+      "output": ":: URL\nhi\n:: StoryVariables\n:: Start\n{goto \"URL\"} {include \"URL\"}\n",
+      "args": "\"URL\"",
+      "targets": [
+        "URL",
+        "URL"
+      ],
+      "pass": true
+    },
+    {
+      "id": "R67/bare-runtime-binding/temporary",
+      "output": ":: temporary\nhi\n:: StoryVariables\n:: Start\n{goto \"temporary\"} {include \"temporary\"}\n",
+      "args": "\"temporary\"",
+      "targets": [
+        "temporary",
+        "temporary"
+      ],
+      "pass": true
+    },
+    {
+      "id": "R67/bare-runtime-binding/Image",
+      "output": ":: Image\nhi\n:: StoryVariables\n:: Start\n{goto \"Image\"} {include \"Image\"}\n",
+      "args": "\"Image\"",
+      "targets": [
+        "Image",
+        "Image"
+      ],
+      "pass": true
+    },
+    {
+      "id": "R67/bare-runtime-binding/Chapter 2",
+      "output": ":: Chapter 2\nhi\n:: StoryVariables\n:: Start\n{goto Chapter 2} {include Chapter 2}\n",
+      "args": "Chapter 2",
+      "targets": [
+        "Chapter 2",
+        "Chapter 2"
+      ],
+      "pass": true
+    },
+    {
+      "id": "L77/include-inline-diagnostic/0.45.1",
+      "refs": 0,
+      "sp302": 0,
+      "pass": true
+    },
+    {
+      "id": "L77/include-inline-diagnostic/0.51.1",
+      "refs": 1,
+      "sp302": 1,
+      "pass": true
+    },
+    {
+      "id": "L77/include-inline-diagnostic/0.51.3",
+      "refs": 1,
+      "sp302": 1,
+      "pass": true
+    },
+    {
+      "id": "F66/regex-assignment-control",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst re = /`/;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const re = /`/;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/regex-assignment-control",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst re = /`/;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const re = /`/;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/regex-assignment-control",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst re = /`/;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const re = /`/;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/regex-assignment-control",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst re = /`/;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const re = /`/;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/if-regex-expression",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nif (true) /`/.test(\"x\");\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  if (true) /`/.test(\"x\");\nconst value = `a\n  b`;\n{/do}\n"
+    },
+    {
+      "id": "F66/if-regex-expression",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nif (true) /`/.test(\"x\");\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  if (true) /`/.test(\"x\");\r\nconst value = `a\r\n  b`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/if-regex-expression",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nif (true) /`/.test(\"x\");\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  if (true) /`/.test(\"x\");\nconst value = `a\n  b`;\n{/do}\n"
+    },
+    {
+      "id": "F66/if-regex-expression",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nif (true) /`/.test(\"x\");\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  if (true) /`/.test(\"x\");\r\nconst value = `a\r\n  b`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/while-regex-expression",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nwhile (false) /`/.test(\"x\");\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  while (false) /`/.test(\"x\");\nconst value = `a\n  b`;\n{/do}\n"
+    },
+    {
+      "id": "F66/while-regex-expression",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nwhile (false) /`/.test(\"x\");\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  while (false) /`/.test(\"x\");\r\nconst value = `a\r\n  b`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/while-regex-expression",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nwhile (false) /`/.test(\"x\");\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  while (false) /`/.test(\"x\");\nconst value = `a\n  b`;\n{/do}\n"
+    },
+    {
+      "id": "F66/while-regex-expression",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nwhile (false) /`/.test(\"x\");\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  while (false) /`/.test(\"x\");\r\nconst value = `a\r\n  b`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/for-regex-expression",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nfor (;false;) /`/.test(\"x\");\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  for (;false;) /`/.test(\"x\");\nconst value = `a\n  b`;\n{/do}\n"
+    },
+    {
+      "id": "F66/for-regex-expression",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nfor (;false;) /`/.test(\"x\");\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  for (;false;) /`/.test(\"x\");\r\nconst value = `a\r\n  b`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/for-regex-expression",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nfor (;false;) /`/.test(\"x\");\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  for (;false;) /`/.test(\"x\");\nconst value = `a\n  b`;\n{/do}\n"
+    },
+    {
+      "id": "F66/for-regex-expression",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nfor (;false;) /`/.test(\"x\");\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  for (;false;) /`/.test(\"x\");\r\nconst value = `a\r\n  b`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/if-braced-regex-control",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nif (true) { /`/.test(\"x\"); }\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  if (true) { /`/.test(\"x\"); }\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/if-braced-regex-control",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nif (true) { /`/.test(\"x\"); }\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  if (true) { /`/.test(\"x\"); }\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/if-braced-regex-control",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nif (true) { /`/.test(\"x\"); }\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  if (true) { /`/.test(\"x\"); }\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/if-braced-regex-control",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nif (true) { /`/.test(\"x\"); }\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  if (true) { /`/.test(\"x\"); }\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/division-control",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst a = 6; const q = (a) / 3;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const a = 6; const q = (a) / 3;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/division-control",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst a = 6; const q = (a) / 3;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const a = 6; const q = (a) / 3;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/division-control",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst a = 6; const q = (a) / 3;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const a = 6; const q = (a) / 3;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/division-control",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst a = 6; const q = (a) / 3;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const a = 6; const q = (a) / 3;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/division-postfix",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nlet a = 6; const q = a++ / 3;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  let a = 6; const q = a++ / 3;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/division-postfix",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nlet a = 6; const q = a++ / 3;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  let a = 6; const q = a++ / 3;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/division-postfix",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nlet a = 6; const q = a++ / 3;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  let a = 6; const q = a++ / 3;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/division-postfix",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nlet a = 6; const q = a++ / 3;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  let a = 6; const q = a++ / 3;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/object-division",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst q = {valueOf: () => 6} / 3;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const q = {valueOf: () => 6} / 3;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/object-division",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst q = {valueOf: () => 6} / 3;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const q = {valueOf: () => 6} / 3;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/object-division",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst q = {valueOf: () => 6} / 3;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const q = {valueOf: () => 6} / 3;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/object-division",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst q = {valueOf: () => 6} / 3;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const q = {valueOf: () => 6} / 3;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/regex-unicode-identifier",
+      "stringAwareBraces": false,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst \u03c0 = /`/;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const \u03c0 = /`/;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/regex-unicode-identifier",
+      "stringAwareBraces": false,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst \u03c0 = /`/;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const \u03c0 = /`/;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    },
+    {
+      "id": "F66/regex-unicode-identifier",
+      "stringAwareBraces": true,
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\n:: Start\n{do}\nconst \u03c0 = /`/;\nconst value = `a\nb`;\n{/do}\n",
+      "output": ":: StoryVariables\n:: Start\n{do}\n  const \u03c0 = /`/;\n  const value = `a\nb`;\n{/do}\n"
+    },
+    {
+      "id": "F66/regex-unicode-identifier",
+      "stringAwareBraces": true,
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true,
+      "idempotent": true,
+      "source": ":: StoryVariables\r\n:: Start\r\n{do}\r\nconst \u03c0 = /`/;\r\nconst value = `a\r\nb`;\r\n{/do}\r\n",
+      "output": ":: StoryVariables\r\n:: Start\r\n{do}\r\n  const \u03c0 = /`/;\r\n  const value = `a\r\nb`;\r\n{/do}\r\n"
+    }
+  ],
+  "actualDoRuntimeChecks": [
+    {
+      "version": "0.45.1",
+      "head": "if (true) /`/.test(\"x\");",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.45.1",
+      "head": "if (true) /`/.test(\"x\");",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.45.1",
+      "head": "while (false) /`/.test(\"x\");",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.45.1",
+      "head": "while (false) /`/.test(\"x\");",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.45.1",
+      "head": "for (;false;) /`/.test(\"x\");",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.45.1",
+      "head": "for (;false;) /`/.test(\"x\");",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.45.1",
+      "head": "const re = /`/;",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    },
+    {
+      "version": "0.45.1",
+      "head": "const re = /`/;",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    },
+    {
+      "version": "0.45.1",
+      "head": "if (true) { /`/.test(\"x\"); }",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    },
+    {
+      "version": "0.45.1",
+      "head": "if (true) { /`/.test(\"x\"); }",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    },
+    {
+      "version": "0.51.3",
+      "head": "if (true) /`/.test(\"x\");",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.51.3",
+      "head": "if (true) /`/.test(\"x\");",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.51.3",
+      "head": "while (false) /`/.test(\"x\");",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.51.3",
+      "head": "while (false) /`/.test(\"x\");",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.51.3",
+      "head": "for (;false;) /`/.test(\"x\");",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.51.3",
+      "head": "for (;false;) /`/.test(\"x\");",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\n  b",
+      "pass": false
+    },
+    {
+      "version": "0.51.3",
+      "head": "const re = /`/;",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    },
+    {
+      "version": "0.51.3",
+      "head": "const re = /`/;",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    },
+    {
+      "version": "0.51.3",
+      "head": "if (true) { /`/.test(\"x\"); }",
+      "eol": "LF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    },
+    {
+      "version": "0.51.3",
+      "head": "if (true) { /`/.test(\"x\"); }",
+      "eol": "CRLF",
+      "before": "a\nb",
+      "after": "a\nb",
+      "pass": true
+    }
+  ],
+  "inputExpressionIdentityProbes": [
+    {
+      "id": "L77/expression-identity/temporary/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 15
+          }
+        },
+        "placeholder": "temporary"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: temporary [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto temporary} {include temporary}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/temporary/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "placeholder": "temporary"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "temporary",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: temporary [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"temporary\"} {include \"temporary\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/variables/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 15
+          }
+        },
+        "placeholder": "variables"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: variables [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto variables} {include variables}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/variables/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "placeholder": "variables"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "variables",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: variables [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"variables\"} {include \"variables\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/locals/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 18
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 12
+          }
+        },
+        "placeholder": "locals"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: locals [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto locals} {include locals}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/locals/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 18
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 13
+          }
+        },
+        "placeholder": "locals"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "locals",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: locals [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"locals\"} {include \"locals\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/transient/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 15
+          }
+        },
+        "placeholder": "transient"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: transient [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto transient} {include transient}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/transient/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "placeholder": "transient"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "transient",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: transient [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"transient\"} {include \"transient\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/Math/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 16
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 10
+          }
+        },
+        "placeholder": "Math"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Math]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Math [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto Math} {include Math}\n:: \\[object Math\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Math\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/Math/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 16
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 11
+          }
+        },
+        "placeholder": "Math"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "Math",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Math [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Math\"} {include \"Math\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/URL/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 15
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "placeholder": "URL"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "class URL {\n  #context = new URLContext();\n  #searchParams;\n  #searchParamsModified;\n\n  static {\n   ...",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: URL [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto URL} {include URL}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/URL/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 15
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 10
+          }
+        },
+        "placeholder": "URL"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "URL",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: URL [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"URL\"} {include \"URL\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/_5/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 14
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 8
+          }
+        },
+        "placeholder": "_5"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "undefined",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: _5 [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto _5} {include _5}\n:: undefined\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: undefined\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/_5/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 14
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "placeholder": "_5"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "_5",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: _5 [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"_5\"} {include \"_5\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/Plain/bare/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 17
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 11
+          }
+        },
+        "placeholder": "Plain"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "Plain",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Plain [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto Plain} {include Plain}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/Plain/quoted/0.45.1",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 17
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 12
+          }
+        },
+        "placeholder": "Plain"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "Plain",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Plain [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Plain\"} {include \"Plain\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.45.1\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/temporary/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 15
+          }
+        },
+        "placeholder": "temporary"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: temporary [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto temporary} {include temporary}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/temporary/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "placeholder": "temporary"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "temporary",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: temporary [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"temporary\"} {include \"temporary\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/variables/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 15
+          }
+        },
+        "placeholder": "variables"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: variables [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto variables} {include variables}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/variables/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "placeholder": "variables"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "variables",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: variables [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"variables\"} {include \"variables\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/locals/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 18
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 12
+          }
+        },
+        "placeholder": "locals"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: locals [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto locals} {include locals}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/locals/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 18
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 13
+          }
+        },
+        "placeholder": "locals"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "locals",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: locals [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"locals\"} {include \"locals\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/transient/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 15
+          }
+        },
+        "placeholder": "transient"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Object]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: transient [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto transient} {include transient}\n:: \\[object Object\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Object\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/transient/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 21
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "placeholder": "transient"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "transient",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: transient [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"transient\"} {include \"transient\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/Math/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 16
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 10
+          }
+        },
+        "placeholder": "Math"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "[object Math]",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Math [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto Math} {include Math}\n:: \\[object Math\\]\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: \\[object Math\\]\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/Math/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 16
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 11
+          }
+        },
+        "placeholder": "Math"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "Math",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Math [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Math\"} {include \"Math\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/URL/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 15
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "placeholder": "URL"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "class URL {\n  #context = new URLContext();\n  #searchParams;\n  #searchParamsModified;\n\n  static {\n   ...",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: URL [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto URL} {include URL}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/URL/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 15
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 10
+          }
+        },
+        "placeholder": "URL"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "URL",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: URL [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"URL\"} {include \"URL\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/_5/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 14
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 8
+          }
+        },
+        "placeholder": "_5"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "undefined",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 0,
+      "pass": false,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: _5 [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto _5} {include _5}\n:: undefined\nReal destination\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n:: undefined\nReal destination\n"
+    },
+    {
+      "id": "L77/expression-identity/_5/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 14
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "placeholder": "_5"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "_5",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: _5 [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"_5\"} {include \"_5\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/Plain/bare/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 17
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 6
+          },
+          "end": {
+            "line": 6,
+            "character": 11
+          }
+        },
+        "placeholder": "Plain"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "Plain",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Plain [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto Plain} {include Plain}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    },
+    {
+      "id": "L77/expression-identity/Plain/quoted/0.51.3",
+      "refs": 2,
+      "sp302": 1,
+      "links": 0,
+      "definition": {
+        "uri": "file:///identity.tw",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 17
+          }
+        }
+      },
+      "prep": {
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 7
+          },
+          "end": {
+            "line": 6,
+            "character": 12
+          }
+        },
+        "placeholder": "Plain"
+      },
+      "lens": "2 references",
+      "runtimeTarget": "Plain",
+      "afterRenameTarget": "Fresh",
+      "expectedReferences": 2,
+      "pass": true,
+      "source": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Plain [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Plain\"} {include \"Plain\"}\n",
+      "output": ":: StoryData\n{\"format\":\"Spindle\",\"format-version\":\"0.51.3\"}\n:: StoryVariables\n:: Fresh [widget]\n{widget \"greet\"}hi{/widget}\n:: Start\n{goto \"Fresh\"} {include \"Fresh\"}\n"
+    }
+  ],
+  "ownership": {
+    "F66/control-flow-regex": 66,
+    "L77/expression-identity": 77
+  },
+  "baselineComparison": "All 12 failing control-flow lexical variants and all 14 failing expression-identity variants also fail at 320af88718a7c19c473085ceb58f25d44bcefb41. No introduced regression established.",
+  "ticketDisposition": {
+    "reopened": [
+      66,
+      77,
+      81
+    ],
+    "newDefectTickets": 0,
+    "encodingOwner67": "closed; output-encoding and collision controls pass",
+    "reportPublished": false
+  },
+  "followUpCoverageAudit": {
+    "semanticDecisionInventory": "not completed before additional case selection",
+    "newControlFlowRegexWrappersAndOtherPassageRoles": "not run",
+    "newBoundExpressionMultiFileAndDocumentLifecycle": "not run",
+    "newBoundExpressionPopulatedInputScopes": "not run; populated renamed-output scopes were checked separately",
+    "newInputRenameFreshWorkspaceRebuild": "not run; applied edits and actual target evaluation were checked",
+    "newCasesThroughLspCliMcp": "not run; retained integration fixtures passed",
+    "newCasesThroughActualOtherPeerRuntimeSources": "not run; actual new-case oracles used 0.45.1 and 0.51.3; retained suites passed seven versions",
+    "newExecutableRepositoryRegressionChecks": "not added; source examples/results retained in docs, probe programs remained in /tmp",
+    "interpretation": "These are unperformed checks, not additional demonstrated defects. This audit records rather than completes them."
+  }
+}

@@ -1,132 +1,17 @@
-import type { DeclaredVariable, MacroNode, Range, Position, VariableValueType } from '../types.js';
-import { parsePassageHeader, isMarkupPassage, isScriptOrStylesheetPassage } from '../parsing/passage-parser.js';
-import { findBracketLinks, linkSelectorInterpolationRanges } from '../parsing/link-parser.js';
-import { createCodeScanner, SELECTOR_PATTERN, type CodeScanner } from '../parsing/macro-parser.js';
-import type { BraceReading } from '../parsing/code-scanner.js';
-import { inferDefaultSchema, findPrimitiveFieldAccess } from './variable-schema.js';
-import { checkDeclaration, declaredName } from './declaration-check.js';
-import { collectExecutableRefs } from '../parsing/executable-refs.js';
-import { DEFAULT_CAPABILITIES, type SpindleCapabilities } from './spindle-version.js';
+import { builtinMacros, isBlockMacro, type FieldSchema } from '@rohal12/spindle/tooling';
+import type { DeclaredVariable, Position, Range, VariableValueType } from '../types.js';
+import { collectVariableReferences } from '../parsing/executable-refs.js';
+import { DocumentMarkup, type MarkupContext } from '../markup/passage-markup.js';
+import { buildLineStarts, offsetToPosition } from '../text.js';
+import { PassageIndex } from './passage-index.js';
+import { readDeclarations, type DeclarationSigil } from './declaration-check.js';
+import { findPrimitiveFieldAccess } from './variable-schema.js';
 
 /**
- * Regex to match $variable references including dot notation. A name may
- * start with a digit: Spindle's expression transform reads `$5` as a variable.
- */
-const varRefRegex = /\$(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
-
-/** Regex to match %transient variable references including dot notation. */
-const transientRefRegex = /(?<!\w)%(\w+(?:\.[A-Za-z_$][\w$]*)*)/g;
-
-/**
- * A StoryVariables / StoryTransients declaration line, as Spindle's
- * parseStoryVariables() reads it: any `\w+` name, a digit first included.
- */
-const DECLARATION_RE = { '$': /^\$(\w+)\s*=\s*(.*)$/, '%': /^%(\w+)\s*=\s*(.*)$/ } as const;
-
-/**
- * `StoryScript` is not a passage Spindle treats specially, but its text is
- * script, not an executable usage (C-V73); the other passages Spindle does
- * not tokenize as markup come from isMarkupPassage().
+ * `StoryScript` is not a passage Spindle treats specially (it validates its
+ * references), but its text is script, not an executable usage (C-V73).
  */
 const STORY_SCRIPT_PASSAGE = 'StoryScript';
-
-/**
- * A `$name` reference as Spindle's startup validation (validatePassages in
- * story-variables.ts) matches it in the raw passage text, and the `{for}`
- * locals it skips there.
- */
-const VALIDATED_REF_RE = /\$(\w+(?:\.\w+)*)/g;
-const VALIDATED_FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
-
-/**
- * Passages Spindle does not validate: the declaration passages it skips, and
- * the ones the compiler turns into story data instead of passages.
- * Script and stylesheet passages become the story JavaScript and CSS.
- */
-const UNVALIDATED_PASSAGES = new Set([
-  'StoryVariables', 'StoryTransients', 'StoryData', 'StoryTitle',
-]);
-
-/** Patterns that never contain variable references. */
-const COMMENT_PATTERNS = [
-  /<!--[\s\S]*?-->/g,                           // HTML comments
-  /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/gi,  // script tags
-  /<style>[\s\S]*?<\/style>/gi,                  // style tags
-];
-
-/**
- * Replace the string and template literals in the code of a passage: its
- * macros and `{…}` expressions, delimited the way Spindle's tokenizer does.
- * Literals are literal text, apart from the interpolations Spindle evaluates.
- *
- * Quotes in prose are just text to Spindle (dialogue, apostrophes) and never
- * hide the macros between them, so prose is left alone. Inside code, a
- * quote right after a word character or backslash is not a string, and
- * '…' / "…" strings end at the line end, as in the macro parser.
- */
-function replaceCodeLiterals(
-  text: string,
-  replace: (literal: string) => string,
-  /** The replacement for the literals of the macro whose head is `head` (`{name …`), if not `replace`. */
-  replaceIn: ((head: string) => ((literal: string) => string) | undefined) | undefined,
-  reading: BraceReading,
-): string {
-  const scanner = createCodeScanner(text, reading);
-  let result = '';
-  let copied = 0;
-  for (const [open, close] of codeBlocks(text, scanner)) {
-    const replacement = replaceIn?.(text.slice(open + 1, Math.min(close, open + 80))) ?? replace;
-    result += text.slice(copied, open + 1) + replaceLiterals(text, scanner, open + 1, close, replacement, reading);
-    copied = close;
-  }
-  return result + text.slice(copied);
-}
-
-/**
- * The outermost `{…}` blocks of a passage (macros, displays, expressions)
- * as [open brace, close brace] offsets: the code Spindle evaluates.
- */
-function codeBlocks(text: string, scanner: CodeScanner): Array<[number, number]> {
-  const blocks: Array<[number, number]> = [];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\\' && (text[i + 1] === '{' || text[i + 1] === '}')) {
-      i++;
-      continue;
-    }
-    if (text[i] !== '{') continue;
-    const close = scanner.closeBrace(i + 1);
-    if (close === -1) continue;
-    blocks.push([i, close]);
-    i = close;
-  }
-  return blocks;
-}
-
-/** text.slice(from, to) of code, with each literal in it replaced. */
-function replaceLiterals(
-  text: string,
-  scanner: CodeScanner,
-  from: number,
-  to: number,
-  replace: (literal: string) => string,
-  reading: BraceReading,
-): string {
-  let result = '';
-  let copied = from;
-  for (let j = from; j < to; j++) {
-    const end = scanner.literalEnd(j);
-    if (end === -1) continue;
-    let literal = replace(text.slice(j, end));
-    // Interpolations kept by the replacement are code: replace their literals too.
-    if (literal.trim() !== '') {
-      literal = replaceLiterals(literal, createCodeScanner(literal, reading), 0, literal.length, replace, reading);
-    }
-    result += text.slice(copied, j) + literal;
-    copied = end;
-    j = end - 1;
-  }
-  return result + text.slice(copied, to);
-}
 
 /**
  * Built-in input macros whose first argument names the bound story variable,
@@ -137,125 +22,37 @@ export const BUILTIN_STORE_VAR_MACROS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * A macro whose first argument is a quoted `$variable`: group 1 runs up to
- * the opening quote, group 2 is the macro name, group 4 the variable path.
+ * What a tracker that is not given a document's markup knows of the macros:
+ * the built-in ones. The workspace passes the markup it reads with its own
+ * macros and widgets (see `scanDocument`).
  */
-const QUOTED_RECEIVER_RE = new RegExp(
-  String.raw`(?<!\\)(\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+(["']))\$([\w$]+(?:\.[A-Za-z_$][\w$]*)*)\3?(?=[\s}])`,
-  'g',
-);
+const BUILTIN_CONTEXT: MarkupContext = { macros: builtinMacros, isBlock: isBlockMacro };
+
+function standaloneMarkup(uri: string, text: string): DocumentMarkup {
+  const index = new PassageIndex();
+  index.rebuild(uri, text);
+  return new DocumentMarkup(uri, text, index.getPassagesInDocument(uri), BUILTIN_CONTEXT);
+}
 
 /**
- * Blank the text of the bracket links in `code` (`content` with its comments
- * blanked), apart from the `{$x}`-style blocks in their `.class#id`
- * selectors, the only part of a link Spindle interpolates: the tokenizer
- * reads a link whole, so macros, `$x` words and `{$x}` blocks in a label or
- * target are text (printed as written), not code. Links are found in
- * `content`, which is what the tokenizer reads, comments included.
+ * The code Spindle evaluates in a passage body: `content` with everything
+ * but its variable references blanked (line terminators and offsets kept).
+ * `_temp` and `@local` variables only mean something there.
  */
-function blankLinkText(content: string, code: string, reading: BraceReading): string {
-  if (!content.includes('[[')) return code;
-  let result = '';
+export function executableCode(content: string, _reading?: unknown): string {
+  const header = ':: P\n';
+  const markup = standaloneMarkup('file:///executable.tw', header + content).passages[0];
+  const blank = content.replace(/[^\r\n]/g, ' ');
+  let code = '';
   let copied = 0;
-  for (const link of findBracketLinks(content, reading)) {
-    const keep = linkSelectorInterpolationRanges(content, link);
-    let at = link.start;
-    const blankTo = (to: number) => {
-      result += code.slice(copied, at) + blank(code.slice(at, to));
-      copied = to;
-    };
-    for (const [start, end] of keep) {
-      blankTo(start);
-      at = end;
-    }
-    blankTo(link.end);
+  for (const ref of collectVariableReferences(markup, BUILTIN_STORE_VAR_MACROS)) {
+    const start = Math.max(markup.docOffset(ref.start) - header.length, copied);
+    const end = markup.docEnd(ref.end) - header.length;
+    if (end <= start) continue;
+    code += blank.slice(copied, start) + content.slice(start, end);
+    copied = end;
   }
-  return result + code.slice(copied);
-}
-
-/** Replace every character except line terminators with a space. */
-function blank(text: string): string {
-  return text.replace(/[^\r\n]/g, ' ');
-}
-
-/**
- * The built-in macros whose arguments are literal. Spindle runs the arguments
- * of `{button}` and `{dialog}` (their label) through interpolate(), so a
- * `{$x}` block in them is a read. Every other built-in takes its arguments as
- * JavaScript, where a string is just a string (`{print "{$x}"}` prints
- * `{$x}`), and `{link}` prints and navigates to its quoted text as written.
- * A macro of the project's own (a script's `defineMacro`, a widget) may
- * interpolate its arguments, so its strings keep their blocks. The names are
- * the built-ins of every release from 0.43.0 (`macro-registry.json` is the
- * same in all of them); verified by rendering each form and by
- * `link-interpolation.test.ts`, which checks this list against the installed
- * runtime's macros.
- */
-export const LITERAL_ARGUMENT_MACROS: ReadonlySet<string> = new Set([
-  'back', 'checkbox', 'computed', 'cycle', 'do', 'for', 'forward', 'goto', 'if', 'include', 'link',
-  'listbox', 'meter', 'nobr', 'numberbox', 'passage', 'print', 'quickload', 'quicksave', 'radiobutton',
-  'repeat', 'restart', 'save-manager', 'saves', 'set', 'settings', 'settings-controls', 'span', 'stop',
-  'story-title', 'switch', 'textarea', 'textbox', 'timed', 'type', 'unset', 'unwatch', 'watch', 'widget',
-]);
-
-const MACRO_HEAD = new RegExp(String.raw`^(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)`);
-
-/** The literal replacement for the macro whose head follows a `{`: blocks are blanked in the arguments of a built-in macro that does not interpolate them. */
-function literalReplacementFor(head: string): ((literal: string) => string) | undefined {
-  const name = MACRO_HEAD.exec(head)?.[1]?.toLowerCase();
-  return name !== undefined && LITERAL_ARGUMENT_MACROS.has(name) ? blankTemplateCode : blankLiteralText;
-}
-
-/**
- * Blank a string literal except the code Spindle evaluates inside it: the
- * `${…}` interpolations of a template literal, which are JavaScript.
- */
-function blankTemplateCode(literal: string): string {
-  return blankLiteralKeeping(literal, false);
-}
-
-/**
- * Blank a string literal except the code Spindle evaluates inside it:
- * `${…}` template interpolations and `{$…}` / `{%…}` interpolation blocks.
- */
-function blankLiteralText(literal: string): string {
-  return blankLiteralKeeping(literal, true);
-}
-
-function blankLiteralKeeping(literal: string, blocks: boolean): string {
-  const keep = new Array<boolean>(literal.length).fill(false);
-  for (let i = 1; i < literal.length - 1; i++) {
-    if (literal[i] !== '{') continue;
-    const templateCode = literal[0] === '`' && literal[i - 1] === '$' && literal[i - 2] !== '\\';
-    if (!templateCode && !(blocks && /^[$%][\w$]/.test(literal.slice(i + 1, i + 3)))) continue;
-
-    let depth = 0;
-    for (let j = i; j < literal.length - 1; j++) {
-      if (literal[j] === '{') depth++;
-      else if (literal[j] === '}' && --depth === 0) {
-        keep.fill(true, i + 1, j);
-        i = j;
-        break;
-      }
-    }
-  }
-  return literal.replace(/[^\r\n]/g, (ch, i: number) => (keep[i] ? ch : ' '));
-}
-
-/**
- * The code Spindle evaluates in a passage body: `content` with its comments,
- * prose, bracket-link text and string contents blanked (line terminators and
- * offsets kept), leaving the macro/expression code and the interpolations
- * inside literals. `_temp` and `@local` variables only mean something there.
- */
-export function executableCode(content: string, reading: BraceReading = {}): string {
-  let uncommented = content;
-  for (const pattern of COMMENT_PATTERNS) uncommented = uncommented.replace(pattern, blank);
-  uncommented = blankLinkText(content, uncommented, reading);
-  const referenced = replaceCodeLiterals(uncommented, blankLiteralText, undefined, reading);
-  const keep = new Array<boolean>(referenced.length).fill(false);
-  for (const [open, close] of codeBlocks(uncommented, createCodeScanner(uncommented, reading))) keep.fill(true, open, close + 1);
-  return referenced.replace(/[^\r\n]/g, (ch, i: number) => (keep[i] ? ch : ' '));
+  return code + blank.slice(copied);
 }
 
 interface NullDeclaration {
@@ -272,75 +69,15 @@ export interface InvalidDeclaration {
   range: Range;
 }
 
-/** What Spindle makes of the lines of a StoryVariables / StoryTransients passage. */
-interface DeclarationCheck {
-  problems: InvalidDeclaration[];
-  /** Nulls inside object defaults; a null default is found by the parse itself. */
-  nestedNulls: NullDeclaration[];
-  /** Names declared by lines Spindle accepts, with the range of sigil and name. */
-  names: Map<string, Range>;
-}
-
-const NO_DECLARATIONS: DeclarationCheck = { problems: [], nestedNulls: [], names: new Map() };
-
-/**
- * Check the lines of a StoryVariables (`$`) or StoryTransients (`%`) passage
- * as Spindle's parseStoryVariables() reads them. A line starting with `::`
- * starts another passage for twee compilers (with or without a space), so
- * the check stops there.
- */
-function checkDeclarations(lines: string[], contentStartLine: number, sigil: '$' | '%'): DeclarationCheck {
-  const check: DeclarationCheck = { problems: [], nestedNulls: [], names: new Map() };
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^\uFEFF?::/.test(line)) break;
-    const absLine = contentStartLine + i;
-    const problem = checkDeclaration(line, sigil);
-    if (!problem) {
-      const name = /[\r\u00a0]/.test(line.trim()) ? undefined : declaredName(line, sigil);
-      if (name !== undefined && !check.names.has(name)) {
-        check.names.set(name, declarationLocation(line, name, absLine, undefined).declarationRange!);
-      }
-    } else if (problem.kind === 'null') {
-      if (problem.field.length > 0) {
-        check.nestedNulls.push({
-          name: declaredName(line, sigil)!,
-          sigil,
-          field: problem.field,
-          range: {
-            start: { line: absLine, character: problem.start },
-            end: { line: absLine, character: problem.end },
-          },
-        });
-      }
-    } else {
-      const start = line.length - line.trimStart().length;
-      check.problems.push({
-        message: problem.message,
-        range: {
-          start: { line: absLine, character: start },
-          end: { line: absLine, character: line.trimEnd().length },
-        },
-      });
-    }
-  }
-  return check;
-}
-
 interface VariableUsage {
   uri: string;
   baseName: string;
   fullName: string;
   range: Range;
-}
-
-/** A `$name` reference Spindle validates against StoryVariables at startup. */
-interface ValidatedReference {
-  baseName: string;
-  /** The dotted path after the `$`, e.g. `player.stats.hp`. */
-  path: string;
-  /** Range of the `$` and the path. */
-  range: Range;
+  /** Whether rename and references list it (StoryScript is not markup to them). */
+  indexed: boolean;
+  /** Whether Spindle's startup validation checks it. */
+  validated: boolean;
 }
 
 /**
@@ -375,163 +112,71 @@ const ARRAY_MEMBERS: ReadonlySet<string> = new Set([
   'toReversed', 'toSorted', 'toSpliced', 'with',
 ]);
 
-/**
- * Find the index of the character that closes the literal starting at
- * `start` (a bracket, brace or quote). Strings and nested brackets are
- * skipped. Returns -1 when the literal is unterminated or contains a
- * template interpolation.
- */
-function findLiteralEnd(text: string, start: number): number {
-  const open = text[start];
-  if (open === '"' || open === "'" || open === '`') {
-    for (let i = start + 1; i < text.length; i++) {
-      const ch = text[i];
-      if (ch === '\\') { i++; continue; }
-      if (open === '`' && ch === '$' && text[i + 1] === '{') return -1;
-      if (ch === open) return i;
-    }
-    return -1;
+/** The declarations of one special passage, StoryVariables or StoryTransients. */
+class DeclarationSet {
+  present = false;
+  readonly declared = new Map<string, DeclaredVariable>();
+  /** The static schema of each declaration whose default has one. */
+  readonly schemas = new Map<string, FieldSchema>();
+  /** Lines Spindle rejects. */
+  problems: InvalidDeclaration[] = [];
+  /** The names declared, with the range of sigil and name of the first. */
+  readonly names = new Map<string, Range>();
+
+  constructor(private readonly sigil: DeclarationSigil) {}
+
+  clear(): void {
+    this.present = false;
+    this.declared.clear();
+    this.schemas.clear();
+    this.problems = [];
+    this.names.clear();
   }
 
-  let depth = 0;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const end = findLiteralEnd(text, i);
-      if (end === -1) return -1;
-      i = end;
-      continue;
-    }
-    if (ch === '[' || ch === '{' || ch === '(') depth++;
-    else if (ch === ']' || ch === '}' || ch === ')') {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
-}
-
-/**
- * Infer the type of a StoryVariables/StoryTransients default from its
- * expression text, the way Spindle's inferSchema() would see the evaluated
- * value. Only single literals are recognised: anything else (for example
- * `[1, 2].length` or `makeDefaults()`) returns undefined rather than a guess.
- */
-export function inferLiteralType(expr: string): VariableValueType | undefined {
-  const e = expr.trim();
-  if (e === '') return undefined;
-  if (e === 'true' || e === 'false') return 'boolean';
-  if (/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(e)) return 'number';
-
-  const first = e[0];
-  if (first !== '[' && first !== '{' && first !== '"' && first !== "'" && first !== '`') {
-    return undefined;
-  }
-  if (findLiteralEnd(e, 0) !== e.length - 1) return undefined;
-
-  if (first === '[') return 'array';
-  if (first === '{') return 'object';
-  return 'string';
-}
-
-/**
- * Location of a `$name = ...` / `%name = ...` declaration line: the range
- * covers the sigil and name, matching the ranges recorded for usages.
- */
-function declarationLocation(
-  line: string,
-  name: string,
-  absLine: number,
-  uri: string | undefined,
-): Pick<DeclaredVariable, 'declarationUri' | 'declarationRange'> {
-  const start = line.length - line.trimStart().length;
-  const location: Pick<DeclaredVariable, 'declarationUri' | 'declarationRange'> = {
-    declarationRange: {
-      start: { line: absLine, character: start },
-      end: { line: absLine, character: start + 1 + name.length },
-    },
-  };
-  if (uri !== undefined) location.declarationUri = uri;
-  return location;
-}
-
-/**
- * The `$name` references Spindle checks against StoryVariables when the
- * story starts, and skipping the names that a `{for @local of …}` in the
- * same passage binds. Before Spindle 0.50.1, like validatePassages, this
- * matches the raw text of every passage (string text, comments and prose
- * included). From 0.50.1 (`executableOnly`), only the references the passage
- * executes count (see executable-refs.ts).
- */
-function validatedReferences(
-  lines: string[],
-  passages: Array<{ name: string; tags: string[]; startLine: number }>,
-  executableOnly: boolean,
-  storeVarMacros: ReadonlySet<string>,
-): ValidatedReference[] {
-  const refs: ValidatedReference[] = [];
-  for (let pi = 0; pi < passages.length; pi++) {
-    const passage = passages[pi];
-    if (UNVALIDATED_PASSAGES.has(passage.name) || isScriptOrStylesheetPassage(passage)) continue;
-
-    const contentStartLine = passage.startLine + 1;
-    const contentEndLine = pi + 1 < passages.length ? passages[pi + 1].startLine : lines.length;
-    const contentLines = lines.slice(contentStartLine, contentEndLine);
-    const content = contentLines.join('\n');
-
-    const forLocals = new Set<string>();
-    for (const m of content.matchAll(VALIDATED_FOR_LOCAL_RE)) {
-      forLocals.add(m[1]);
-      if (m[2]) forLocals.add(m[2]);
-    }
-
-    const add = (path: string, i: number, character: number): void => {
-      const baseName = path.split('.')[0];
-      if (forLocals.has(baseName)) return;
-      const line = contentStartLine + i;
-      refs.push({
-        baseName,
-        path,
-        range: {
-          start: { line, character },
-          end: { line, character: character + 1 + path.length },
-        },
-      });
+  /** Read the passage `content`, which starts at line `contentStartLine` of the document `uri`. */
+  read(content: string, contentStartLine: number, uri: string | undefined): void {
+    this.clear();
+    this.present = true;
+    const { text, declarations, problems } = readDeclarations(content, this.sigil);
+    // The text is LF-normalized, but a CR before an LF is the end of its line: columns agree
+    const lineStarts = buildLineStarts(text);
+    const position = (offset: number): Position => {
+      const { line, character } = offsetToPosition(offset, lineStarts);
+      return { line: contentStartLine + line, character };
     };
 
-    if (executableOnly) {
-      const lineStarts: number[] = [0];
-      for (let i = 0; i < contentLines.length; i++) {
-        lineStarts.push(lineStarts[i] + contentLines[i].length + 1);
+    for (const problem of problems) {
+      this.problems.push({ message: problem.message, range: { start: position(problem.start), end: position(problem.end) } });
+    }
+    for (const declaration of declarations) {
+      const { name, schema } = declaration;
+      // The range covers the sigil and name, matching the ranges recorded for usages
+      const declarationRange = { start: position(declaration.nameStart - 1), end: position(declaration.nameEnd) };
+      const declared: DeclaredVariable = { name, sigil: this.sigil, declarationRange };
+      if (uri !== undefined) declared.declarationUri = uri;
+      if (schema) {
+        if (schema.type !== 'null') declared.type = schema.type;
+        if (schema.fields && schema.fields.size > 0) declared.fields = [...schema.fields.keys()];
+        this.schemas.set(name, schema);
+      } else {
+        this.schemas.delete(name);
       }
-      for (const { ref, offset } of collectExecutableRefs(content, storeVarMacros)) {
-        let i = lineStarts.length - 2;
-        while (lineStarts[i] > offset) i--;
-        add(ref, i, offset - lineStarts[i]);
-      }
-    } else {
-      // A reference never spans lines: \w excludes line terminators.
-      for (let i = 0; i < contentLines.length; i++) {
-        for (const m of contentLines[i].matchAll(VALIDATED_REF_RE)) add(m[1], i, m.index);
-      }
+      // A name declared again replaces the first declaration, as when Spindle evaluates them
+      this.declared.set(name, declared);
+      if (!this.names.has(name)) this.names.set(name, declarationRange);
     }
   }
-  return refs;
 }
 
 /**
- * Tracks declared variables (from StoryVariables) and variable usages across documents.
+ * Tracks declared variables (from StoryVariables and StoryTransients) and
+ * variable usages across documents. Declarations are read by the tooling API's
+ * `parseDeclarations`, usages from the pieces of code and the tokens of each
+ * passage's markup (see `collectVariableReferences`).
  */
 export class VariableTracker {
-  private declared = new Map<string, DeclaredVariable>();
-  private _hasStoryVariables = false;
-  private _nullDeclarations: NullDeclaration[] = [];
-  private _variablesCheck: DeclarationCheck = NO_DECLARATIONS;
-
-  private declaredTransient = new Map<string, DeclaredVariable>();
-  private _hasStoryTransients = false;
-  private _nullTransientDeclarations: NullDeclaration[] = [];
-  private _transientsCheck: DeclarationCheck = NO_DECLARATIONS;
+  private readonly variables = new DeclarationSet('$');
+  private readonly transients = new DeclarationSet('%');
 
   /** Per-URI list of variable usages. */
   private usagesByUri = new Map<string, VariableUsage[]>();
@@ -539,96 +184,28 @@ export class VariableTracker {
   /** Per-URI list of transient variable usages. */
   private transientUsagesByUri = new Map<string, VariableUsage[]>();
 
-  /** The Spindle this project targets; decides which references are validated. */
-  private capabilities: SpindleCapabilities = DEFAULT_CAPABILITIES;
-
   /**
-   * Set the target Spindle's capabilities. Takes effect at the next
-   * scanDocument(): callers rescan after changing them.
+   * Nothing depends on the target Spindle any more.
+   * @deprecated The minimum supported release has every behavior; delete with the capabilities.
    */
-  setCapabilities(capabilities: SpindleCapabilities): void {
-    this.capabilities = capabilities;
-  }
-
-  /** Per-URI list of the `$` references Spindle validates at startup. */
-  private validatedRefsByUri = new Map<string, ValidatedReference[]>();
+  setCapabilities(_capabilities: unknown): void {}
 
   /**
    * Parse the StoryVariables passage content for declarations.
    * Each line like `$name = value` becomes a declaration.
    */
   parseStoryVariables(content: string, contentStartLine = 0, uri?: string): void {
-    this.declared.clear();
-    this._hasStoryVariables = true;
-    this._nullDeclarations = [];
-
-    const lines = content.split('\n');
-    this._variablesCheck = checkDeclarations(lines, contentStartLine, '$');
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
-
-      const match = DECLARATION_RE.$.exec(trimmed);
-      if (!match) continue;
-
-      const name = match[1];
-      const expr = match[2].trim();
-      const absLine = contentStartLine + i;
-      const location = declarationLocation(lines[i], name, absLine, uri);
-
-      // Detect null values — Spindle doesn't support null
-      if (expr === 'null') {
-        const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
-        this._nullDeclarations.push({
-          name,
-          sigil: '$',
-          range: {
-            start: { line: absLine, character: charIdx },
-            end: { line: absLine, character: charIdx + 4 },
-          },
-        });
-        // Still register as declared so we don't also emit SP200
-        this.declared.set(name, { name, sigil: '$', ...location });
-        continue;
-      }
-
-      const decl: DeclaredVariable = { name, sigil: '$', ...location };
-      const type = inferLiteralType(expr);
-      if (type) decl.type = type;
-      const schema = inferDefaultSchema(expr);
-      if (schema) decl.schema = schema;
-
-      // Extract top-level object fields for dot-notation validation
-      if (expr.startsWith('{')) {
-        const fieldRegex = /(\w+)\s*:/g;
-        let fieldMatch;
-        const fields: string[] = [];
-        while ((fieldMatch = fieldRegex.exec(expr)) !== null) {
-          fields.push(fieldMatch[1]);
-        }
-        if (fields.length > 0) {
-          decl.fields = fields;
-        }
-      }
-
-      this.declared.set(name, decl);
-    }
+    this.variables.read(content, contentStartLine, uri);
   }
 
   /** Forget StoryVariables declarations, e.g. after the passage was removed. */
   clearStoryVariables(): void {
-    this.declared.clear();
-    this._hasStoryVariables = false;
-    this._nullDeclarations = [];
-    this._variablesCheck = NO_DECLARATIONS;
+    this.variables.clear();
   }
 
   /** Forget StoryTransients declarations, e.g. after the passage was removed. */
   clearStoryTransients(): void {
-    this.declaredTransient.clear();
-    this._hasStoryTransients = false;
-    this._nullTransientDeclarations = [];
-    this._transientsCheck = NO_DECLARATIONS;
+    this.transients.clear();
   }
 
   /**
@@ -636,248 +213,86 @@ export class VariableTracker {
    * Each line like `%name = value` becomes a declaration.
    */
   parseStoryTransients(content: string, contentStartLine = 0, uri?: string): void {
-    this.declaredTransient.clear();
-    this._hasStoryTransients = true;
-    this._nullTransientDeclarations = [];
-
-    const lines = content.split('\n');
-    this._transientsCheck = checkDeclarations(lines, contentStartLine, '%');
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('<!--')) continue;
-
-      const match = DECLARATION_RE['%'].exec(trimmed);
-      if (!match) continue;
-
-      const name = match[1];
-      const expr = match[2].trim();
-      const absLine = contentStartLine + i;
-      const location = declarationLocation(lines[i], name, absLine, uri);
-
-      // Detect null values — Spindle doesn't support null
-      if (expr === 'null') {
-        const charIdx = lines[i].indexOf('null', lines[i].indexOf('='));
-        this._nullTransientDeclarations.push({
-          name,
-          sigil: '%',
-          range: {
-            start: { line: absLine, character: charIdx },
-            end: { line: absLine, character: charIdx + 4 },
-          },
-        });
-        this.declaredTransient.set(name, { name, sigil: '%', ...location });
-        continue;
-      }
-
-      const decl: DeclaredVariable = { name, sigil: '%', ...location };
-      const type = inferLiteralType(expr);
-      if (type) decl.type = type;
-
-      // Extract top-level object fields for dot-notation validation
-      if (expr.startsWith('{')) {
-        const fieldRegex = /(\w+)\s*:/g;
-        let fieldMatch;
-        const fields: string[] = [];
-        while ((fieldMatch = fieldRegex.exec(expr)) !== null) {
-          fields.push(fieldMatch[1]);
-        }
-        if (fields.length > 0) {
-          decl.fields = fields;
-        }
-      }
-
-      this.declaredTransient.set(name, decl);
-    }
+    this.transients.read(content, contentStartLine, uri);
   }
 
   /**
-   * Scan a document for variable usages.
-   * Identifies passages in the document and scans non-special ones.
-   * `storeVarMacros` (lowercase names) are the input macros whose quoted
-   * first argument names a bound story variable.
+   * Scan a document for variable usages: the `$` and `%` references in the
+   * code of its markup passages. `storeVarMacros` (lowercase names) are the
+   * input macros whose first argument names a bound story variable. The
+   * workspace passes the `markup` it reads the document with, which knows
+   * the project's macros and widgets; without it the built-in macros decide.
    */
   scanDocument(
     uri: string,
     text: string,
-    _macros: MacroNode[],
+    _macros: readonly unknown[],
     storeVarMacros: ReadonlySet<string> = BUILTIN_STORE_VAR_MACROS,
+    markup: DocumentMarkup = standaloneMarkup(uri, text),
   ): void {
-    // Clear previous usages for this URI
-    this.usagesByUri.delete(uri);
-    this.transientUsagesByUri.delete(uri);
-    this.validatedRefsByUri.delete(uri);
-
-    const lines = text.split('\n');
+    this.removeDocument(uri);
     const usages: VariableUsage[] = [];
     const transientUsages: VariableUsage[] = [];
 
-    // Find all passage boundaries in the document
-    const passageBoundaries: Array<{ name: string; tags: string[]; startLine: number }> = [];
-    for (let i = 0; i < lines.length; i++) {
-      const header = parsePassageHeader(lines[i], i);
-      if (header) {
-        passageBoundaries.push({ name: header.name, tags: header.tags, startLine: i });
+    for (const passage of markup.passages) {
+      const indexed = passage.passage.name !== STORY_SCRIPT_PASSAGE;
+      for (const ref of collectVariableReferences(passage, storeVarMacros)) {
+        if (ref.sigil !== '$' && ref.sigil !== '%') continue;
+        const usage: VariableUsage = {
+          uri,
+          baseName: ref.path.split('.')[0],
+          fullName: ref.path,
+          range: passage.range(ref.start, ref.end),
+          indexed,
+          validated: ref.validated,
+        };
+        (ref.sigil === '$' ? usages : transientUsages).push(usage);
       }
     }
 
-    // Scan each passage's content
-    for (let pi = 0; pi < passageBoundaries.length; pi++) {
-      const passage = passageBoundaries[pi];
-      if (!isMarkupPassage(passage) || passage.name === STORY_SCRIPT_PASSAGE) continue;
-
-      const contentStartLine = passage.startLine + 1;
-      const contentEndLine = pi + 1 < passageBoundaries.length
-        ? passageBoundaries[pi + 1].startLine
-        : lines.length;
-
-      const contentLines = lines.slice(contentStartLine, contentEndLine);
-      const content = contentLines.join('\n');
-
-      // Clean the content to avoid scanning inside strings/comments.
-      // Line terminators are kept so offsets still map to the right lines.
-      let uncommented = content;
-      for (const pattern of COMMENT_PATTERNS) {
-        uncommented = uncommented.replace(pattern, blank);
-      }
-      uncommented = blankLinkText(content, uncommented, this.capabilities);
-      const cleaned = replaceCodeLiterals(uncommented, blank, undefined, this.capabilities);
-      let referenced = replaceCodeLiterals(uncommented, blankLiteralText, literalReplacementFor, this.capabilities);
-
-      // Quoted input macro receivers (`{textbox "$name"}`) bind a variable too
-      for (const m of uncommented.matchAll(QUOTED_RECEIVER_RE)) {
-        if (cleaned[m.index] !== '{' || !storeVarMacros.has(m[2].toLowerCase())) continue;
-        const start = m.index + m[1].length;
-        const end = start + 1 + m[4].length;
-        referenced = referenced.slice(0, start) + content.slice(start, end) + referenced.slice(end);
-      }
-
-      // Build line offsets for this content block
-      const lineOffsets: number[] = [0];
-      for (let i = 0; i < cleaned.length; i++) {
-        if (cleaned[i] === '\n') lineOffsets.push(i + 1);
-      }
-
-      // Spindle evaluates `%` only in code and never validates it, so `%20`
-      // outside a `{…}` block is text (URL encoding), not a transient.
-      const blocks = codeBlocks(uncommented, createCodeScanner(uncommented, this.capabilities));
-      const inCode = (offset: number) => blocks.some(([open, close]) => open < offset && offset < close);
-
-      const scans: Array<[RegExp, VariableUsage[], boolean]> = [
-        [varRefRegex, usages, false],
-        [transientRefRegex, transientUsages, true],
-      ];
-      for (const [regex, out, digitsOnlyInCode] of scans) {
-        const seen = new Set<number>();
-        for (const source of [cleaned, referenced]) {
-          const re = new RegExp(regex.source, 'g');
-          let match;
-          while ((match = re.exec(source)) !== null) {
-            const charOffset = match.index;
-            if (seen.has(charOffset)) continue;
-            seen.add(charOffset);
-
-            const fullName = match[1];
-            const baseName = fullName.split('.')[0];
-            if (digitsOnlyInCode && /^\d/.test(baseName) && !inCode(charOffset)) continue;
-
-            // Convert offset to line/character within content block
-            let localLine = 0;
-            for (let i = 0; i < lineOffsets.length; i++) {
-              if (lineOffsets[i] > charOffset) break;
-              localLine = i;
-            }
-            const character = charOffset - lineOffsets[localLine];
-            const absoluteLine = contentStartLine + localLine;
-
-            const range: Range = {
-              start: { line: absoluteLine, character },
-              end: { line: absoluteLine, character: character + match[0].length },
-            };
-
-            out.push({ uri, baseName, fullName, range });
-          }
-        }
-      }
-    }
-
-    if (usages.length > 0) {
-      this.usagesByUri.set(uri, usages);
-    }
-    if (transientUsages.length > 0) {
-      this.transientUsagesByUri.set(uri, transientUsages);
-    }
-
-    const validated = validatedReferences(
-      lines,
-      passageBoundaries,
-      this.capabilities.executableRefsOnly,
-      storeVarMacros,
-    );
-    if (validated.length > 0) {
-      this.validatedRefsByUri.set(uri, validated);
-    }
+    if (usages.length > 0) this.usagesByUri.set(uri, usages);
+    if (transientUsages.length > 0) this.transientUsagesByUri.set(uri, transientUsages);
   }
 
   /** Forget the usages recorded for a document, e.g. after it was deleted. */
   removeDocument(uri: string): void {
     this.usagesByUri.delete(uri);
     this.transientUsagesByUri.delete(uri);
-    this.validatedRefsByUri.delete(uri);
   }
 
   /** Get all declared variables. */
   getDeclared(): Map<string, DeclaredVariable> {
-    return this.declared;
+    return this.variables.declared;
   }
 
   /** Get all usages of a variable by base name. */
   getUsages(name: string): Array<{ uri: string; range: Range }> {
-    const results: Array<{ uri: string; range: Range }> = [];
-    for (const usages of this.usagesByUri.values()) {
-      for (const u of usages) {
-        if (u.baseName === name) {
-          results.push({ uri: u.uri, range: u.range });
-        }
-      }
-    }
-    return results;
+    return indexedUsages(this.usagesByUri, name);
   }
 
   /**
    * Get undeclared variable references in a specific document: the ones
-   * Spindle rejects when the story starts, wherever they are in the text.
+   * Spindle rejects when the story starts.
    */
   getUndeclared(uri: string): Array<{ name: string; range: Range }> {
-    const refs = this.validatedRefsByUri.get(uri);
-    if (!refs) return [];
-
-    const results: Array<{ name: string; range: Range }> = [];
-    const seen = new Set<string>();
-
-    for (const u of refs) {
-      if (!this.declared.has(u.baseName) && !seen.has(u.baseName)) {
-        seen.add(u.baseName);
-        results.push({ name: u.baseName, range: u.range });
-      }
-    }
-    return results;
+    return undeclared((this.usagesByUri.get(uri) ?? []).filter(u => u.validated), this.variables.declared);
   }
 
   /**
    * Get the `$var.a.b` paths in a document that Spindle rejects at startup
    * because they access a field of a number, string or boolean, judged by
-   * the StoryVariables defaults as Spindle's validateRef() does (from
-   * Spindle 0.51.1, members of the primitive's wrapper such as
-   * `$s.length` are allowed). Every
-   * occurrence is reported; defaults that are not literals are not checked.
+   * the StoryVariables defaults as Spindle's startup validation does
+   * (members of the primitive's wrapper such as `$s.length` are allowed).
+   * Every occurrence is reported; defaults that are not static are not
+   * checked.
    */
   getPrimitiveFieldAccesses(uri: string): PrimitiveFieldAccess[] {
     const results: PrimitiveFieldAccess[] = [];
-    for (const ref of this.validatedRefsByUri.get(uri) ?? []) {
-      const schema = this.declared.get(ref.baseName)?.schema;
+    for (const ref of this.usagesByUri.get(uri) ?? []) {
+      const schema = ref.validated ? this.variables.schemas.get(ref.baseName) : undefined;
       if (!schema) continue;
-      const parts = ref.path.split('.');
-      const found = findPrimitiveFieldAccess(schema, parts.slice(1), this.capabilities.primitiveMembers);
+      const parts = ref.fullName.split('.');
+      const found = findPrimitiveFieldAccess(schema, parts.slice(1));
       if (!found) continue;
 
       const owner = parts.slice(0, found.index + 1).join('.');
@@ -898,47 +313,27 @@ export class VariableTracker {
 
   /** Whether a StoryVariables passage has been parsed. */
   hasStoryVariables(): boolean {
-    return this._hasStoryVariables;
+    return this.variables.present;
   }
 
   /** Get all declared transient variables. */
   getDeclaredTransient(): Map<string, DeclaredVariable> {
-    return this.declaredTransient;
+    return this.transients.declared;
   }
 
   /** Get all usages of a transient variable by base name. */
   getTransientUsages(name: string): Array<{ uri: string; range: Range }> {
-    const results: Array<{ uri: string; range: Range }> = [];
-    for (const usages of this.transientUsagesByUri.values()) {
-      for (const u of usages) {
-        if (u.baseName === name) {
-          results.push({ uri: u.uri, range: u.range });
-        }
-      }
-    }
-    return results;
+    return indexedUsages(this.transientUsagesByUri, name);
   }
 
   /** Get undeclared transient variable usages in a specific document. */
   getUndeclaredTransient(uri: string): Array<{ name: string; range: Range }> {
-    const usages = this.transientUsagesByUri.get(uri);
-    if (!usages) return [];
-
-    const results: Array<{ name: string; range: Range }> = [];
-    const seen = new Set<string>();
-
-    for (const u of usages) {
-      if (!this.declaredTransient.has(u.baseName) && !seen.has(u.baseName)) {
-        seen.add(u.baseName);
-        results.push({ name: u.baseName, range: u.range });
-      }
-    }
-    return results;
+    return undeclared((this.transientUsagesByUri.get(uri) ?? []).filter(u => u.indexed), this.transients.declared);
   }
 
   /** Whether a StoryTransients passage has been parsed. */
   hasStoryTransients(): boolean {
-    return this._hasStoryTransients;
+    return this.transients.present;
   }
 
   /**
@@ -949,15 +344,14 @@ export class VariableTracker {
   getArrayMemberAccesses(uri: string): ArrayMemberAccess[] {
     const results: ArrayMemberAccess[] = [];
     const sources: Array<['$' | '%', VariableUsage[] | undefined, Map<string, DeclaredVariable>]> = [
-      ['$', this.usagesByUri.get(uri), this.declared],
-      ['%', this.transientUsagesByUri.get(uri), this.declaredTransient],
+      ['$', this.usagesByUri.get(uri), this.variables.declared],
+      ['%', this.transientUsagesByUri.get(uri), this.transients.declared],
     ];
 
     for (const [sigil, usages, declared] of sources) {
-      if (!usages) continue;
-      for (const u of usages) {
+      for (const u of usages ?? []) {
         const member = u.fullName.split('.')[1];
-        if (member === undefined) continue;
+        if (!u.indexed || member === undefined) continue;
         if (declared.get(u.baseName)?.type !== 'array') continue;
         if (ARRAY_MEMBERS.has(member)) continue;
         results.push({ sigil, name: u.baseName, member, range: u.range });
@@ -966,25 +360,29 @@ export class VariableTracker {
     return results;
   }
 
-  /** Get variables declared with null values in StoryVariables. */
+  /**
+   * Variables declared with null values in StoryVariables. Spindle accepts a
+   * `null` default (type `null`: it may hold anything later), so there are none.
+   * @deprecated Nothing reports null defaults any more; delete with SP204.
+   */
   getNullDeclarations(): NullDeclaration[] {
-    return [...this._nullDeclarations, ...this._variablesCheck.nestedNulls];
+    return [];
   }
 
-  /** StoryVariables lines that stop Spindle from starting, apart from null values. */
+  /** StoryVariables lines that stop Spindle from starting. */
   getInvalidDeclarations(): InvalidDeclaration[] {
-    return this._variablesCheck.problems;
+    return this.variables.problems;
   }
 
   /**
-   * StoryTransients lines that stop Spindle from starting, apart from null
-   * values, and the names it declares that StoryVariables declares too.
+   * StoryTransients lines that stop Spindle from starting, and the names it
+   * declares that StoryVariables declares too.
    */
   getInvalidTransientDeclarations(): InvalidDeclaration[] {
     const collisions: InvalidDeclaration[] = [];
-    if (this._hasStoryVariables) {
-      for (const [name, range] of this._transientsCheck.names) {
-        if (!this._variablesCheck.names.has(name)) continue;
+    if (this.variables.present) {
+      for (const [name, range] of this.transients.names) {
+        if (!this.variables.names.has(name)) continue;
         collisions.push({
           message: `StoryTransients: Variable "${name}" is already declared in StoryVariables. ` +
             'Names must be unique across scopes.',
@@ -992,12 +390,40 @@ export class VariableTracker {
         });
       }
     }
-    return [...this._transientsCheck.problems, ...collisions]
+    return [...this.transients.problems, ...collisions]
       .sort((a, b) => a.range.start.line - b.range.start.line);
   }
 
-  /** Get transient variables declared with null values in StoryTransients. */
+  /**
+   * Transient variables declared with null values in StoryTransients.
+   * @deprecated See getNullDeclarations().
+   */
   getNullTransientDeclarations(): NullDeclaration[] {
-    return [...this._nullTransientDeclarations, ...this._transientsCheck.nestedNulls];
+    return [];
   }
+}
+
+function indexedUsages(byUri: ReadonlyMap<string, VariableUsage[]>, name: string): Array<{ uri: string; range: Range }> {
+  const results: Array<{ uri: string; range: Range }> = [];
+  for (const usages of byUri.values()) {
+    for (const u of usages) {
+      if (u.indexed && u.baseName === name) results.push({ uri: u.uri, range: u.range });
+    }
+  }
+  return results;
+}
+
+/** The first usage of each name that is not declared. */
+function undeclared(
+  usages: readonly VariableUsage[],
+  declared: ReadonlyMap<string, DeclaredVariable>,
+): Array<{ name: string; range: Range }> {
+  const results: Array<{ name: string; range: Range }> = [];
+  const seen = new Set<string>();
+  for (const u of usages) {
+    if (declared.has(u.baseName) || seen.has(u.baseName)) continue;
+    seen.add(u.baseName);
+    results.push({ name: u.baseName, range: u.range });
+  }
+  return results;
 }

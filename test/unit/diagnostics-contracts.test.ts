@@ -69,7 +69,8 @@ describe('X72: non-markup passage bodies (#72)', () => {
     }
   }
   it('C-X72: invalid declarations still receive declaration diagnostics', () => {
-    expect(codes(workspace(':: StoryVariables\n$x = null\n:: Start\nhello'))).toContain('SP204');
+    // null is a valid default in 0.59 (type null), not a declaration problem
+    expect(codes(workspace(':: StoryVariables\n$x = null\n:: Start\nhello'))).not.toContain('SP204');
     expect(codes(workspace(':: StoryVariables\n$x = "{if true}"\nnot a declaration\n:: Start\nhello'))).toEqual(['SP207']);
   });
   it('C-X72: executable special passages keep markup diagnostics', () => {

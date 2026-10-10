@@ -75,7 +75,6 @@ regenerated: it still records the old statuses (run the matrix with
 | `B/ordinary/goto-template` [passage-oracle] | a backtick literal is a static name | only `"..."` and `'...'` are names; a template is an expression | `passageTarget` of a backtick literal is an expression | fails |
 | `A/*/bracket-in-comment`, `B/ordinary/goto-in-comment`, `B/ordinary/widget-in-comment`, `B/ordinary/html-comment-multiline` | `[[x]]`, `{goto}` and `{widget}` inside `<!-- -->` are tokens | a closed HTML comment is one `text` token (`comment: true`) | `tokenizeMarkupTolerant('<!-- [[x]] -->')` is one comment text token; `validateMarkup` reports no missing passage for it | the semantic-token halves (`[macro-oracle]` of `goto-in-comment`) pass since `semantic-tokens.ts` reads `macroTokens`; the reference halves fail until the reference scanners follow |
 | `B/ordinary/macro-in-attr`, `B/ordinary/widget-in-attr`, `B/ordinary/link-label-interpolation` | a macro in an HTML attribute value is text; the label of a link is not interpolated | attribute values and labels hold markup; macros and variables in them are real | `passagePieces` reports `text` pieces with their tokens; `collectStoryPassageReferences` returns a `{goto 'X'}` in a `title` attribute | `link-label-interpolation [tokens]` now fails too: the semantic tokens (correctly) mark `$v` in the label, the variable tracker does not record it yet, and that cell requires a `$` token to be a reference to some consumer; passes when the tracker follows (its `[rename]` cell fails for the same reason) |
-||||||| f592ea8
 | `B/ordinary/goto-bare-identifier`, `B/ordinary/include-bare`, `C/include-widget-other-bare/*`, `C/include-widget-other-flag-before/*` [passage-oracle, rename] | a bare `{goto Old}` navigates to `Old` (text fallback when evaluating throws) | the bare word is an expression; evaluating it throws, so it is not a reference (the oracle lists none) and a rename must quote | `passageTarget('Old')` is `{kind:'expression'}`; `validateMarkup` reports `unquoted-passage-name`; `collectStoryPassageReferences` returns nothing | fails (src reads bare names) |
 | `B/ordinary/goto-template` [passage-oracle] | a backtick literal is a static name | only `"..."` and `'...'` are names; a template is an expression | `passageTarget` of a backtick literal is an expression | fails |
 | `A/*/bracket-in-comment`, `B/ordinary/goto-in-comment`, `B/ordinary/widget-in-comment`, `B/ordinary/html-comment-multiline` | `[[x]]`, `{goto}` and `{widget}` inside `<!-- -->` are tokens | a closed HTML comment is one `text` token (`comment: true`) | `tokenizeMarkupTolerant('<!-- [[x]] -->')` is one comment text token; `validateMarkup` reports no missing passage for it | fails |
@@ -85,12 +84,17 @@ regenerated: it still records the old statuses (run the matrix with
 | `B/ordinary/goto-template` [passage-oracle] | a backtick literal is a static name | only `"..."` and `'...'` are names; a template is an expression | `passageTarget` of a backtick literal is an expression | passes |
 | `A/*/bracket-in-comment`, `B/ordinary/goto-in-comment`, `B/ordinary/widget-in-comment`, `B/ordinary/html-comment-multiline` | `[[x]]`, `{goto}` and `{widget}` inside `<!-- -->` are tokens | a closed HTML comment is one `text` token (`comment: true`) | `tokenizeMarkupTolerant('<!-- [[x]] -->')` is one comment text token; `validateMarkup` reports no missing passage for it | [passage-oracle] cells pass; the [macro-oracle] cells (`goto-in-comment`, `widget-in-comment`: semantic tokens) wait for the macro parser |
 | `B/ordinary/macro-in-attr`, `B/ordinary/widget-in-attr`, `B/ordinary/link-label-interpolation` | a macro in an HTML attribute value is text; the label of a link is not interpolated | attribute values and labels hold markup; macros and variables in them are real | `passagePieces` reports `text` pieces with their tokens; `collectStoryPassageReferences` returns a `{goto 'X'}` in a `title` attribute | `macro-in-attr` [passage-oracle, rename] pass; `widget-in-attr` (widgets) and `link-label-interpolation` [rename] (variables) wait for their owners |
+
+| `B/ordinary/macro-in-attr`, `B/ordinary/widget-in-attr`, `B/ordinary/link-label-interpolation` | a macro in an HTML attribute value is text; the label of a link is not interpolated | attribute values and labels hold markup; macros and variables in them are real | `passagePieces` reports `text` pieces with their tokens; `collectStoryPassageReferences` returns a `{goto 'X'}` in a `title` attribute | `link-label-interpolation [rename]` passes (the variable usages come from the pieces' tokens, B1); the other two fail (macro and passage readers) |
 | every cell using `runtimeTokens` / `runtimePayload` | tokens are the top-level ones | plus the tokens inside labels and attribute values (`nested`); a semantic token is checked against the innermost token | as above | oracle widened |
 | `B/ordinary/bracket-multiline` [passage-oracle] (SP304) | the link macro's regex reads a quoted part with `.` (no line break) | the target is read as a JavaScript string literal; the AST quotes `\` and `"` only, so a line break makes the macro read an expression and the click fails | `passageTarget('"a<LF>b"')` is an expression | passes (`findLinkRuntimeMismatches` reads a bracket target that has a line break through `passagePieces`) |
 | `C/leading-trailing-space-like/link-macro-single` | `{link "go" "Tab\tName"}` navigates to the text `Tab\tName` | the name is the JavaScript meaning (a tab) | `collectStoryPassageReferences` gives `Tab<TAB>Name` | passes |
 | SP304 in general (`reads` vs `intended`) | the macro's quote regex reads a label/target differently from the token | `reads` equals `intended` except for a target the quoting cannot carry | `quoteArg` + `passageTarget` | oracle changed |
 | `I/completion/attribute-value`, `I/signature/attribute-value` | macros in an attribute value are output as text: no completion, no signature help | `{` in an attribute value starts a macro: macro names are offered, signature help works; `{/` (nothing open) and `[[` (text in text mode) still offer nothing | `deepTokens` finds the nested macro | passes (`markup-cursor.ts` reads the macros of the text pieces and the errors of a macro still being typed) |
 | `I/completion/variables/*/property-path` | `fields` of a declaration is a plain object | `fields` is a `Map` (`fieldNames`) | `parseStoryVariables` | fails: completion reads `workspace.variables.getDeclared().get(name).fields`, which the variable tracker (not this scope) still extracts with a regex; passes when it reads `parseDeclarations` |
+
+| `I/completion/attribute-value`, `I/signature/attribute-value` | macros in an attribute value are output as text: no completion, no signature help | `{` in an attribute value starts a macro: macro names are offered, signature help works; `{/` (nothing open) and `[[` (text in text mode) still offer nothing | `deepTokens` finds the nested macro | fails |
+| `I/completion/variables/*/property-path` | `fields` of a declaration is a plain object | `fields` is a `Map` (`fieldNames`) | `parseStoryVariables` | passes (B1: the declarations come from `parseDeclarations`, whose `schema.fields` has the quoted keys) |
 | `I/completion/closing-tag/*` | `registerBlockMacro` / `buildAST` | `pairMarkup` with the story's block widget in `isBlock` | `runtimeMarkupFailure` | passes |
 | `N/spindle-version-state` | the corpus runs against packed releases | no per-release behavior; the minimum is 0.59.20 | `MINIMUM_SPINDLE_VERSION` | note text only |
 
@@ -146,40 +150,61 @@ supported release, or the hand scan that is gone):
   CLI/MCP/LSP cases; replaced by "one reading in every entrypoint".
 - `unit/placeholders-oracle`: the `stringAwareBraces` mode tests and "the
   capability follows the installed release".
-||||||| f592ea8
 
-| `semantic-tokens` 'does not mark a macro written inside an attribute value as a macro' | an attribute value is output as text (SP103) | the value holds markup: its macros are macro tokens (`[14, 23, 37, 46]` for the fixture); renamed 'marks a macro written inside an attribute value'. New: labels of links and buttons, closed HTML comments (no token), `{do}` bodies | `deepTokens`; `<!-- {if $x} -->` is one `text` token with `comment: true` |
-| `hover` 'does not describe a macro or widget written inside an attribute value' | no hover for a macro or widget in an attribute value | hover describes them (`**if**`, `**Widget** \`Badge\``) | as above |
-| `hover` 'returns field info for story variable with fields' (`$player.health`), `... transient variable with fields` (`%state.phase`), `semantic-tokens` S80-template-crlf-utf16 (`$d` on its own line), `variable-declarations` '$5 like any variable' (`$5` in prose) | a `$name` in prose is a variable reference (Spindle < 0.50.1 validated raw text) | prose is a text token: the fixtures use `{$player.health}`, `{%state.phase}`, `{$d}`; hover and semantic tokens ignore `$x` in prose, comments and strings | `tokenizeMarkupTolerant('$gold {_x + 1}')` has a `text` token for `$gold ` |
-| `variable-declarations` 'finds, hovers and highlights %20 only in code' (semantic token at column 102) | `%20` in `{set _t to %20}` is a transient variable (`\w+`) | `to %20` is the modulo operator: `lexJs('_t to %20')` reports only `_t`, so no token at 102 (the diagnostic and reference halves of that test belong to the tracker) | `lexJs` |
-| `signature` 'looks past braces inside strings from Spindle 0.50.1, and counts them before' | a string's `}` closed the macro before 0.50.1 | no per-release behavior: strings are skipped (`{counter "x}", ` is still open); one test, not two versions | `tokenizeMarkupTolerant('{counter "x}", ')` is an `unclosed-macro` error at the `{` |
-| `widget-arguments` `activeWidgetArgument` | the mirror of the runtime's argument split, with a `$` placeholder | removed with the function: signature help counts `splitArgs(argsBefore + '$next')`; the same cases are in `signature.test.ts` ('getSignatureHelp for widget arguments') | `splitArgs` |
-||||||| f592ea8
+### Variables and declarations (scope B1)
 
-Navigation and links (references, definition, rename, document links, code
-lens): every passage name comes from `passagePieces` through
-`src/core/markup/passage-refs.ts`; the tests below changed with the runtime
-rule, none was skipped or weakened.
+The variable tracker reads declarations with `parseDeclarations` and usages from
+the pieces of code of `passagePieces` (scanned with `lexJs`), the variable tokens
+(also those in labels and attribute values), the selectors and the variable an
+input macro binds (`collectVariableReferences`, `src/core/parsing/executable-refs.ts`).
+Differential check, with the runtime's own `validatePassages` taken from its
+bundle (it is not exported): 12142 random passages (including malformed markup,
+CRLF, labels, attributes, selectors, widgets, `{do}` bodies) list the same
+`$` references as Spindle's startup validation (the same names, in source order
+where the runtime scans a macro's selectors after its arguments), and every
+default/path pair of `field-access-runtime` and `executable-refs` gives the same
+SP201 findings, but for the upstream defects below.
 
-| Test | Old rule | New rule |
-| --- | --- | --- |
-| `passage-references` macro passage references | a bare `{goto Target}`, `{include Target}` and `{goto Chapter 1}` name a passage | they are expressions (`passageTarget`): no reference, no rename; `{dialog "x"}Name{/dialog}` is a reference |
-| `rename` "rename from a passage reference" | the eighth reference is a bare `{goto Next}`, renamed to `{goto "After"}` | it is `{dialog "d"}Next{/dialog}` (the body is the name) |
-| `rename` N-rename-offender, N-rename-lsp | the first bracket link cannot hold `a\|b`, judged on `[[a\|b]]` alone | the rewrite is read back in its context: `[[x\|a\|b]]` reads `a\|b` (the first pipe splits), `[[a\|b]]` in other.tw is the first link that cannot |
-| `rename-target-encoding` R67-bare-spelling, R67-classifier, R67-include-inline-* | bare names are classified (`isVerbatimBareName`), `inline` is escaped before 0.51.1 | only quoted names are references; every name is written as a quoted literal; `inline` inside quotes is never the flag |
-| `literal-contracts` R67-template-*, L77-controls, L77-link-macro, L77/include-* | a template literal and a bare word are names; `{link}` is not run through the JavaScript codec; per-release `{include}` rows | both are expressions; `{link}` reads its passage like `{goto}`; one row per spelling |
-| `link-runtime` P1-* | the link macro reads quoted parts with `/(["\'])(.*?)\1/g` before 0.51.1 | SP304 only for a line break in the target; `{link}` strings are JavaScript strings (`findLinkMacroMismatches` is always empty) |
-| `markup-contexts` L1-refs, L1-links-lenses-diagnostics, L1-rename-passage | `{goto "X"}` in a link label is text | it is a macro: X has a reference (nested label markup) |
-| `markup-differential` D1, D3, C-D1-quote | one test checks macros, passage references and variable usages together | the passage references are checked by `D1-refs`, `D3-refs` and in `C-D1-quote`, the macros and variables by the original tests (macro and variable owners) |
-| `link-interpolation` Q-diagnostic-gating, Q-validation-diagnostics | SP305 flags blocks in the display; brace reading varies by release | only a block in the passage name of a bracket link or `{link}` is flagged (`findLiteralLinkInterpolations`); braces in a string do not end a block |
+| Test | Old rule | New rule | Evidence |
+| --- | --- | --- | --- |
+| `variable-tracker` U2 (undeclared, issue example, string text, comments, script/style, `$5` and `\$cash` in prose) | before 0.50.1 Spindle validated every `$name` of the raw text; the same text was a rename usage | only what a passage executes is a reference: prose, comments, inline script/style and the text of a string are not | `validatePassages` scans tokens (`collectTokenRefs`); the bundle gives the same list as `collectVariableReferences` |
+| `variable-tracker` quote in a macro head | a quote ends at the end of its line | the tokenizer reads the string across lines (`{print "a}` newline `{set $y = 1}"}` is one macro) | `tokenizeMarkupTolerant` |
+| `variable-tracker` `{print name's $declared}` | `$declared` is a usage | the quote opens a string that runs on, as `lexJs` reads it (a syntax error Spindle reports) | `lexJs` |
+| `variable-tracker` / `executable-refs` `{for}` locals | `{for @i of ...}` hides `@i`'s name from `$` validation | `@i` and `$i` are different variables; nothing to hide | `lexJs` sigils |
+| `variable-tracker`, `field-access-runtime` SP201 (`$name.length`, `$hp.toFixed`) | members of a primitive's wrapper are rejected (before 0.51.1) | they are allowed, and the walk goes on with the member's type | `validateRef` (`PRIMITIVE_SAMPLES`) |
+| `variable-tracker`, `variable-schema`, `diagnostics` SP204 | `$a = null` (also a nested null) is rejected by Spindle | a `null` default is a valid declaration of type `null`, and any field of it is accepted; SP204 reports nothing (the tracker's `getNullDeclarations()` is empty) | `parseDeclarations` gives `schema: {type: 'null'}`; `inferSchema`; `declaration-runtime` |
+| `variable-tracker` `inferLiteralType`, `variable-schema` `inferDefaultSchema` | the LSP typed a default from its text | deleted with the mirror; the types come from `parseDeclarations` (more literals are typed: hex, signed numbers; quoted keys are fields: matrix M8) | `parseDeclarations` |
+| `declaration-check` | the LSP reads a line with its own regex and literal reader | `readDeclarations`: `parseDeclarations` errors (wording of the tooling API: no `(\$a.b.c)` suffix, a nested unsupported value names the initializer) plus the syntax error of a value | `declaration-runtime`; `void 0`, `Math.max`... stay undetected as before; a name declared twice is no problem (the later wins) |
+| `declaration-runtime` missed lines | `void 0` was flagged; `(null)`, `{get a() {...}}`, `{...{a: null}}`, `{["a"]: null}` (null is rejected) and `{f() {}}`, `x => x / 2`, `+1n` were rejected by Spindle without a finding | `void 0` is not flagged (not static); the `null` ones are valid, so no longer rejected; the method, the arrow function and `+1n` are flagged | `parseDeclarations` |
+| `variable-declarations` `$5`, `%20` | `$5` in prose is a usage; `{set _t to %20}` references `%20` | prose `$5` is text; in code `%20` is the modulo operator (`transform('%20')` is a syntax error), so it is no transient anywhere | `lexJs`, `transform` |
+| `hover` (fields), `semantic-tokens` S80 | `$player.health` / `$d` alone in prose are variables | they are written `{$player.health}` / `{$d}` | executable-only |
+| `markup-contexts` L1-variables, L1-rename | a macro (`{if $x}`) in a bracket-link label is text | it is a macro: its `$x` is a usage, renamed with the variable | `passagePieces` |
+| `link-interpolation` Q-source-registry, Q-validation-versions | the LSP classified the built-in macros by name (`LITERAL_ARGUMENT_MACROS`); raw text before 0.50.1 | deleted with the list (the macros' parameters say what holds markup); a variable in a link label is validated, one in its passage name is not | `builtinMacros` |
+| `do-body-references` | the `{do}` body was tokenized like any text before 0.50.1 | those two cases are deleted (unsupported release) | `MINIMUM_SPINDLE_VERSION` |
+| `inlay-hints` | the type of a default from a regex (`undefined` hinted) | from `parseDeclarations` (`undefined` and non-static defaults get no hint); widget arguments split by `splitArgs` | `parseDeclarations`, `splitArgs` |
 
-Removed with the code they tested: `link-runtime` P1-default and P1-installed
-(version resolution: there is no per-release behavior), P1-quote-label,
-P1-goto-label, P1-target-quote, P1-multiline, P1-macro-escape and
-P1-link-macro-target (the 0.45.1 quote regex; replaced by P1-line-break-target,
-P1-multiline-whole, P1-carried and P1-link-macro-target on the tooling
-reading), P1-fixed (folded into P1-carried); `literal-contracts`
-L77/include-inline-diagnostic-0.51.3 and the three `-0.45.1`/`-0.51.1`/`-0.51.3`
-variants of each row (`includeInlineScoped`); `rename-target-encoding`
-R67-include-inline-0.45.1, R67-include-inline-0.51.1 and
-R67-include-inline-goto (the inline word escape and the bare spelling).
+Needs upstream API / upstream defects found (B1):
+
+1. **Startup variable validation** (`validatePassages`, issue 464): the reference
+   rules above (which `$` refs are checked; `validateRef`: array, `null`,
+   primitive-wrapper members, unknown object fields) stay in the LSP
+   (`executable-refs.ts`, `variable-schema.ts`). `executable-refs`,
+   `field-access-runtime` and `link-interpolation` Q-validation fail on the
+   oracle until it is exported.
+2. `parseDeclarations` reports an unsupported value that Spindle accepts:
+   `{a: undefined, a: 1}` (the later key replaces it) and
+   `function () { return 1 }()` (a call). It reports `+1n` as an unsupported
+   BigInt where the runtime fails to evaluate it. For a nested value, and for
+   a BigInt, its message names the whole initializer (`...for value {a: 1n}`)
+   or the literal (`1n`) where the runtime names the value (`undefined`, `1`).
+   Tests: `declaration-runtime` "values the tooling API reads differently".
+3. `parseDeclarations` gives the object `{a: 1, ...{a: {b: 1}}}` the member
+   `a: number`: a later spread may replace it. Test: `field-access-runtime`
+   "a member before a spread is not reliable".
+4. `parseDeclarations` reports no JavaScript syntax error of an initializer
+   (`$a = (1`, `$a = 1 // note`): `parseStoryVariables` fails on them when it
+   evaluates. The LSP still compiles (never calls) each value with the
+   `Function` constructor for its SP207 "Failed to evaluate"
+   (`declaration-check.ts`); wanted: a `syntax` error code.
+5. `void 0` and other expressions that are certainly `undefined` are not
+   recognised (the old mirror flagged `void 0`).

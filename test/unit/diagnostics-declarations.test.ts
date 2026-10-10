@@ -39,17 +39,12 @@ describe('SP207: declarations that stop Spindle from starting (#62)', () => {
     expect(diags[0].message).toContain('Failed to evaluate "$gold = 10 // starting gold"');
   });
 
-  it('reports unsupported types, but leaves null to SP204', () => {
+  it('reports unsupported types; null is a valid default', () => {
     const diags = diagnose({
       'story.tw': ':: StoryVariables\n$a = undefined\n$b = null\n$c = {d: null}\n$e = [null]\n\n:: Start\n$a $b $c $e',
     });
     expect(diags.filter(d => d.code === 'SP207').map(d => d.range.start.line)).toEqual([1]);
-    const sp204 = diags.filter(d => d.code === 'SP204');
-    expect(sp204.map(d => d.range)).toEqual([
-      { start: { line: 2, character: 5 }, end: { line: 2, character: 9 } },
-      { start: { line: 3, character: 9 }, end: { line: 3, character: 13 } },
-    ]);
-    expect(sp204[1].message).toContain('$c.d');
+    expect(diags.filter(d => d.code === 'SP204')).toEqual([]);
   });
 
   it('checks StoryTransients with its own sigil', () => {

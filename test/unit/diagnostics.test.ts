@@ -285,35 +285,28 @@ plain text only
     expect(sp203).toHaveLength(0);
   });
 
-  it('produces SP204 for null value in StoryVariables', () => {
-    const text = `:: StoryVariables\n$health = 100\n$bad = null\n\n:: Start\nHello`;
+  // Spindle 0.59 accepts a null default (type null: it may hold anything later), so SP204 is gone
+  it('accepts a null value in StoryVariables', () => {
+    const text = `:: StoryVariables\n$health = 100\n$bad = null\n$nested = { x: null }\n\n:: Start\nHello`;
     const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
     const diags = computeDiagnostics('file:///test.tw', workspace);
-    const sp204 = diags.filter(d => d.code === 'SP204');
-    expect(sp204).toHaveLength(1);
-    expect(sp204[0].message).toContain('$bad');
-    expect(sp204[0].message).toContain('null');
-    expect(sp204[0].severity).toBe('error');
+    expect(diags.filter(d => d.code === 'SP204' || d.code === 'SP207')).toEqual([]);
   });
 
-  it('produces SP204 for null value in StoryTransients', () => {
+  it('accepts a null value in StoryTransients', () => {
     const text = `:: StoryTransients\n%ok = 0\n%bad = null\n\n:: Start\nHello`;
     const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
     const diags = computeDiagnostics('file:///test.tw', workspace);
-    const sp204 = diags.filter(d => d.code === 'SP204');
-    expect(sp204).toHaveLength(1);
-    expect(sp204[0].message).toContain('%bad');
-    expect(sp204[0].severity).toBe('error');
+    expect(diags.filter(d => d.code === 'SP204' || d.code === 'SP207')).toEqual([]);
   });
 
-  it('does not produce SP200 for variable declared as null (SP204 instead)', () => {
+  it('does not produce SP200 for variable declared as null', () => {
     const text = `:: StoryVariables\n$bad = null\n\n:: Start\n{set $bad = 1}`;
     const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
     const diags = computeDiagnostics('file:///test.tw', workspace);
     const sp200 = diags.filter(d => d.code === 'SP200');
     expect(sp200).toHaveLength(0);
-    const sp204 = diags.filter(d => d.code === 'SP204');
-    expect(sp204).toHaveLength(1);
+    expect(diags.filter(d => d.code === 'SP204')).toHaveLength(0);
   });
 
   it('does not produce SP204 for valid default values', () => {
