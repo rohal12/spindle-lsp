@@ -1,0 +1,67 @@
+name: Duplication
+
+# Measures code duplication in src/ with three tools that see different
+# things (see scripts/duplication.ts). Each fails when its measurement
+# exceeds duplication-budget.json, and on a pull request also when the change
+# adds duplication compared with the base branch.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  duplication:
+    name: duplication (${{ matrix.tool }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [jscpd, cpd, fallow]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The base commit is measured from a worktree
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Set up Java
+        if: matrix.tool == 'cpd'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install PMD
+        if: matrix.tool == 'cpd'
+        env:
+          PMD_VERSION: 7.28.0
+          PMD_SHA256: f974ba571f7bc01c73fffe11bade25fbc1f438698f9e9c00e416e8d65e9fbac2
+        run: |
+          zip="$RUNNER_TEMP/pmd.zip"
+          curl -sSfL -o "$zip" \
+            "https://github.com/pmd/pmd/releases/download/pmd_releases/${PMD_VERSION}/pmd-dist-${PMD_VERSION}-bin.zip"
+          echo "${PMD_SHA256}  ${zip}" | sha256sum --check -
+          unzip -q "$zip" -d "$RUNNER_TEMP"
+          echo "PMD_BIN=$RUNNER_TEMP/pmd-bin-${PMD_VERSION}/bin/pmd" >> "$GITHUB_ENV"
+
+      - name: Measure duplication
+        env:
+          TOOL: ${{ matrix.tool }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            node scripts/duplication.ts "$TOOL" --base "$BASE_SHA"
+          else
+            node scripts/duplication.ts "$TOOL"
+          fi
