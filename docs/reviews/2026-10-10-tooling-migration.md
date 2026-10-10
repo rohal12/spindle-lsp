@@ -461,3 +461,18 @@ Dead code removed (checked with `npx fallow dead-code` and grep over `src` and `
 - Kept although `fallow` reports them: `MarkupCursor.enclosingMacro`,
   `headBeingTyped`, `linkTarget` (called by signature help and completions) and the
   `triggerChar` parameter of `getCompletions` (the review harness passes it).
+
+## Cleanup: tolerant validation (Spindle 0.59.27, rohal12/spindle#469)
+
+`diagnostics.ts` no longer validates a copy of each malformed passage with its
+bad tags blanked (`wellFormed`) and no longer merges the tag errors of
+`tokenization.errors` / `pairing.errors` (`malformedTags`, `lineAndColumn`) into
+the result: `validateStoryMarkup(passages, macros, { tolerant: true })` reports
+every malformed tag and pairing error (same codes, messages and spans) and the
+unknown macros, code syntax errors, argument errors and passage names around
+them. The mapping of codes and `data` to SP codes is unchanged. This replaces
+the "Needs upstream API" item 1 of W2a above. No cell or test changed: the unit
+suite (1955) and the matrix (5209/5209) pass unmodified, so the tolerant output
+equals what the workaround produced for every pinned case. Nothing else in
+`diagnostics.ts` duplicated it: SP105 and the other malformed-markup codes were
+only produced through `malformedTags`.

@@ -1,9 +1,7 @@
 import {
   builtinMacros,
   lexJs,
-  pairMarkup,
   splitArgs,
-  tokenizeMarkupTolerant,
   validateStoryMarkup,
   validateVariableReferences,
   widgetDefinitions,
@@ -185,11 +183,13 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
   const found = validateStoryMarkup(
     passages.map((passage, index) => ({
       name: passage.passage.name,
-      content: wellFormed(passage),
+      content: passage.content,
       tags: passage.passage.tags,
       metadata: { 'data-source-file': String(index) },
     })),
     toolingMacros,
+    // Every malformed tag and pairing error, and the checks of the markup around them
+    { tolerant: true },
   );
   for (const diagnostic of found) {
     const passage = passages[Number(diagnostic.file)];
@@ -264,60 +264,7 @@ const MARKUP_CODES: Record<MarkupDiagnosticCode, DiagnosticCodeValue> = {
 };
 
 function markupDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
-  return [...malformedTags(passage), ...(story.markup.get(passage) ?? [])].map((found) => fromMarkup(passage, found, workspace));
-}
-
-/**
- * The malformed tags and the tags that pair with nothing in a passage, all of
- * them, in the shape of `validateStoryMarkup`'s diagnostics. That function
- * reports the first one of a passage, as the story fails to start there (the
- * markup in a label or attribute value is reported by it, one error each).
- */
-function malformedTags(passage: PassageMarkup): MarkupDiagnostic[] {
-  if (!passage.isMarkup) return [];
-  const found: MarkupDiagnostic[] = [];
-  const name = passage.passage.name;
-  for (const error of passage.tokenization.errors) {
-    found.push({ passage: name, line: error.line, column: error.column, message: error.reason, code: error.code, start: error.offset, end: error.end, data: error.data });
-  }
-  for (const error of passage.pairing.errors) {
-    const { line, column } = lineAndColumn(passage.content, error.start);
-    found.push({ passage: name, line, column, message: error.message, code: error.code, start: error.start, end: error.end, data: error.data });
-  }
-  return found.sort((a, b) => a.start - b.start);
-}
-
-function lineAndColumn(content: string, offset: number): { line: number; column: number } {
-  const before = content.slice(0, offset);
-  return { line: before.split('\n').length, column: offset - (before.lastIndexOf('\n') + 1) + 1 };
-}
-
-/**
- * The content of a passage with its malformed tags (and those that pair with
- * nothing) replaced by spaces, so every offset stays. `validateStoryMarkup`
- * stops at the first malformed tag of a passage, as the story fails to start
- * there; read from this copy it goes on to the rest (unknown macros, passages
- * that do not exist, errors in code, ...), which an editor wants alongside.
- */
-function wellFormed(passage: PassageMarkup): string {
-  if (!passage.isMarkup) return passage.content;
-  let content = passage.content;
-  let { errors } = passage.tokenization;
-  let pairing = passage.pairing.errors;
-  // Removing a tag can leave another unpaired: a few rounds settle it
-  for (let round = 0; round < 8 && (errors.length > 0 || pairing.length > 0); round++) {
-    const chars = Array.from(content);
-    const blank = (start: number, end: number) => {
-      for (let i = start; i < Math.max(end, start + 1) && i < chars.length; i++) chars[i] = ' ';
-    };
-    for (const error of errors) blank(error.offset, error.end);
-    for (const error of pairing) blank(error.start, error.end);
-    content = chars.join('');
-    const read = tokenizeMarkupTolerant(content);
-    errors = read.errors;
-    pairing = pairMarkup(read.tokens, { isBlock: (name) => passage.doc.context.isBlock(name), source: content }).errors;
-  }
-  return content;
+  return (story.markup.get(passage) ?? []).map((found) => fromMarkup(passage, found, workspace));
 }
 
 function fromMarkup(passage: PassageMarkup, found: MarkupDiagnostic, workspace: WorkspaceModel): SpindleDiagnostic {
