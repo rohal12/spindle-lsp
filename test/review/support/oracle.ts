@@ -1,15 +1,16 @@
 /**
  * The installed Spindle runtime as oracle for the cross-consumer matrix.
  *
- * Everything here is derived from `tokenize` / `buildAST` / the link macro's
- * own `parseArgs` of node_modules/@rohal12/spindle, plus an independent
- * (deliberately naive) splitter for Twee passages that does not share code
- * with src/. Expressions are only evaluated when the whole argument is a
- * single string literal written by these tests.
+ * Everything here is derived from the public tooling API of
+ * `@rohal12/spindle/tooling` (`tokenizeMarkupTolerant`,
+ * `collectStoryPassageReferences`, `passageTarget`, `splitIncludeFlag`, ...),
+ * plus an independent (deliberately naive) splitter for Twee passages that
+ * does not share code with src/. Expressions are only evaluated by
+ * `gotoTarget`, which the tests call with arguments written by themselves.
  */
-import { tokenize, type Token } from '../../helpers/tooling.js';
-import { runtimeBracketLink, runtimeLinkMacro } from '../../helpers/link-macro-oracle.js';
-import { INSTALLED_CAPABILITIES } from '../../helpers/spindle-version.js';
+import { collectStoryPassageReferences, splitIncludeFlag } from '@rohal12/spindle/tooling';
+import { builtinMacros, deepTokens, normalizeEol, tokenize, type Token } from '../../helpers/tooling.js';
+import { runtimeBracketLink } from '../../helpers/link-macro-oracle.js';
 import { runtimeGotoTarget } from '../../helpers/expression-oracle.js';
 
 export interface OraclePassage {
@@ -65,7 +66,12 @@ export function splitPassages(source: string): OraclePassage[] {
   return out;
 }
 
-export interface OracleToken { token: Token; start: number; end: number; passage: OraclePassage }
+/**
+ * A token the runtime reads, with its span in the document. `nested` tokens are
+ * those of markup inside a label or an attribute value (see `deepTokens`), so
+ * they lie inside another token.
+ */
+export interface OracleToken { token: Token; start: number; end: number; passage: OraclePassage; nested: boolean }
 
 /** Runtime tokens of every markup passage, with offsets mapped back to the (possibly CRLF) document. */
 function runtimeTokensUncached(source: string): OracleToken[] {
@@ -75,126 +81,86 @@ function runtimeTokensUncached(source: string): OracleToken[] {
     if (!passage.markup || passage.bodyEnd <= passage.bodyStart) continue;
     const body = text.slice(passage.bodyStart, passage.bodyEnd);
     // Spindle's compiler normalizes CRLF to LF; map LF offsets back
-    const lf = body.replace(/\r\n/g, '\n');
-    // offsets in the LF text -> offsets in the document (each CRLF became one LF)
-    const toDoc: number[] = [];
-    for (let i = 0; i < body.length; i++) {
-      if (body[i] === '\r' && body[i + 1] === '\n') continue;
-      toDoc.push(i);
-    }
-    toDoc.push(body.length);
-    const map = (off: number) => toDoc[off] ?? body.length;
-    for (const token of tokenize(lf)) {
-      out.push({ token, start: passage.bodyStart + map(token.start), end: passage.bodyStart + map(token.end), passage });
+    const { lf, toOriginal: map } = normalizeEol(body);
+    for (const { token, nested } of deepTokens(lf)) {
+      out.push({ token, start: passage.bodyStart + map(token.start), end: passage.bodyStart + map(token.end), passage, nested });
     }
   }
   return out;
 }
 
-const SINGLE_LITERAL = /^\s*(?:"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`$\\]|\\[^$])*`)\s*$/;
-/** The value of an expression that is exactly one string literal, else null (dynamic). */
-export function staticString(expr: string): string | null {
-  if (!SINGLE_LITERAL.test(expr)) return null;
-  try {
-    const v: unknown = new Function(`return (${expr});`)();
-    return typeof v === 'string' ? v : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * The name expression of `{include}` arguments, as the installed Include
- * component computes it: before 0.51.1 the first `inline` word anywhere is
- * removed; from 0.51.1 `parseIncludeArgs` (components/macros/Include.tsx)
- * removes a standalone flag at the start or end, outside quotes and brackets.
- * Written out here independently of src/.
- */
-function includeNameExpr(rawArgs: string): string {
-  if (!INSTALLED_CAPABILITIES.includeInlineScoped) return rawArgs.replace(/\binline\b/, '').trim();
-  const t = rawArgs.trim();
-  const spaces: Array<[number, number]> = [];
-  let depth = 0;
-  let quote: string | null = null;
-  for (let i = 0; i < t.length; i++) {
-    const c = t[i];
-    if (quote) { if (c === '\\') i++; else if (c === quote) quote = null; continue; }
-    if (c === '"' || c === "'" || c === '`') quote = c;
-    else if ('([{'.includes(c)) depth++;
-    else if (')]}'.includes(c)) depth--;
-    else if (depth === 0 && /\s/.test(c)) {
-      let end = i + 1;
-      while (end < t.length && /\s/.test(t[end])) end++;
-      spaces.push([i, end]);
-      i = end - 1;
-    }
-  }
-  const last = spaces.at(-1);
-  if (last && last[1] === t.length - 6 && t.endsWith('inline') && !/[-+*/%&|^!=<>?:,.]$/.test(t.slice(0, last[0]))) return t.slice(0, last[0]);
-  const first = spaces[0];
-  if (first && first[0] === 6 && t.startsWith('inline') && !/^[-+*/%&|^=<>?:,.]/.test(t.slice(first[1]))) return t.slice(first[1]);
-  return t;
-}
-
-/**
- * What `{goto}` / `{include}` navigate to, per the runtime's own rule
- * (components/macros/Goto.tsx): evaluate the arguments, and when that throws
- * use the raw text with surrounding quotes stripped. Only two shapes are
- * resolvable without the story's state, and only those are evaluated here:
- * a single string literal, and a bare name made of word characters, spaces
- * and hyphens, run through the installed evaluator (Spindle's sigil
- * transformation, `temporary` as the `_` scope): a ReferenceError/SyntaxError
- * is the name itself, `_x1` or `URL` is whatever they evaluate to. Anything
- * else (concatenation, parentheses, calls, sigils) is dynamic by design.
+ * Where `{goto}` / `{include}` navigate for these arguments, by the macros'
+ * own rule (Spindle 0.59): `{include}`'s `inline` flag is split off with
+ * `splitIncludeFlag`; the `passage` argument is read with `passageTarget`
+ * (a string literal is the name, as JavaScript reads it), anything else is an
+ * expression evaluated in the story's scopes (`evaluatePassageName`; the
+ * tests pass the `_` scope as `temporary`). There is no text fallback: an
+ * argument that does not evaluate (`{goto Old}`, a bare name that is no
+ * variable) throws when the macro runs, and the macro navigates nowhere
+ * (null). See test/helpers/expression-oracle.ts.
  */
 export function gotoTarget(rawArgs: string, include = false, temporary: Record<string, unknown> = {}): string | null {
-  let args = rawArgs;
-  if (include) args = includeNameExpr(rawArgs);
-  const literal = staticString(args);
-  if (literal !== null) return literal;
-  const bare = args.trim();
-  if (!/^[A-Za-z_][\w -]*$/.test(bare)) return null;
-  // the installed evaluator (sigils included) on a fixed empty story state, then the component's String / catch rule
-  return runtimeGotoTarget(bare, temporary);
+  const passage = include ? splitIncludeFlag(rawArgs).passage : rawArgs;
+  if (passage === undefined) return null;
+  return runtimeGotoTarget(passage, temporary);
 }
 
 export interface OracleRef {
-  /** The passage the installed runtime navigates to (what a click does). */
+  /** The passage the runtime navigates to (what a click does): the quoted name of the reference. */
   target: string;
-  /** The passage the author wrote (the JavaScript meaning of the literal). */
+  /** The passage the author wrote (the JavaScript meaning of the literal, or the link token's target). */
   intended: string | null;
-  /** Where the runtime's link macro actually navigates; differs from `intended` for literals it reads with its own rules. */
+  /**
+   * Where the runtime actually navigates. For a bracket link the AST turns the
+   * token into `{link "label" "target"}` and the macro reads the target with
+   * `passageTarget`; null when that reads an expression (a target the
+   * quoting cannot carry, e.g. a line break), so a click goes nowhere.
+   */
   reads: string | null;
-  kind: 'bracket' | 'goto' | 'include' | 'link';
+  /** `bracket` (`[[...]]`), or the macro that names the passage (`goto`, `include`, `link`, `watch`, `dialog`, ...). */
+  kind: string;
   start: number;
   end: number;
   uriText: string;
 }
 
-const LITERAL = String.raw`(?:"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')`;
-const TWO_LITERALS = new RegExp(`^\\s*${LITERAL}\\s+(${LITERAL})\\s*$`);
+/**
+ * The enclosing top-level token of a reference: the span the consumers'
+ * ranges are compared with (the reference itself may be a label or an
+ * attribute value inside it).
+ */
+function enclosing(tokens: Token[], start: number, end: number): Token | undefined {
+  return tokens.find(token => token.start <= start && end <= token.end);
+}
 
-
-/** Passage targets the runtime resolves statically, per document text. */
+/**
+ * Passage targets the runtime resolves statically, per document text:
+ * `collectStoryPassageReferences` against the built-in macros on each
+ * passage (CRLF read as LF, offsets mapped back), keeping the references
+ * whose target is a quoted name. A target that is an expression (`{goto $room}`,
+ * and the bare names the 0.45.1 text fallback used to navigate by, `{goto Old}`)
+ * names no passage until it runs and is not a static reference.
+ */
 function runtimePassageRefsUncached(source: string): OracleRef[] {
   const text = source;
   const refs: OracleRef[] = [];
-  for (const { token, start, end } of runtimeTokens(text)) {
-    if (token.type === 'link') {
-      const read = runtimeBracketLink(text.slice(start, end).replace(/\r\n/g, '\n'));
-      // the link macro the bracket link becomes reads the target with its own rules (null: a click goes nowhere)
-      refs.push({ target: token.target, intended: token.target, reads: read?.passage ?? null, kind: 'bracket', start, end, uriText: text });
-    } else if (token.type === 'macro' && !token.isClose) {
-      const name = token.name.toLowerCase();
-      if (name === 'goto' || name === 'include') {
-        const target = gotoTarget(token.rawArgs, name === 'include');
-        // an empty name (0.45.1 reads `{include "inline"}` as `""`) names no passage: a header always has a name
-        if (target !== null && target !== '') refs.push({ target, intended: target, reads: target, kind: name, start, end, uriText: text });
-      } else if (name === 'link') {
-        const read = runtimeLinkMacro(token.rawArgs);
-        // `{link "label" "Passage"}`: the second literal names the passage (a single argument is a label only)
-        const literal = TWO_LITERALS.exec(token.rawArgs)?.[1];
-        if (literal !== undefined && read.passage) refs.push({ target: read.passage, intended: staticString(literal), reads: read.passage, kind: 'link', start, end, uriText: text });
+  for (const passage of splitPassages(text)) {
+    if (!passage.markup || passage.bodyEnd <= passage.bodyStart) continue;
+    const body = text.slice(passage.bodyStart, passage.bodyEnd);
+    const { lf, toOriginal } = normalizeEol(body);
+    const tokens = tokenize(lf);
+    for (const ref of collectStoryPassageReferences(lf, builtinMacros)) {
+      if (ref.target.kind !== 'name') continue;
+      const token = enclosing(tokens, ref.start, ref.end);
+      const start = passage.bodyStart + toOriginal(token?.start ?? ref.start);
+      const end = passage.bodyStart + toOriginal(token?.end ?? ref.end);
+      const target = ref.target.name;
+      if (ref.macro === 'link' && token?.type === 'link') {
+        const read = runtimeBracketLink(lf.slice(token.start, token.end));
+        refs.push({ target, intended: token.target, reads: read?.passage ?? null, kind: 'bracket', start, end, uriText: text });
+      } else {
+        refs.push({ target, intended: target, reads: target, kind: ref.macro, start, end, uriText: text });
       }
     }
   }

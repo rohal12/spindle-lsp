@@ -1,13 +1,17 @@
 /**
  * Link text the runtime reads differently (SP304, #P-observed item 1).
  *
- * Oracle: the installed Spindle. A bracket link is a token, buildAST renders
- * it as `{link}` arguments and MacroLink.parseArgs (the installed
- * component's own function, test/helpers/link-macro-oracle.ts) reads them
- * back; the tests compare that with what spindle-lsp reports. Behavior that
- * depends on the release is exercised for both sides with projects that
- * declare their Spindle version (`project(version)`), the installed runtime
- * checks the matching side for real (scripts/peer-matrix.sh runs the others).
+ * Oracle: the installed Spindle, through its public tooling API. A bracket
+ * link is a token; the AST turns it into `{link "label" "target"}` (both
+ * quoted, `\` and `"` escaped); the macro reads its arguments as its
+ * parameters declare (`passagePieces`: the `text` is a quoted string holding
+ * markup, the `passage` a quoted name read as a JavaScript literal, else an
+ * expression, test/helpers/link-macro-oracle.ts). The tests compare that with
+ * what spindle-lsp reports. In Spindle 0.59 the macro no longer collects quoted
+ * parts with a regular expression, so a quote or backslash in a label or
+ * target is carried; what the quoting cannot carry is a line break in the
+ * target (a raw newline ends a JavaScript string literal, so the macro reads
+ * an expression and the click fails).
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';

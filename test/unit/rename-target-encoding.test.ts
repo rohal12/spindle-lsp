@@ -43,13 +43,14 @@ describe('R67: arithmetic and other evaluating names', () => {
     expect(navigates(output, 'goto')).toBe('1 + 2');
   });
 
-  it('R67-bare-spelling: only names certain to throw (several plain words) stay bare; a single word is quoted', () => {
-    for (const [name, spelled] of [
-      ['New', '"New"'], ['New Name', 'New Name'], ['Chapter 2', 'Chapter 2'], ['_x1', '"_x1"'], ['URL', '"URL"'],
-      ['temporary', '"temporary"'], ['Image', '"Image"'], ['_x 1', '"_x 1"'], ['a _b', '"a _b"'],
-      ['1 + 2', '"1 + 2"'], ['5', '"5"'], ['a-b', '"a-b"'], ['true', '"true"'], ['null', '"null"'], ['Math', '"Math"'],
-      ['typeof x', '"typeof x"'], ['a  b', '"a  b"'], ['a(b)', '"a(b)"'], ["it's", '"it\'s"'], ['$v', '"$v"'],
+  it('R67-bare-spelling: every target is spelled as a quoted name; a bare word is an expression that throws', () => {
+    // Spindle 0.59 reads a bare `{goto New Name}` as the expression `New Name` (a SyntaxError when the macro runs);
+    // there is no text fallback, so no name may be written bare (the old rule left several plain words bare)
+    for (const name of [
+      'New', 'New Name', 'Chapter 2', '_x1', 'URL', 'temporary', 'Image', '_x 1', 'a _b',
+      '1 + 2', '5', 'a-b', 'true', 'null', 'Math', 'typeof x', 'a  b', 'a(b)', "it's", '$v',
     ]) {
+      const spelled = JSON.stringify(name);
       expect(renamed(workspace(source('goto')), name), name).toContain(`{goto ${spelled}}`);
       expect(renamed(workspace(source('include')), name), name).toContain(`{include ${spelled}}`);
     }
@@ -75,8 +76,12 @@ describe('R67: arithmetic and other evaluating names', () => {
     expect(runtimeGotoTarget('URL')).toMatch(/URL/);
     expect(runtimeGotoTarget('URL')).not.toBe('URL');
     expect(runtimeGotoTarget('temporary')).toBe('[object Object]');
-    expect(runtimeGotoTarget('Chapter 2')).toBe('Chapter 2');
+    // Spindle 0.59 has no text fallback: a bare name is an expression, and one that does not evaluate throws
+    // when the macro runs, so it navigates nowhere (the 0.45.1 component used its text as the name)
+    expect(runtimeGotoTarget('Chapter 2')).toBeNull();
+    expect(runtimeGotoTarget('Old')).toBeNull();
     expect(runtimeGotoTarget('"_x1"', { x1: 'Other' })).toBe('_x1');
+    expect(runtimeGotoTarget('"Old"')).toBe('Old');
   });
 
   it('R67-classifier: numeric expressions are not static names; canonical numbers and words are', () => {

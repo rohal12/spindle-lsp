@@ -1,21 +1,17 @@
 /**
- * Checks SP103 and its quick fixes against Spindle's own tokenizer and
- * interpolate(), imported from the installed runtime's source. The store is
- * stubbed: interpolate() only reads it for visited() and similar functions.
+ * Checks SP103 and its quick fixes against Spindle's own tokenizer (public
+ * tooling API) and the closest public equivalent of its interpolate(): the
+ * text-mode tokenizer, pairing and sigil transform (test/helpers/
+ * interpolation-oracle.ts, which says what it models; the runtime's own
+ * interpolate() is not exported).
  */
-import { describe, it, expect, vi } from 'vitest';
-import { hasInterpolation, interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
+import { describe, it, expect } from 'vitest';
+import { hasInterpolation, interpolate } from '../helpers/interpolation-oracle.js';
 import { tokenize } from '../helpers/tooling.js';
-import { evaluate } from '../../node_modules/@rohal12/spindle/src/expression.js';
+import { evaluate } from '../helpers/expression-oracle.js';
 import { conditionalExpression, findUnevaluatedBlocks, printExpression } from '../../src/core/parsing/attribute-blocks.js';
 import { scanHtmlTags } from '../../src/core/parsing/html-scanner.js';
 import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
-
-vi.mock('../../node_modules/@rohal12/spindle/src/store.ts', () => ({
-  useStoryStore: {
-    getState: () => ({ visitCounts: {}, renderCounts: {}, currentPassage: 'Start' }),
-  },
-}));
 
 interface Scope {
   variables?: Record<string, unknown>;

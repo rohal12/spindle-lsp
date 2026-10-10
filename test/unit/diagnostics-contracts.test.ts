@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { tokenize } from '../helpers/tooling.js';
-import { parseStoryVariables } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeCodeActions } from '../../src/plugins/code-actions.js';

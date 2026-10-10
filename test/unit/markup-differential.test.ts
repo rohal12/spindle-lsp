@@ -1,6 +1,7 @@
 /**
- * Differential contracts against Spindle 0.45.1's own tokenizer and
- * interpolate(), imported from the installed runtime's source.
+ * Differential contracts against Spindle's own tokenizer and passage reading
+ * (the public tooling API), and the closest public equivalent of its
+ * interpolate() (test/helpers/interpolation-oracle.ts).
  *
  *  - D3: where `[[` is a link and where a macro head is a macro, with HTML
  *    attribute values in between (attributeValueSpans, parseMacros,
@@ -11,18 +12,16 @@
  *
  * Every fixture runs with LF and CRLF line endings.
  */
-import { describe, expect, it, vi } from 'vitest';
-import { interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
-import { tokenize, type Token } from '../helpers/tooling.js';
+import { describe, expect, it } from 'vitest';
+import { collectStoryPassageReferences } from '@rohal12/spindle/tooling';
+import { builtinMacros, deepTokens, tokenize, type Token } from '../helpers/tooling.js';
+import { runtimeBracketLink } from '../helpers/link-macro-oracle.js';
+import { runtimeVariableReads } from '../helpers/variable-reads-oracle.js';
 import { attributeValueSpans } from '../../src/core/parsing/html-scanner.js';
 import { findBracketLinks, parseDocumentPassageRefs } from '../../src/core/parsing/link-parser.js';
 import { buildLineStarts, parseMacros } from '../../src/core/parsing/macro-parser.js';
 import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
-
-vi.mock('../../node_modules/@rohal12/spindle/src/store.ts', () => ({
-  useStoryStore: { getState: () => ({ visitCounts: {}, renderCounts: {}, currentPassage: 'Start' }) },
-}));
 
 interface Facts {
   links: Array<[number, number]>;
@@ -35,8 +34,11 @@ function oracle(text: string): Facts {
   const tokens = tokenize(text);
   return {
     links: tokens.filter((t): t is Extract<Token, { type: 'link' }> => t.type === 'link').map(t => [t.start, t.end]),
-    macros: tokens
+    // Spindle 0.59 reads the markup in link labels and attribute values too: its macros are macros
+    macros: deepTokens(text)
+      .map(({ token }) => token)
       .filter((t): t is Extract<Token, { type: 'macro' }> => t.type === 'macro')
+      .sort((a, b) => a.start - b.start)
       .map(t => [t.start, t.name, t.isClose]),
     attributes: tokens
       .filter((t): t is Extract<Token, { type: 'html' }> => t.type === 'html' && !t.isClose)
@@ -93,10 +95,8 @@ describe('D3: [[ inside HTML attribute values, against tokenize()', () => {
         expect(ours(text)).toEqual(oracle(text));
         // The passage references follow: every link target and goto target
         const expected = oracle(text);
-        const targets = tokenize(text).flatMap(t =>
-          t.type === 'link' ? [t.target]
-            : t.type === 'macro' && t.name === 'goto' && !t.isClose ? [t.rawArgs.replace(/^"|"$/g, '')]
-              : []);
+        const targets = collectStoryPassageReferences(text.replace(/\r\n/g, '\n'), builtinMacros)
+          .flatMap(ref => (ref.target.kind === 'name' ? [ref.target.name] : []));
         expect(parseDocumentPassageRefs(text, []).map(r => r.name).sort()).toEqual(targets.sort());
         expect(expected.links.length + expected.macros.length).toBeGreaterThan(-1);
       });
@@ -131,56 +131,13 @@ describe('D3: [[ inside HTML attribute values, against tokenize()', () => {
   });
 });
 
-describe('D1: macro-looking bracket-link labels are link text', () => {
-  /** The variables interpolate() reads from `template`, as `$x` / `%t` names. */
-  function interpolationReads(template: string | undefined): string[] {
-    if (template === undefined) return [];
-    const seen: string[] = [];
-    const scope = (prefix: string) => new Proxy({}, {
-      get: (_target, key) => {
-        if (typeof key === 'string') seen.push(prefix + key);
-        return undefined;
-      },
-      has: () => true,
-    });
-    try {
-      interpolate(template, scope('$') as never, scope('_') as never, scope('@') as never, scope('%') as never);
-    } catch {
-      // An expression that does not parse reads nothing
-    }
-    return seen;
-  }
-
+describe('D1: macros in bracket-link labels are macros (a label holds markup)', () => {
   /**
-   * The `$` and `%` names Spindle reads from `text`: a link token renders as
-   * the `{link}` macro, whose wrapper interpolates its class and id but whose
-   * MacroLink prints the display and navigates to the target as written
-   * (verified by the next describe block against the source and by rendering,
-   * docs/reviews/2026-10-06-convergence-fixes.md); an HTML tag interpolates
-   * its attribute values; a macro reads the variables in its arguments (the
-   * fixtures keep those free of strings, so a regular expression finds them).
+   * The `$` and `%` names Spindle reads from `text` (test/helpers/variable-reads-oracle.ts): a link token
+   * renders as the `{link}` macro, whose label is markup (resolved) and whose wrapper interpolates class
+   * and id; an HTML tag resolves its attribute values as markup; a macro reads the variables in its arguments.
    */
-  function oracleReads(text: string): string[] {
-    const names = tokenize(text).flatMap((token): string[] => {
-      switch (token.type) {
-        case 'link':
-          return [
-            ...interpolationReads(token.className),
-            ...interpolationReads(token.id),
-          ];
-        case 'html':
-          return Object.values(token.attributes).flatMap(interpolationReads);
-        case 'variable':
-          return token.scope === 'variable' ? [`$${token.name.split('.')[0]}`]
-            : token.scope === 'transient' ? [`%${token.name.split('.')[0]}`] : [];
-        case 'macro':
-          return [...token.rawArgs.matchAll(/[$%]\w+/g)].map(m => m[0]);
-        default:
-          return [];
-      }
-    });
-    return names.filter(name => name[0] === '$' || name[0] === '%').map(name => name.slice(1)).sort();
-  }
+  const oracleReads = runtimeVariableReads;
 
   /** The names the variable tracker records as usages (executable reads). */
   function oursReads(text: string): string[] {
@@ -228,15 +185,18 @@ describe('D1: macro-looking bracket-link labels are link text', () => {
         const text = source.replace(/\n/g, eol);
         const tokens = tokenize(text);
 
-        // Macros: the ones the tokenizer reads outside links
-        const macroNames = tokens.flatMap(t => (t.type === 'macro' ? [t.name] : []));
+        // Macros: the ones the tokenizer reads, including those in link labels (markup of their own)
+        const macroNames = deepTokens(text).flatMap(({ token }) => (token.type === 'macro' ? [token] : []))
+          .sort((a, b) => a.start - b.start).map(t => t.name);
         expect(parseMacros(text).map(m => m.name)).toEqual(macroNames);
 
-        // Passage references: the link targets, then the macro targets
+        // Passage references: the link targets, then the macro targets (the label's included)
         const linkTargets = tokens.flatMap(t => (t.type === 'link' ? [t.target] : []));
         const refs = parseDocumentPassageRefs(text, []);
         expect(refs.filter(r => r.source === 'link').map(r => r.name)).toEqual(linkTargets);
-        expect(refs.filter(r => r.source === 'macro')).toEqual([]);
+        const macroTargets = collectStoryPassageReferences(text.replace(/\r\n/g, '\n'), builtinMacros)
+          .flatMap(ref => (ref.macro !== 'link' && ref.target.kind === 'name' ? [ref.target.name] : []));
+        expect(refs.filter(r => r.source === 'macro').map(r => r.name)).toEqual(macroTargets);
 
         // Variable usages: what Spindle reads
         expect(oursReads(text)).toEqual(oracleReads(text));
@@ -245,34 +205,27 @@ describe('D1: macro-looking bracket-link labels are link text', () => {
   }
 });
 
-describe('C-D1-quote: the link macro reads a double quote in a label as a delimiter', () => {
-  // MacroLink.parseArgs (components/macros/MacroLink.tsx, 0.45.1) collects
-  // `/(["'])(.*?)\1/g` over `"display" "target"`. Copied here: the component
-  // needs a DOM and preact.
-  function linkMacroPassage(display: string, target: string): string | null {
-    const parts = [...`"${display}" "${target}"`.matchAll(/(["'])(.*?)\1/g)].map(m => m[2]);
-    return parts.length >= 2 ? parts[1] : null;
-  }
-
+describe('C-D1-quote: the link macro reads its arguments as JavaScript string literals', () => {
+  // Spindle 0.59 reads `{link "label" "passage"}` with the macro's declared parameters (`text`: a quoted string
+  // holding markup, `passage`: a name read as a JavaScript literal), not with the regular expression
+  // `/(["'])(.*?)\1/g` that 0.45.1's MacroLink.parseArgs collected quoted parts with.
   it('C-D1-quote: a label without a double quote navigates to the link token target', () => {
     for (const label of ['{if $x}label{/if}', "{print 'a'}", "Don't go", '{goto X}']) {
       const [link] = tokenize(`[[${label}->Target]]`);
       expect(link).toMatchObject({ type: 'link', target: 'Target' });
-      expect(linkMacroPassage(label, 'Target')).toBe('Target');
+      expect(runtimeBracketLink(`[[${label}->Target]]`)?.passage).toBe('Target');
     }
   });
 
-  it('C-D1-quote: references follow the link token (the contract for this label), not the quoting accident', () => {
-    // `{goto "X"}` in a label executes nothing, but its double quotes make
-    // Spindle's link macro read `}` as the passage. That is Spindle's quoting
-    // of the label, independent of the label being macro-like: any label with
-    // a `"` does it (`[[He said "hi"->T]]`). The tokenizer, which decides
-    // what executes, reads the target as written, and so do all consumers.
-    expect(linkMacroPassage('{goto "X"}', 'Target')).toBe('}');
-    expect(linkMacroPassage('He said "hi"', 'T')).toBe('');
+  it('C-D1-quote: references follow the link token for every label, quotes included', () => {
+    // A `"` in a label used to make the link macro read `}` or '' as the passage; the label is now escaped
+    // into a string literal and the passage is the token's target whatever the label holds.
+    expect(runtimeBracketLink('[[{goto "X"}->Target]]')?.passage).toBe('Target');
+    expect(runtimeBracketLink('[[He said "hi"->T]]')?.passage).toBe('T');
     const text = '[[{goto "X"}->Target]]';
     expect(tokenize(text)[0]).toMatchObject({ type: 'link', target: 'Target' });
-    expect(parseDocumentPassageRefs(text, []).map(r => r.name)).toEqual(['Target']);
-    expect(parseMacros(text)).toEqual([]);
+    // the {goto "X"} in the label is markup of its own, so it is a macro and a reference too
+    expect(parseDocumentPassageRefs(text, []).map(r => r.name).sort()).toEqual(['Target', 'X']);
+    expect(parseMacros(text).map(m => m.name)).toEqual(['goto']);
   });
 });
