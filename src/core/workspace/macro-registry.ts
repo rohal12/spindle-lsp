@@ -128,6 +128,7 @@ export class MacroRegistry {
         merged: m.merged,
         description: m.description,
         source: 'user',
+        parameterDefs: m.parameters,
       });
     }
 
@@ -188,6 +189,7 @@ export class MacroRegistry {
       name: m.name,
       block: m.block,
       subMacros: m.subMacros,
+      storeVar: m.storeVar,
       interpolate: m.interpolate,
       parameters: m.parameterDefs,
     }));
@@ -219,6 +221,8 @@ export class MacroRegistry {
       interpolate: found.interpolate ?? base?.interpolate,
       merged: found.merged ?? base?.merged,
       description: found.description ?? base?.description,
+      // A definition replaces the macro it names, parameters included
+      parameterDefs: found.parameterDefs,
       // A discovered sub-macro may also belong to other (e.g. built-in) parents
       parents: found.parents
         ? [...new Set([...(base?.parents ?? []), ...found.parents])]
