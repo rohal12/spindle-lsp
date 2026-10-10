@@ -18,10 +18,21 @@ import { builtinMacros, deepTokens, tokenize, type Token } from '../helpers/tool
 import { runtimeBracketLink } from '../helpers/link-macro-oracle.js';
 import { runtimeVariableReads } from '../helpers/variable-reads-oracle.js';
 import { attributeValueSpans } from '../../src/core/parsing/html-scanner.js';
-import { findBracketLinks, parseDocumentPassageRefs } from '../../src/core/parsing/link-parser.js';
+import { findBracketLinks } from '../../src/core/parsing/link-parser.js';
+import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
+import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { buildLineStarts, parseMacros } from '../../src/core/parsing/macro-parser.js';
 import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
+
+/** The passage names written out in `text`, read as the body of a passage. */
+function passageRefsOf(text: string) {
+  const model = new WorkspaceModel();
+  model.initialize(new Map([['file:///s.tw', `:: P\n${text}`]]));
+  const refs = documentPassageRefs(model.markup.get('file:///s.tw')!);
+  model.dispose();
+  return refs;
+}
 
 interface Facts {
   links: Array<[number, number]>;
@@ -90,15 +101,17 @@ describe('D3: [[ inside HTML attribute values, against tokenize()', () => {
 
   for (const [eolName, eol] of eols) {
     for (const [name, source] of fixtures) {
+      it(`D3-refs ${name} (${eolName})`, () => {
+        const text = source.replace(/\n/g, eol);
+        // The passage references follow the tokenizer: every link target and goto target
+        const targets = collectStoryPassageReferences(text.replace(/\r\n/g, '\n'), builtinMacros)
+          .flatMap(ref => (ref.target.kind === 'name' ? [ref.target.name] : []));
+        expect(passageRefsOf(text).map(r => r.name).sort()).toEqual(targets.sort());
+      });
+
       it(`D3 ${name} (${eolName})`, () => {
         const text = source.replace(/\n/g, eol);
         expect(ours(text)).toEqual(oracle(text));
-        // The passage references follow: every link target and goto target
-        const expected = oracle(text);
-        const targets = collectStoryPassageReferences(text.replace(/\r\n/g, '\n'), builtinMacros)
-          .flatMap(ref => (ref.target.kind === 'name' ? [ref.target.name] : []));
-        expect(parseDocumentPassageRefs(text, []).map(r => r.name).sort()).toEqual(targets.sort());
-        expect(expected.links.length + expected.macros.length).toBeGreaterThan(-1);
       });
     }
   }
@@ -181,22 +194,24 @@ describe('D1: macros in bracket-link labels are macros (a label holds markup)', 
 
   for (const [eolName, eol] of eols) {
     for (const [name, source] of labels) {
+      it(`D1-refs ${name} (${eolName})`, () => {
+        const text = source.replace(/\n/g, eol);
+        // Passage references: the link targets, then the macro targets (the label's included)
+        const linkTargets = tokenize(text).flatMap(t => (t.type === 'link' ? [t.target] : []));
+        const refs = passageRefsOf(text);
+        expect(refs.filter(r => r.form === 'bracket').map(r => r.name)).toEqual(linkTargets);
+        const macroTargets = collectStoryPassageReferences(text.replace(/\r\n/g, '\n'), builtinMacros)
+          .flatMap(ref => (ref.macro !== 'link' && ref.target.kind === 'name' ? [ref.target.name] : []));
+        expect(refs.filter(r => r.macro !== 'link').map(r => r.name)).toEqual(macroTargets);
+      });
+
       it(`D1 ${name} (${eolName})`, () => {
         const text = source.replace(/\n/g, eol);
-        const tokens = tokenize(text);
 
         // Macros: the ones the tokenizer reads, including those in link labels (markup of their own)
         const macroNames = deepTokens(text).flatMap(({ token }) => (token.type === 'macro' ? [token] : []))
           .sort((a, b) => a.start - b.start).map(t => t.name);
         expect(parseMacros(text).map(m => m.name)).toEqual(macroNames);
-
-        // Passage references: the link targets, then the macro targets (the label's included)
-        const linkTargets = tokens.flatMap(t => (t.type === 'link' ? [t.target] : []));
-        const refs = parseDocumentPassageRefs(text, []);
-        expect(refs.filter(r => r.source === 'link').map(r => r.name)).toEqual(linkTargets);
-        const macroTargets = collectStoryPassageReferences(text.replace(/\r\n/g, '\n'), builtinMacros)
-          .flatMap(ref => (ref.macro !== 'link' && ref.target.kind === 'name' ? [ref.target.name] : []));
-        expect(refs.filter(r => r.source === 'macro').map(r => r.name)).toEqual(macroTargets);
 
         // Variable usages: what Spindle reads
         expect(oursReads(text)).toEqual(oracleReads(text));
@@ -225,7 +240,10 @@ describe('C-D1-quote: the link macro reads its arguments as JavaScript string li
     const text = '[[{goto "X"}->Target]]';
     expect(tokenize(text)[0]).toMatchObject({ type: 'link', target: 'Target' });
     // the {goto "X"} in the label is markup of its own, so it is a macro and a reference too
-    expect(parseDocumentPassageRefs(text, []).map(r => r.name).sort()).toEqual(['Target', 'X']);
-    expect(parseMacros(text).map(m => m.name)).toEqual(['goto']);
+    expect(passageRefsOf(text).map(r => r.name).sort()).toEqual(['Target', 'X']);
+  });
+
+  it('C-D1-quote: the macro in the label is a macro', () => {
+    expect(parseMacros('[[{goto "X"}->Target]]').map(m => m.name)).toEqual(['goto']);
   });
 });

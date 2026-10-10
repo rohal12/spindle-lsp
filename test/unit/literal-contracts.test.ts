@@ -3,9 +3,15 @@
  * (docs/reviews/process.md): X70/C-X70 (#70), R67/C-R67 (#67), L77 (#77).
  * Case IDs match test/review history. Runtime evaluation is restricted to
  * literals constructed by these tests.
+ *
+ * Spindle 0.59 reads the `passage` argument of {goto}, {include} and {link}
+ * with `passageTarget`: a quoted string is a JavaScript string literal (the
+ * name is its value), anything else an expression (a bare word or a template
+ * literal included), which is no passage name.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { passageTarget, splitArgs } from '@rohal12/spindle/tooling';
 import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../src/core/types.js';
@@ -16,10 +22,8 @@ import { getDefinition } from '../../src/plugins/definition.js';
 import { computeDocumentLinks } from '../../src/plugins/document-link.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 import { resolveIncludeTarget } from '../../src/plugins/diagnostics.js';
-import { parseMacroPassageRefs } from '../../src/core/parsing/link-parser.js';
+import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
 import { decodeStringLiteralBody, encodeStringLiteralBody } from '../../src/core/parsing/js-string-literal.js';
-
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 
 const uri = 'file:///story.tw';
 const models: WorkspaceModel[] = [];
@@ -44,13 +48,21 @@ function codes(model: WorkspaceModel) {
 function runtimeMacroArgs(text: string) {
   return tokenize(text).filter(t => t.type === 'macro').map(t => t.rawArgs);
 }
+/** The passage the macro `args` name at run time when they are a quoted string: its JavaScript value. */
+function literalName(args: string) {
+  const target = passageTarget(args);
+  return target.kind === 'name' ? target.name : null;
+}
+/** The passage names written out in `text`, as references of the document. */
+function refsOf(text: string) {
+  return documentPassageRefs(workspace(text).markup.get(uri)!);
+}
 
 describe('R67: rename preserves literal meaning (#67)', () => {
   for (const [id, macro, delimiter, name] of [
     ['double', 'goto', '"', 'Bob"s'],
     ['single', 'goto', "'", "Bob's"],
     ['slash', 'include', '"', 'A\\B'],
-    ['template', 'goto', '`', 'A`B'],
   ]) {
     it(`R67-${id}: ${macro} literal`, () => {
       const model = workspace(`:: StoryVariables\n:: Old\nhello\n:: Start\n{${macro} ${delimiter}Old${delimiter}}`);
@@ -58,6 +70,7 @@ describe('R67: rename preserves literal meaning (#67)', () => {
       const args = runtimeMacroArgs(output).at(-1)!;
       // This is a fixed benign fixture, never document/project code.
       expect(new Function(`return (${args})`)()).toBe(name);
+      expect(literalName(args)).toBe(name);
     });
   }
   it('C-R67: ordinary header and bracket link rename agree', () => {
@@ -140,7 +153,7 @@ describe('X70 (extra): literal context variants and nearby controls', () => {
     expect(tokenize(output).filter(t => t.type === 'link').map(t => t.target)).toEqual(['New', 'New', 'New', 'New']);
   });
   it('C-X70-macro-targets: goto/include/link string targets stay references next to literal text', () => {
-    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{print "[[Old]]"} {goto "Old"} {include Old inline} {link "go" "Old"}{/link}');
+    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{print "[[Old]]"} {goto "Old"} {include "Old" inline} {link "go" "Old"}{/link}');
     expect(findPassageReferences('Old', model, false)).toHaveLength(3);
     const output = renamed(model, 1, 5, 'New');
     expect(output).toContain('{print "[[Old]]"}');
@@ -161,19 +174,32 @@ describe('R67 (extra): per-context encoding', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"}');
     const output = renamed(model, 1, 5, 'A\\"B');
     expect(evalLiteral(runtimeMacroArgs(output).at(-1)!)).toBe('A\\"B');
+    expect(literalName(runtimeMacroArgs(output).at(-1)!)).toBe('A\\"B');
   });
-  it('R67-template-interpolation: ${ in a template target is escaped', () => {
-    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto `Old`}');
-    const output = renamed(model, 1, 5, 'A${x}B');
+  it('R67-line-breaks: a line break or separator in a name is escaped in a quoted target', () => {
+    // A passage header cannot hold a line break, so the reference alone is rewritten here
+    const text = ':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"} {goto \'Old\'}';
+    const model = workspace(text);
+    const refs = documentPassageRefs(model.markup.get(uri)!);
+    for (const ref of refs) {
+      const spelled = encodeStringLiteralBody('a\nb\r\u2028c', ref.quote!);
+      expect(literalName(`${ref.quote}${spelled}${ref.quote}`)).toBe('a\nb\r\u2028c');
+    }
+  });
+  it('R67-template: a template literal target is an expression: it is left as written, whatever the new name', () => {
+    const text = ':: StoryVariables\n:: Old\nhello\n:: Start\n{goto `Old`} {goto "Old"}';
+    const output = renamed(workspace(text), 1, 5, 'A${x}B');
+    expect(output).toContain('{goto `Old`}');
     expect(evalLiteral(runtimeMacroArgs(output).at(-1)!)).toBe('A${x}B');
   });
   it('R67-other-quote-unescaped: the other quote kind needs no escape', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"}');
     expect(renamed(model, 1, 5, "Bob's")).toContain('{goto "Bob\'s"}');
   });
-  it('R67-bare: a bare target that cannot stay bare is quoted', () => {
-    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto Old}');
-    expect(renamed(model, 1, 5, 'New Name')).toContain('{goto New Name}');
+  it('R67-bare: a bare target is an expression, left alone; the quoted one is renamed', () => {
+    const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto Old} {goto "Old"}');
+    const output = renamed(model, 1, 5, 'New Name');
+    expect(output).toContain('{goto Old} {goto "New Name"}');
     const quoted = renamed(model, 1, 5, 'a(b)');
     expect(evalLiteral(runtimeMacroArgs(quoted).at(-1)!)).toBe('a(b)');
   });
@@ -184,22 +210,18 @@ describe('R67 (extra): per-context encoding', () => {
     expect(apply(model.documents.getText(other)!, edits.get(other) ?? [])).toBe(":: Other\nbefore [[Bob's]] after");
     expect(apply(model.documents.getText(uri)!, edits.get(uri) ?? [])).toBe(":: StoryVariables\n:: Bob's\nhello\n:: Start\n[[x|Bob's]] {goto \"Bob's\"}");
   });
-  it('R67-link-macro: {link} reads quoted text verbatim before 0.51.1, so a backslash is kept as is', () => {
-    const escapes = INSTALLED_CAPABILITIES.linkQuoteEscapes;
+  it('R67-link-macro: {link} reads its passage as a JavaScript string: a backslash and the delimiter are escaped', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{link "go" "Old"}{/link}');
-    const output = renamed(model, 1, 5, 'A\\B');
-    expect(output).toContain(escapes ? '{link "go" "A\\\\B"}' : '{link "go" "A\\B"}');
-    expect(parseMacroPassageRefs(output, 0, { linkQuoteEscapes: escapes }).map(r => r.name)).toEqual(['A\\B']);
+    const output = renamed(model, 1, 5, 'A\\B"C');
+    expect(output).toContain('{link "go" "A\\\\B\\"C"}');
+    const [, passage] = splitArgs(runtimeMacroArgs(output)[0]);
+    expect(literalName(passage)).toBe('A\\B"C');
+    expect(refsOf(output).map(r => r.name)).toEqual(['A\\B"C']);
   });
-  it('R67-reject-link-macro: a name its {link} string cannot hold is rejected with no edits (before 0.51.1)', () => {
+  it('R67-link-macro-header: a name a {link} string can hold but a header cannot is rejected by the header', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"} {link "go" "Old"}{/link}');
-    if (INSTALLED_CAPABILITIES.linkQuoteEscapes) {
-      // 0.51.1 escapes the delimiter, so these names are representable (L-quote tests)
-      expect(() => computeRename(uri, { line: 1, character: 5 }, 'Bob"s', model)).not.toThrow();
-      return;
-    }
-    expect(() => computeRename(uri, { line: 1, character: 5 }, 'Bob"s', model)).toThrow(RenameError);
-    expect(() => computeRename(uri, { line: 1, character: 5 }, 'two\nlines', model)).toThrow(/{link}/);
+    expect(() => computeRename(uri, { line: 1, character: 5 }, 'Bob"s', model)).not.toThrow();
+    expect(() => computeRename(uri, { line: 1, character: 5 }, 'two\nlines', model)).toThrow(/single line/);
   });
   it('R67-reject-bracket: names a [[link]] cannot hold are rejected', () => {
     const model = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[Old]]');
@@ -212,33 +234,55 @@ describe('R67 (extra): per-context encoding', () => {
     const output = renamed(model, 1, 5, 'a|b');
     expect(evalLiteral(runtimeMacroArgs(output).at(-1)!)).toBe('a|b');
   });
+  it('R67-nested: a name in a label is escaped for the label string too, so the label still reads it back', () => {
+    const text = ':: StoryVariables\n:: Old\nhello\n:: Start\n{button "Go {goto \'Old\'}"}{goto "Old"}{/button}';
+    const output = renamed(workspace(text), 1, 5, "It's \"A\\B\"");
+    // the label is a "-quoted string: `"` and `\` of the inner literal are escaped once more
+    expect(refsOf(output).map(r => r.name)).toEqual(["It's \"A\\B\"", "It's \"A\\B\""]);
+  });
+  it('R67-attribute: a name in an attribute value is written inside the braces of its macro', () => {
+    const text = ':: StoryVariables\n:: Old\nhello\n:: Start\n<a title="{goto \'Old\'}">x</a>';
+    const model = workspace(text);
+    // the braces protect the quotes: the attribute value goes on to its closing quote
+    const output = renamed(model, 1, 5, 'a"b');
+    expect(output).toContain('<a title="{goto \'a"b\'}">x</a>');
+    expect(refsOf(output).map(r => r.name)).toEqual(['a"b']);
+    expect(refsOf(renamed(model, 1, 5, "a'b")).map(r => r.name)).toEqual(["a'b"]);
+  });
+  it('R67-label-braces: a `{` in the name of a link without a label of its own would make the label markup', () => {
+    const plain = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[Old]]');
+    expect(() => computeRename(uri, { line: 1, character: 5 }, 'A{x}B', plain)).toThrow(RenameError);
+    const labelled = workspace(':: StoryVariables\n:: Old\nhello\n:: Start\n[[Go->Old]]');
+    expect(renamed(labelled, 1, 5, 'A{x}B')).toContain('[[Go->A{x}B]]');
+  });
 });
 
 describe('L77 (extra): static literal decoding', () => {
-  it('decodes the supported escapes', () => {
-    expect(decodeStringLiteralBody('\\u004eext', '"')).toBe('Next');
-    expect(decodeStringLiteralBody('\\u{4e}ext', '"')).toBe('Next');
-    expect(decodeStringLiteralBody('\\x4eext', "'")).toBe('Next');
-    expect(decodeStringLiteralBody('a\\nb\\tc\\0', '`')).toBe('a\nb\tc\0');
-    expect(decodeStringLiteralBody('Say \\"hi\\"', '"')).toBe('Say "hi"');
-    expect(decodeStringLiteralBody('a\\\nb', '"')).toBe('ab');
-    expect(decodeStringLiteralBody('\\q', '"')).toBe('q');
+  it('the remaining decoder agrees with passageTarget on the supported escapes', () => {
+    for (const [quote, body] of [
+      ['"', '\\u004eext'], ['"', '\\u{4e}ext'], ["'", '\\x4eext'], ['"', 'a\\nb\\tc\\0'],
+      ['"', 'Say \\"hi\\"'], ['"', 'a\\\nb'], ['"', '\\q'],
+    ] as const) {
+      expect(literalName(`${quote}${body}${quote}`), body).toBe(decodeStringLiteralBody(body, quote));
+    }
   });
-  it('treats malformed or legacy escapes as undecidable', () => {
-    for (const body of ['\\u00', '\\x4', '\\u{110000}', '\\u{}', '\\1', '\\00', 'a\\', 'a\nb']) {
+  it('treats malformed or legacy escapes as undecidable: an expression, no name', () => {
+    for (const body of ['\\u00', '\\x4', '\\u{110000}', '\\u{}', 'a\\']) {
       expect(decodeStringLiteralBody(body, '"'), body).toBeNull();
+      expect(passageTarget(`"${body}"`).kind, body).toBe('expression');
     }
     expect(decodeStringLiteralBody('a"b', '"')).toBeNull();
+    // non-strict JavaScript reads a legacy octal escape (the stricter decoder does not)
+    expect(passageTarget('"\\1"')).toEqual({ kind: 'name', name: '\u0001' });
   });
-  it('encode/decode round-trip', () => {
-    for (const quote of ['"', "'", '`'] as const) {
-      const value = 'a\\b"c\'d`e${f}\ng\r\u2028';
-      expect(decodeStringLiteralBody(encodeStringLiteralBody(value, quote), quote)).toBe(value);
+  it('encode/read round-trip', () => {
+    for (const quote of ['"', "'"] as const) {
+      const value = 'a\\b"c\'d`e${f}\ng\r\u2028\u2029';
+      expect(literalName(`${quote}${encodeStringLiteralBody(value, quote)}${quote}`)).toBe(value);
     }
   });
   it('L77-malformed-dynamic: malformed and dynamic targets are not static references', () => {
-    const model = workspace(':: StoryVariables\n:: Next\nhello\n:: Start\n{goto "\\u00"} {goto "\\u004e" + $x} {include `\\u004e${$x}`}');
-    expect(parseMacroPassageRefs(model.documents.getText(uri)!)).toEqual([]);
+    expect(refsOf(':: StoryVariables\n:: Next\nhello\n:: Start\n{goto "\\u00"} {goto "\\u004e" + $x} {include `\\u004e${$x}`}')).toEqual([]);
   });
   it('L77-diagnostics: the include-target resolver decodes like the reference parser', () => {
     expect(resolveIncludeTarget('"\\u004eext"')).toBe('Next');
@@ -246,149 +290,127 @@ describe('L77 (extra): static literal decoding', () => {
     expect(resolveIncludeTarget('"\\u00"')).toBeNull();
   });
   it('L77-range: the reference range keeps the original escaped spelling', () => {
-    const [ref] = parseMacroPassageRefs('{goto "\\u004eext"}');
+    const [ref] = refsOf(':: Start\n{goto "\\u004eext"}');
     expect(ref.name).toBe('Next');
-    expect(ref.range.start.character).toBe(7);
-    expect(ref.range.end.character).toBe(7 + '\\u004eext'.length);
+    expect(ref.range.start).toEqual({ line: 1, character: 7 });
+    expect(ref.range.end).toEqual({ line: 1, character: 7 + '\\u004eext'.length });
   });
-  it('L77-controls: bare, quoted and include-inline targets keep working', () => {
-    const refs = parseMacroPassageRefs('{goto Next} {goto "Next"} {include "Next" inline} {include Next inline}');
-    expect(refs.map(r => r.name)).toEqual(['Next', 'Next', 'Next', 'Next']);
+  it('L77-controls: only the quoted targets are references', () => {
+    const refs = refsOf(':: Start\n{goto Next} {goto "Next"} {include "Next" inline} {include Next inline}');
+    expect(refs.map(r => r.name)).toEqual(['Next', 'Next']);
   });
-  it('L77-link-macro: {link} is not run through the JavaScript codec', () => {
-    const [ref] = parseMacroPassageRefs('{link "go" "\\u004eext"}{/link}');
-    expect(ref.name).toBe('\\u004eext');
+  it('L77-link-macro: {link} reads its passage as a JavaScript string, like {goto}', () => {
+    const [ref] = refsOf(':: Start\n{link "go" "\\u004eext"}{/link}');
+    expect(ref.name).toBe('Next');
+    expect(ref.macro).toBe('link');
   });
 });
 
-describe('L77 (include target identity): references and SP302 read {include} per release', () => {
-  // No workspace root, so the version comes from StoryData and never from the installed runtime.
-  function versioned(version: string, includeArgs: string, widget = 'inline') {
+describe('L77 (include target identity): references and SP302 read {include}', () => {
+  function included(includeArgs: string, widget: string) {
     const model = new WorkspaceModel();
-    const text = `:: StoryData\n{"format":"Spindle","format-version":"${version}"}\n:: StoryVariables\n` +
+    const text = `:: StoryData\n{"format":"Spindle","format-version":"0.59.23"}\n:: StoryVariables\n` +
       `:: ${widget} [widget]\n{widget "greet"}hi{/widget}\n:: Start\n{include ${includeArgs}}\n`;
     model.initialize(new Map([[uri, text]]));
     models.push(model);
     return { model, text };
   }
-  const identity = (version: string, args: string, widget = 'inline') => {
-    const { model, text } = versioned(version, args, widget);
-    const refs = parseMacroPassageRefs(text, 0, model.capabilities).filter(r => r.macro === 'include');
-    const sp302 = computeDiagnostics(uri, model).filter(d => d.code === 'SP302');
-    return { names: refs.map(r => r.name), sp302: sp302.length, model, text, refs };
+  const identity = (args: string, widget: string) => {
+    const { model } = included(args, widget);
+    const refs = documentPassageRefs(model.markup.get(uri)!).filter(r => r.macro === 'include');
+    return { names: refs.map(r => r.name), sp302: computeDiagnostics(uri, model).filter(d => d.code === 'SP302').length, refs };
   };
 
-  // [args, passage tagged [widget], per version: reference names, SP302 count]
-  type Row = [string, string, Record<string, [string[], number]>];
-  const OLD = '0.45.1', MID = '0.51.1', NEW = '0.51.3';
-  const rows: Array<[string, Row]> = [
-    ['L77/include-inline-diagnostic-quoted', ['"inline"', 'inline', { [OLD]: [[], 0], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
-    ['L77/include-inline-diagnostic-quoted-flag-after', ['"inline" inline', 'inline', { [OLD]: [[], 0], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
-    ['L77/include-inline-diagnostic-flag-before', ['inline "inline"', 'inline', { [OLD]: [['inline'], 1], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
-    ['L77/include-inline-diagnostic-escaped', ['"\\u0069nline"', 'inline', { [OLD]: [['inline'], 1], [MID]: [['inline'], 1], [NEW]: [['inline'], 1] }]],
-    ['L77/include-widget-other-quoted', ['"Other"', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
-    ['L77/include-widget-other-bare', ['Other', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
-    ['L77/include-widget-other-flag-after', ['"Other" inline', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
-    ['L77/include-widget-other-flag-before', ['inline Other', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
-    ['L77/include-widget-other-bare-flag-after', ['Other inline', 'Other', { [OLD]: [['Other'], 1], [MID]: [['Other'], 1], [NEW]: [['Other'], 1] }]],
-    ['L77/include-malformed-escape', ['"\\u00"', 'Other', { [OLD]: [[], 0], [MID]: [[], 0], [NEW]: [[], 0] }]],
-    ['L77/include-dynamic-variable', ['$x', 'Other', { [OLD]: [[], 0], [MID]: [[], 0], [NEW]: [[], 0] }]],
-    ['L77/include-dynamic-concat', ['"Other" + $x', 'Other', { [OLD]: [[], 0], [MID]: [[], 0], [NEW]: [[], 0] }]],
+  // [args, passage tagged [widget], reference names, SP302 count]: the flag is the first or last word
+  // outside quotes; what is left is a quoted name or an expression (no name)
+  const rows: Array<[string, string, string, string[], number]> = [
+    ['L77/include-inline-diagnostic-quoted', '"inline"', 'inline', ['inline'], 1],
+    ['L77/include-inline-diagnostic-quoted-flag-after', '"inline" inline', 'inline', ['inline'], 1],
+    ['L77/include-inline-diagnostic-flag-before', 'inline "inline"', 'inline', ['inline'], 1],
+    ['L77/include-inline-diagnostic-escaped', '"\\u0069nline"', 'inline', ['inline'], 1],
+    ['L77/include-widget-other-quoted', '"Other"', 'Other', ['Other'], 1],
+    ['L77/include-widget-other-bare', 'Other', 'Other', [], 0],
+    ['L77/include-widget-other-flag-after', '"Other" inline', 'Other', ['Other'], 1],
+    ['L77/include-widget-other-flag-before', 'inline "Other"', 'Other', ['Other'], 1],
+    ['L77/include-widget-other-bare-flag-after', 'Other inline', 'Other', [], 0],
+    ['L77/include-malformed-escape', '"\\u00"', 'Other', [], 0],
+    ['L77/include-dynamic-variable', '$x', 'Other', [], 0],
+    ['L77/include-dynamic-concat', '"Other" + $x', 'Other', [], 0],
   ];
-  for (const [id, [args, widget, expected]] of rows) {
-    for (const version of [OLD, MID, NEW]) {
-      it(`${id}-${version}: reference identity and SP302 agree`, () => {
-        const want = expected[version];
-        const got = identity(version, args, widget);
-        expect(got.names, `reference names for {include ${args}}`).toEqual(want[0]);
-        expect(got.sp302, `SP302 for {include ${args}}`).toBe(want[1]);
-      });
-    }
+  for (const [id, args, widget, names, sp302] of rows) {
+    it(`${id}: reference identity and SP302 agree`, () => {
+      const got = identity(args, widget);
+      expect(got.names, `reference names for {include ${args}}`).toEqual(names);
+      expect(got.sp302, `SP302 for {include ${args}}`).toBe(sp302);
+    });
   }
 
-  it('L77/include-inline-diagnostic-0.51.3: the SP302 of a widget passage named inline', () => {
-    const { model } = versioned(NEW, '"inline"');
-    expect(model.capabilities.includeInlineScoped).toBe(true);
-    expect(resolveIncludeTarget('"inline"', model.capabilities)).toBe('inline');
-    // 0.45.1 removes the word even inside the quotes, leaving the empty string
-    expect(resolveIncludeTarget('"inline"')).toBe('');
-    expect(computeDiagnostics(uri, model).map(d => d.code)).toContain('SP302');
+  it('L77/include-inline-resolver-flags: the resolver reads the flag as splitIncludeFlag does', () => {
+    expect(resolveIncludeTarget('"Other" inline')).toBe('Other');
+    expect(resolveIncludeTarget('inline "Other"')).toBe('Other');
+    expect(resolveIncludeTarget('Other inline')).toBeNull();
+    expect(resolveIncludeTarget('$x')).toBeNull();
+    expect(resolveIncludeTarget('"\\u00"')).toBeNull();
+    expect(resolveIncludeTarget('"inline"')).toBe('inline');
+    expect(resolveIncludeTarget('"inline" inline')).toBe('inline');
   });
 
-  it('L77/include-inline-resolver-flags: leading and trailing flags per release', () => {
-    const scoped = { includeInlineScoped: true };
-    for (const options of [{}, scoped]) {
-      expect(resolveIncludeTarget('"Other" inline', options)).toBe('Other');
-      expect(resolveIncludeTarget('inline "Other"', options)).toBe('Other');
-      expect(resolveIncludeTarget('Other inline', options)).toBe('Other');
-      expect(resolveIncludeTarget('$x', options)).toBeNull();
-      expect(resolveIncludeTarget('"\\u00"', options)).toBeNull();
-    }
-    expect(resolveIncludeTarget('"inline"', {})).toBe('');
-    expect(resolveIncludeTarget('"inline"', scoped)).toBe('inline');
-    expect(resolveIncludeTarget('"inline" inline', scoped)).toBe('inline');
-  });
-
-  it('L77/include-inline-range: the reference keeps the original escaped spelling on every release', () => {
-    for (const version of [OLD, MID, NEW]) {
-      const { refs } = identity(version, '"\\u0069nline" ');
-      expect(refs.map(r => r.name)).toEqual(['inline']);
-      const [ref] = refs;
-      expect(ref.range.end.character - ref.range.start.character).toBe('\\u0069nline'.length);
-    }
+  it('L77/include-inline-range: the reference keeps the original escaped spelling', () => {
+    const { refs } = identity('"\\u0069nline" ', 'inline');
+    expect(refs.map(r => r.name)).toEqual(['inline']);
+    const [ref] = refs;
+    expect(ref.range.end.character - ref.range.start.character).toBe('\\u0069nline'.length);
   });
 
   it('L77/include-inline-argument-check: the argument validation reads the flag like the resolver', () => {
-    const argCodes = (version: string, args: string) => {
-      const { model } = versioned(version, args, 'Other');
+    const argCodes = (args: string) => {
+      const { model } = included(args, 'Other');
       return computeDiagnostics(uri, model).filter(d => /^SP1/.test(String(d.code))).map(d => d.code);
     };
-    for (const version of [OLD, MID, NEW]) {
-      expect(argCodes(version, '"inline"'), version).toEqual(argCodes(version, '"Other"'));
-    }
+    expect(argCodes('"inline"')).toEqual(argCodes('"Other"'));
   });
 });
 
-describe('R67/X70 (CRLF): template-literal passage targets', () => {
+describe('R67/X70 (CRLF): quoted passage targets', () => {
   const crlf = (text: string) => text.replace(/\n/g, '\r\n');
   // astral characters make UTF-16 columns differ from code points
-  const source = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\n\u{1F600}{goto `Old`} {include `Old`}\n{print `Old`} [[Old]]');
+  const source = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\n\u{1F600}{goto "Old"} {include \'Old\'}\n{print "Old"} [[Old]]');
 
-  it('R67-template-crlf: ranges, rename edits and meaning survive CRLF', () => {
+  it('R67-crlf: ranges, rename edits and meaning survive CRLF', () => {
     const model = workspace(source);
-    const refs = parseMacroPassageRefs(source).filter(r => r.name === 'Old');
-    expect(refs.length).toBeGreaterThanOrEqual(2);
+    const refs = documentPassageRefs(model.markup.get(uri)!).filter(r => r.name === 'Old');
+    expect(refs).toHaveLength(3);
     for (const ref of refs) {
       expect(ref.range.start.line).toBe(ref.range.end.line);
       const line = source.split('\r\n')[ref.range.start.line];
       expect(line.slice(ref.range.start.character, ref.range.end.character)).toBe('Old');
     }
-    const output = renamed(model, 1, 5, 'A`${x}\\B');
+    const output = renamed(model, 1, 5, 'A`$\\B');
     // CRLF line endings and unrelated text are preserved
     expect(output.split('\r\n')).toHaveLength(source.split('\r\n').length);
     expect(output.replace(/\r\n/g, '\n')).not.toMatch(/(?<!\r)\r(?!\n)/);
-    const args = runtimeMacroArgs(output).filter(a => a.startsWith('`'));
-    for (const a of args.slice(0, 2)) expect(new Function(`return (${a})`)()).toBe('A`${x}\\B');
-    expect(output).toContain('\u{1F600}{goto `A\\`\\${x}\\\\B`}');
+    const args = runtimeMacroArgs(output).filter(a => /^["']/.test(a));
+    for (const a of args.slice(0, 2)) expect(new Function(`return (${a})`)()).toBe('A`$\\B');
+    expect(output).toContain('\u{1F600}{goto "A`$\\\\B"}');
   });
 
-  it('R67-template-crlf-multiline: a template target on a later line after CRLF', () => {
-    const text = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\ntext\n{goto\n  `Old`}');
+  it('R67-crlf-multiline: a target on a later line after CRLF', () => {
+    const text = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\ntext\n{goto\n  "Old"}');
     const model = workspace(text);
     const output = renamed(model, 1, 5, 'New');
-    expect(output).toBe(crlf(':: StoryVariables\n:: New\nhello\n:: Start\ntext\n{goto\n  `New`}'));
+    expect(output).toBe(crlf(':: StoryVariables\n:: New\nhello\n:: Start\ntext\n{goto\n  "New"}'));
   });
 
-  it('X70-template-crlf-diagnostics: a broken link beside a template target diagnoses the same as LF', () => {
+  it('X70-crlf-diagnostics: a broken link beside a quoted target diagnoses the same as LF', () => {
     const ok = workspace(source);
     expect(codes(ok)).toEqual(codes(workspace(source.replace(/\r\n/g, '\n'))));
-    const broken = crlf(':: StoryVariables\n:: Start\n{goto `Start`} [[Ghost]]');
+    const broken = crlf(':: StoryVariables\n:: Start\n{goto "Start"} [[Ghost]]');
     expect(codes(workspace(broken))).toContain('SP300');
     expect(codes(workspace(broken))).toEqual(codes(workspace(broken.replace(/\r\n/g, '\n'))));
   });
 
-  it('X70-template-crlf-controls: dynamic templates are not static targets under CRLF', () => {
-    const text = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto `O${$x}`}\n{goto `Old`}');
-    expect(parseMacroPassageRefs(text).map(r => r.name)).toEqual(['Old']);
+  it('X70-crlf-controls: dynamic targets are not static under CRLF', () => {
+    const text = crlf(':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "O" + $x}\n{goto `Old`}\n{goto "Old"}');
+    expect(refsOf(text).map(r => r.name)).toEqual(['Old']);
   });
 });

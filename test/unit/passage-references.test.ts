@@ -109,34 +109,32 @@ describe('macro passage references', () => {
   const content = [
     ':: Start',
     "{goto 'Target'}",
-    '{goto Target}',
-    '{include Target}',
     '{include "Target" inline}',
     "{include inline 'Target'}",
     '{.cls#id goto "Target"}',
     '{#box include "Target"}',
     '{link "Target" "Target"}{/link}',
     "{link 'Go to Target' 'Target'}{/link}",
+    '{dialog "Target"}Target{/dialog}',
     ':: Target',
     'Text',
   ].join('\n');
 
-  it('finds every literal goto, include and link target', () => {
-    expect(referencedTexts(content, 'Target')).toEqual(Array(9).fill('Target'));
+  it('finds every quoted goto, include, link and dialog target', () => {
+    expect(referencedTexts(content, 'Target')).toEqual(Array(8).fill('Target'));
   });
 
   it('renames only the targets, keeping labels and the inline keyword', () => {
     expect(renamePassage(content, 'Target', 'Renamed')).toBe([
       ':: Start',
       "{goto 'Renamed'}",
-      '{goto "Renamed"}',
-      '{include "Renamed"}',
       '{include "Renamed" inline}',
       "{include inline 'Renamed'}",
       '{.cls#id goto "Renamed"}',
       '{#box include "Renamed"}',
       '{link "Target" "Renamed"}{/link}',
       "{link 'Go to Target' 'Renamed'}{/link}",
+      '{dialog "Target"}Renamed{/dialog}',
       ':: Renamed',
       'Text',
     ].join('\n'));
@@ -145,9 +143,9 @@ describe('macro passage references', () => {
   it('jumps to the passage from each target', () => {
     const ws = createWorkspace(content);
     const lines = content.split('\n');
-    for (let line = 1; line <= 9; line++) {
+    for (let line = 1; line <= 8; line++) {
       const character = lines[line].lastIndexOf('Target') + 1;
-      expect(getDefinition(URI, { line, character }, ws)?.range.start.line, lines[line]).toBe(10);
+      expect(getDefinition(URI, { line, character }, ws)?.range.start.line, lines[line]).toBe(9);
     }
   });
 
@@ -160,11 +158,15 @@ describe('macro passage references', () => {
   it('finds references from the cursor on a macro target', () => {
     const pos = positionOf(content, "'Target'");
     const refs = findReferences(URI, { line: pos.line, character: pos.character + 2 }, createWorkspace(content), true);
-    expect(refs).toHaveLength(10);
+    expect(refs).toHaveLength(9);
   });
 
-  it('reads a bare multiword {goto} target as one passage name', () => {
-    expect(referencedTexts(':: Start\n{goto Chapter 1}\n:: Chapter 1\nText', 'Chapter 1')).toEqual(['Chapter 1']);
+  it('reads a bare word or a template literal as an expression, not a passage name', () => {
+    const source = ':: Start\n{goto Chapter}\n{include Chapter}\n{goto `Chapter`}\n{goto Chapter 1}\n:: Chapter\nText\n:: Chapter 1\nText';
+    expect(referencedTexts(source, 'Chapter')).toEqual([]);
+    expect(referencedTexts(source, 'Chapter 1')).toEqual([]);
+    // nothing to rename there either: the expressions are left as written
+    expect(renamePassage(source, 'Chapter', 'Part')).toBe(source.replace(':: Chapter\n', ':: Part\n'));
   });
 
   it('skips dynamic targets and macros that do not navigate', () => {
