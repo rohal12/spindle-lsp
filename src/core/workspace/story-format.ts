@@ -31,7 +31,7 @@ export interface StoryFormat {
 export const UNDECLARED_STORY_FORMAT: StoryFormat = { name: undefined, isSpindle: true };
 
 /** Whether a declared format name names Spindle (case-insensitive, trimmed). */
-export function isSpindleFormatName(name: string): boolean {
+function isSpindleFormatName(name: string): boolean {
   return name.trim().toLowerCase() === 'spindle';
 }
 
@@ -58,7 +58,7 @@ export function readStoryDataFormat(content: string): string | undefined {
  * a StoryData that names Spindle or no format. Undefined if the content does
  * not parse, names another format, or has no string `format-version`.
  */
-export function readStoryDataFormatVersion(content: string): string | undefined {
+function readStoryDataFormatVersion(content: string): string | undefined {
   let data: unknown;
   try {
     data = JSON.parse(content);

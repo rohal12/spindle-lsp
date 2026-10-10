@@ -23,7 +23,7 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue, DiagnosticData, SpindleDiagnostic } from '../core/diagnostic-codes.js';
 import type { DocumentMarkup, PassageMarkup } from '../core/markup/passage-markup.js';
-import { macroTokens } from './markup-symbols.js';
+import { macroTokens } from '../core/markup/tokens.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { findLinkRuntimeMismatches, findLiteralLinkInterpolations } from '../core/parsing/link-parser.js';

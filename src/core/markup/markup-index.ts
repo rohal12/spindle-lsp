@@ -37,11 +37,6 @@ export class MarkupIndex {
     this.cache.clear();
     this.context = undefined;
   }
-
-  /** A document was closed. */
-  remove(uri: string): void {
-    this.cache.delete(uri);
-  }
 }
 
 function sameHeaders(a: readonly Passage[], b: readonly Passage[]): boolean {

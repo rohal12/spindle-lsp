@@ -4,7 +4,8 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
 import { positionToOffset } from '../core/text.js';
-import { macroTokens, variableUses, type VariableUse } from './markup-symbols.js';
+import { macroTokens } from '../core/markup/tokens.js';
+import { variableUses, type VariableUse } from './markup-symbols.js';
 
 // ---------------------------------------------------------------------------
 // Core hover function (no LSP dependency)

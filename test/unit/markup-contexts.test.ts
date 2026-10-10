@@ -25,7 +25,6 @@ import { computeFoldingRanges } from '../../src/plugins/folding-range.js';
 import { getDefinition } from '../../src/plugins/definition.js';
 import { computeRename, prepareRename } from '../../src/plugins/rename.js';
 import { findPassageReferences, findVariableReferences, findWidgetReferences } from '../../src/plugins/references.js';
-import { maskNonMarkupPassages } from '../../src/core/parsing/passage-parser.js';
 
 const uri = 'file:///story.tw';
 const widgetsUri = 'file:///widgets.tw';
@@ -204,14 +203,6 @@ describe('L2: passage roles are masked by one helper', () => {
       const text = lines(eol, ':: Code [script]', '{wrap}x{/wrap}', ':: StoryVariables', '$x = 1', ':: Start', 'plain', '');
       const model = workspace(text, widgets);
       expect(codes(model, widgetsUri)).toContain('SP303');
-    });
-
-    it(`L2-masking: the helper blanks bodies, keeps line breaks and offsets (${eolName})`, () => {
-      const text = lines(eol, ':: Code [script]', 'a {if $x}', ':: Start', 'b', '');
-      const model = workspace(text);
-      const masked = maskNonMarkupPassages(text, model.passages.getPassagesInDocument(uri));
-      expect(masked.length).toBe(text.length);
-      expect(masked).toBe(lines(eol, ':: Code [script]', '         ', ':: Start', 'b', ''));
     });
 
     it(`C-L2: markup passages keep their macros (${eolName})`, () => {

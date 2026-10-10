@@ -161,15 +161,6 @@ export class DocumentMarkup {
     });
   }
 
-  /** The passage whose body or header contains the document offset. */
-  passageAtOffset(offset: number): PassageMarkup | undefined {
-    for (let i = this.passages.length - 1; i >= 0; i--) {
-      const start = this.lineStarts[this.passages[i].passage.range.start.line];
-      if (start <= offset) return this.passages[i];
-    }
-    return undefined;
-  }
-
   /** The passage that contains `position`. */
   passageAt(position: Position): PassageMarkup | undefined {
     for (let i = this.passages.length - 1; i >= 0; i--) {
