@@ -135,7 +135,7 @@ describe('CLI check command', () => {
     }
   });
 
-  it('reports undeclared variables in StoryInit, interpolations, receivers and strings (#62)', async () => {
+  it('reports undeclared variables in StoryInit, interpolations and receivers, not prose or string literals (#62)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-undeclared-'));
     try {
       const file = join(dir, 'story.twee');
@@ -158,10 +158,9 @@ describe('CLI check command', () => {
       const names = diags
         .filter(d => d.code === 'SP200')
         .map(d => /'\$(\w+)'/.exec(d.message)?.[1]);
-      expect(names).toEqual([
-        'missingInit', 'missingTemplate', 'missingReceiver',
-        'missingCode', 'missingProse', 'missingLiteral',
-      ]);
+      // Spindle validates the variables the code reads: `$missingProse` is
+      // text and `$missingLiteral` is inside a string literal
+      expect(names).toEqual(['missingInit', 'missingTemplate', 'missingReceiver', 'missingCode']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

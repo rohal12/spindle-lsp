@@ -98,3 +98,41 @@ unless stated):
 | `macro-pairing-runtime`, `element-macro-differential` | `buildAST` throws "Expected {/x} but found {/y}" at a character | `pairMarkup` errors: `mismatched-closer` / `stray-closer` / `unclosed-block` with `start` |
 | `do-body` D-runtime | `collectText` of the `{do}` children | `passagePieces`: the body is a `statements` code piece |
 | `attribute-blocks-runtime` SP103 | only `{sigil...}` blocks of an attribute value are evaluated | attribute values hold markup: `{if}` / `{print}` are evaluated too (the test now fails; SP103's premise is gone) |
+
+### Formatting and entrypoints (scope D)
+
+The formatter reads markup with `tokenizeMarkupTolerant` (macros, variables,
+expressions, links, and the macros/variables in HTML attribute values), takes
+the JavaScript of a `{do}` body from the tokenizer (one raw text token) and
+its literals from `lexJs`/`lexTemplate`, and finds the macro tags that open and
+close bodies and the places where a prose line can wrap from the same tokens.
+`FormatOptions.stringAwareBraces`, `scanBalancedBrace*`, the selector scanner,
+the regex/template heuristics and the `{do}` regexes are gone; the CLI, the MCP
+tools and the LSP request pass no version-dependent option. The Spindle version
+of a project (`findSpindleTarget`: installed copy, then StoryData) only warns
+when it is older than `MINIMUM_SPINDLE_VERSION` (CLI: stderr; MCP: a `warning`
+field; LSP: the existing startup log, window message and SP001).
+
+| Test | Old rule | New rule |
+| --- | --- | --- |
+| `integration/cli.test.ts` "reports undeclared variables in StoryInit..." (#62), `integration/lsp.test.ts` "publishes SP200 ..." (#62) | pre-0.50.1 raw-text validation reports `$missingProse` and `$missingLiteral` (prose and a string literal) | Spindle >= 0.50.1 validates the variables the code reads (`variable-reads-oracle`: `lexJs` leaves `$x` in a string literal alone, prose is text): only `missingInit`, `missingTemplate`, `missingReceiver`, `missingCode` |
+| `unit/format-brace-reading` Q-format-0.50.0 | a stray `{` in a string extends the macro to the next `}` | removed: one reading; the macro ends at its own `}` (Q-format-stray-brace) |
+| `unit/placeholders-oracle` K66-scan fixtures | the hand scan was compared with the tokenizer | the scan is the tokenizer's; the oracle is `deepTokens` (`passagePieces` for attribute values), plus `{do}`-body fixtures |
+| `unit/spindle-capabilities` SP001 | floor 0.43.0 (transients), second SP001 on a StoryTransients passage | floor `MINIMUM_SPINDLE_VERSION` (0.59.20), one SP001 on the first story document |
+
+Deleted with the per-release machinery (each tested a flag that is true on every
+supported release, or the hand scan that is gone):
+
+- `unit/spindle-capabilities`: "gates each behavior at the release that
+  introduced it", "defaults to the behavior pinned by the 0.45.1 tests",
+  "SP200/SP201 keep raw-text validation below 0.50.1", "SP200/SP201 still read
+  prose below 0.50.1...", "allows primitive wrapper members from 0.51.1 only",
+  "from 0.50.1 SP200/SP201 report executable references only" (the modern rule is
+  the default and covered by `variable-tracker`), and the `WorkspaceModel`
+  `.capabilities` cases. Kept and ported: version parsing, installed-then-
+  StoryData resolution, the unsupported-version warning.
+- `unit/format-brace-reading`: Q-format-wrong-reading (compared the two
+  readings), the `findSpindleCapabilities` cases and the per-release
+  CLI/MCP/LSP cases; replaced by "one reading in every entrypoint".
+- `unit/placeholders-oracle`: the `stringAwareBraces` mode tests and "the
+  capability follows the installed release".

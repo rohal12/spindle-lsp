@@ -978,7 +978,7 @@ describe('Integration: LSP server over stdio', () => {
     expect(session.latest(uri)).toEqual([]);
   });
 
-  it('publishes SP200 for undeclared variables in StoryInit, interpolations and receivers (#62)', async () => {
+  it('publishes SP200 for undeclared variables in StoryInit, interpolations and receivers, not prose (#62)', async () => {
     const dir = makeTempWorkspace({
       'story.twee': [
         ':: StoryVariables',
@@ -1001,7 +1001,6 @@ describe('Integration: LSP server over stdio', () => {
       "Variable '$missingTemplate' is not declared in StoryVariables",
       "Variable '$missingReceiver' is not declared in StoryVariables",
       "Variable '$missingCode' is not declared in StoryVariables",
-      "Variable '$missingProse' is not declared in StoryVariables",
     ]);
   });
 

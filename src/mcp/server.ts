@@ -11,8 +11,9 @@ import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
 import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
-import { formatDocument, type FormatOptions } from '../plugins/format.js';
-import { findSpindleCapabilities, findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
+import { formatDocument } from '../plugins/format.js';
+import { findSpindleTarget, findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
+import { unsupportedVersionMessage } from '../core/workspace/spindle-version.js';
 import type { Diagnostic } from '../core/types.js';
 
 // ---------------------------------------------------------------------------
@@ -87,10 +88,13 @@ async function skippedReason(
   return format.isSpindle ? undefined : skippedFormatNote(format);
 }
 
-/** Formatter options for the target Spindle of `files` (see findSpindleCapabilities). */
-async function formatOptionsFor(contents: Map<string, string>, files: string[]): Promise<FormatOptions> {
-  const caps = await findSpindleCapabilities(contents.values(), commonDirectory(files));
-  return { stringAwareBraces: caps.stringAwareBraces };
+/**
+ * A warning when the project's Spindle is older than the oldest supported
+ * release (see findSpindleTarget), else undefined.
+ */
+async function versionWarning(contents: Map<string, string>, files: string[]): Promise<string | undefined> {
+  const target = await findSpindleTarget(contents.values(), commonDirectory(files));
+  return target.supported ? undefined : unsupportedVersionMessage(target);
 }
 
 /**
@@ -206,6 +210,8 @@ export interface FormatResult {
   files: string[];
   /** Why nothing was formatted: the files belong to a story in another format. */
   skipped?: string;
+  /** The project's Spindle is older than the oldest supported release. */
+  warning?: string;
 }
 
 /**
@@ -218,7 +224,7 @@ export async function formatFiles(pattern: string, cwd: string = process.cwd()):
   const skipped = files.length > 0 ? await skippedReason(contents, files) : undefined;
   if (skipped) return { formatted: 0, unchanged: 0, files: [], skipped };
 
-  const formatOptions = await formatOptionsFor(contents, files);
+  const warning = files.length > 0 ? await versionWarning(contents, files) : undefined;
   let formatted = 0;
   let unchanged = 0;
   const changedFiles: string[] = [];
@@ -227,7 +233,7 @@ export async function formatFiles(pattern: string, cwd: string = process.cwd()):
     const text = contents.get(pathToFileURL(filePath).toString());
     if (text === undefined) continue;
     try {
-      const result = await formatDocument(text, formatOptions);
+      const result = await formatDocument(text);
 
       if (result !== text) {
         writeFileSync(filePath, result, 'utf-8');
@@ -241,7 +247,7 @@ export async function formatFiles(pattern: string, cwd: string = process.cwd()):
     }
   }
 
-  return { formatted, unchanged, files: changedFiles };
+  return { formatted, unchanged, files: changedFiles, ...(warning && { warning }) };
 }
 
 /** Result of the `spindle_format_check` tool. */
@@ -250,6 +256,8 @@ export interface FormatCheckResult {
   alreadyFormatted: string[];
   /** Why nothing was checked: the files belong to a story in another format. */
   skipped?: string;
+  /** The project's Spindle is older than the oldest supported release. */
+  warning?: string;
 }
 
 /**
@@ -266,7 +274,7 @@ export async function checkFormatting(
   const skipped = files.length > 0 ? await skippedReason(contents, files) : undefined;
   if (skipped) return { needsFormatting: [], alreadyFormatted: [], skipped };
 
-  const formatOptions = await formatOptionsFor(contents, files);
+  const warning = files.length > 0 ? await versionWarning(contents, files) : undefined;
   const needsFormatting: string[] = [];
   const alreadyFormatted: string[] = [];
 
@@ -274,14 +282,14 @@ export async function checkFormatting(
     const text = contents.get(pathToFileURL(filePath).toString());
     if (text === undefined) continue;
     try {
-      const result = await formatDocument(text, formatOptions);
+      const result = await formatDocument(text);
       (result !== text ? needsFormatting : alreadyFormatted).push(relativeTo(cwd, filePath));
     } catch {
       // Skip files the formatter fails on
     }
   }
 
-  return { needsFormatting, alreadyFormatted };
+  return { needsFormatting, alreadyFormatted, ...(warning && { warning }) };
 }
 
 // ---------------------------------------------------------------------------
