@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { builtinMacros, discoverMacros, passagePieces } from '@rohal12/spindle/tooling';
+import type { DiscoveredMacro } from '@rohal12/spindle/tooling';
 import { DocumentStore } from './document-store.js';
 import { PassageIndex } from './passage-index.js';
 import { MacroRegistry } from './macro-registry.js';
@@ -6,8 +8,6 @@ import { VariableTracker } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
 import { MarkupIndex } from '../markup/markup-index.js';
 import type { PassageMarkup } from '../markup/passage-markup.js';
-import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
-import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 import { isMacroSource } from './macro-sources.js';
 import {
   UNDECLARED_STORY_FORMAT,
@@ -28,6 +28,15 @@ export interface WorkspaceModelConfig {
    * @rohal12/spindle installed there (or in an ancestor's node_modules).
    */
   workspaceRoot?: string;
+}
+
+/**
+ * The macros defined in the `{do}` code of a StoryInit passage's `content`
+ * (the code the tooling API finds in it).
+ */
+function storyInitMacros(content: string): DiscoveredMacro[] {
+  return passagePieces(content, builtinMacros)
+    .flatMap((piece) => piece.kind === 'code' && piece.goal === 'statements' ? discoverMacros(piece.code) : []);
 }
 
 /**
@@ -276,7 +285,7 @@ export class WorkspaceModel extends EventEmitter {
       if (!text) continue;
 
       if (isMacroSource(uri)) {
-        found.push(...discoverMacrosFromSource(text));
+        found.push(...discoverMacros(text));
         continue;
       }
 
@@ -290,9 +299,7 @@ export class WorkspaceModel extends EventEmitter {
         const content = lines
           .slice(passage.headerEnd.end.line + 1, passage.range.end.line + 1)
           .join('\n');
-        found.push(...(isScript
-          ? discoverMacrosFromSource(content)
-          : discoverMacrosFromStoryInit(content)));
+        found.push(...(isScript ? discoverMacros(content) : storyInitMacros(content)));
       }
     }
 

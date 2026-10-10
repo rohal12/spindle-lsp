@@ -1,6 +1,5 @@
-import { builtinMacros, type ToolingMacro } from '@rohal12/spindle/tooling';
+import { builtinMacros, type DiscoveredMacro, type ToolingMacro } from '@rohal12/spindle/tooling';
 import type { MacroInfo, ChildConstraint, ParameterDoc } from '../types.js';
-import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 
 /**
  * Supplement entry as found in macro-supplements.json or user config.
@@ -16,6 +15,9 @@ interface SupplementEntry {
   parents?: string[];
   skipArgs?: boolean;
 }
+
+/** What the registry takes of a discovered macro (the name's span is not needed). */
+export type DiscoveredMacroEntry = Omit<DiscoveredMacro, 'nameStart' | 'nameEnd'>;
 
 /**
  * Registry of all known macros, merging data from four tiers
@@ -115,19 +117,18 @@ export class MacroRegistry {
    * Previously discovered definitions that are no longer present are dropped,
    * restoring whatever the other tiers define for that name.
    *
-   * Mirrors Story.defineMacro(): a macro is a block when `block: true`, or
-   * when it declares sub-macros and does not set `block: false`. Each
-   * sub-macro becomes a known macro that may only appear inside its parent.
+   * Each sub-macro becomes a known macro that may only appear inside its
+   * parent. Whether a macro is a block is the tooling API's reading of the
+   * definition (`discoverMacros`).
    */
-  setDiscoveredMacros(macros: DiscoveredMacro[]): void {
+  setDiscoveredMacros(macros: readonly DiscoveredMacroEntry[]): void {
     this.discovered.clear();
 
     for (const m of macros) {
-      const subMacros = m.subMacros ?? [];
       this.discovered.set(m.name.toLowerCase(), {
         name: m.name,
-        block: m.block === true || (m.block !== false && subMacros.length > 0),
-        subMacros,
+        block: m.block,
+        subMacros: m.subMacros,
         storeVar: m.storeVar,
         interpolate: m.interpolate,
         merged: m.merged,
@@ -138,7 +139,7 @@ export class MacroRegistry {
     }
 
     for (const m of macros) {
-      for (const sub of m.subMacros ?? []) {
+      for (const sub of m.subMacros) {
         const key = sub.toLowerCase();
         const existing = this.discovered.get(key);
         if (existing) {

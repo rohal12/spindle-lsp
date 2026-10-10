@@ -1,6 +1,6 @@
 # Migration to the Spindle tooling API (0.59.x)
 
-Status: **complete on the branch, with four tests waiting on upstream**.
+Status: **complete**.
 spindle-lsp's minimum Spindle is 0.59.20 (`MINIMUM_SPINDLE_VERSION`; devDependency
 0.59.25, bundled into the executable). Its parsing, which was a set of
 hand-written mirrors of the runtime's rules checked by differential tests, is
@@ -14,7 +14,7 @@ references and validation, and the markup validation behind the diagnostics.
 | Measure | Before (main, Spindle 0.45.1) | After |
 | --- | --- | --- |
 | Matrix (`npm run review:convergence`) | 3,995 cells | 5,209 cells, all pass (`docs/reviews/2026-10-06-cross-consumer-results.json` regenerated; cell names unchanged, cells added by earlier reviews retained) |
-| Unit + integration | 2,070 tests | 1,956 tests, 1,952 pass; 4 fail, all waiting on spindle#466 (see below). Test code: 22,373 to 19,793 lines |
+| Unit + integration | 2,070 tests | 1,956 tests, all pass. Test code: 22,373 to 19,793 lines |
 | `src/` (TypeScript lines) | 16,171 | 11,541 (-29%); `core/parsing` mirrors deleted: macro-parser, html-scanner, code-scanner, attribute-blocks, widget-arguments, the literal reader, the tracker's validation |
 | Per-release behavior | 6 capability flags, packed-release matrix | none; releases below 0.59.20 get a warning |
 
@@ -23,18 +23,16 @@ scope landed; the matrix is green as a whole.
 
 ### Upstream tickets (rohal12/spindle)
 
-Delivered and used: #241, #446-#451 (stateless checks, diagnostic codes and
-ranges, pairing, declarations, token sub-spans, passage pieces), #462
-(widget definitions), #464 (variable validation).
-Open, with the local code that waits on each:
-
-| Ticket | What | Waiting |
-| --- | --- | --- |
-| #466 | `parseDeclarations` disagrees with the runtime on some initializers | 4 tests: `declaration-runtime` (3), `field-access-runtime` (1) |
-| #467 | `widgetDefinitions` says `block:false` for `{@children}` in an attribute value | docs/behavior mismatch only |
-| #468 | complete variable references (`{unset}`/`{computed}` receivers, selector names) and a static reading of `Story.defineMacro` | `executable-refs.ts` extras, `macro-discovery.ts` |
-| #469 | `validateStoryMarkup` should go past a malformed tag | the `wellFormed` workaround in `diagnostics.ts` is to be deleted |
-| #470 | `parseWidgetDef` keeps the comma of `@a,` | none |
+All delivered and used (Spindle 0.59.27): #241, #446-#451 (stateless checks,
+diagnostic codes and ranges, pairing, declarations, token sub-spans, passage
+pieces), #462 (widget definitions), #464 (variable validation), #466
+(`parseDeclarations` agrees with the runtime), #467 (widget block-ness), #468
+(`variableReferences` with `all`, `discoverMacros`), #469 (`tolerant`
+validation), #470 (widget parameter commas). No local workaround for a gap in
+the API is left; the scope sections below describe them as they were when
+each scope landed. Known limitation: an object default with a spread has no
+fields in the tooling API (their types are unreliable), so completion offers no
+property names for such a variable.
 
 ## Runtime changes since the 0.45.1/0.51.3 audit that change contracts
 
@@ -492,3 +490,32 @@ only produced through `malformedTags`.
 - `markup-symbols.ts` keeps its `lexJs` pass over code pieces: hover and semantic
   tokens also name the `_` and `@` locals, which `variableReferences` never returns
   (they are not variables), so it cannot be replaced by it.
+
+## Cleanup: macro discovery (Spindle 0.59.27 `discoverMacros`)
+
+`src/core/parsing/macro-discovery.ts` (147 lines: `findCodeEnd`/`splitTopLevel`/
+`readQuoted` scanner, `discoverMacrosFromSource`, `discoverMacrosFromStoryInit`)
+is deleted. `refreshDiscoveredMacros` calls `discoverMacros` on JS/TS documents and
+script passages, and on each `code` piece of a StoryInit passage
+(`storyInitMacros`, `passagePieces` as before). `MacroRegistry.setDiscoveredMacros`
+takes the API's `DiscoveredMacro` (name span dropped) and no longer infers `block`
+from `subMacros`: the API does. The LSP keeps parents of sub-macros, config
+precedence, description/storeVar/merged/`parameterDefs` layering.
+`macro-discovery.test.ts` keeps its cases, now asserting through `WorkspaceModel`
+and `MacroRegistry` (the scanner-only "malformed config" case became "registers
+nothing").
+
+Where `discoverMacros` reads differently from the old scanner (the API wins; no
+matrix cell or test depended on these):
+
+| What | Old scanner | `discoverMacros` |
+| `defineMacro({...})` without `Story.` | ignored | found |
+| config passed as a `const`/`let`/`var` object literal | ignored | found |
+| a parameter with an unknown `holds` | only `holds` dropped | the macro declares no `parameters` |
+| `block` | undefined unless written; registry inferred it | always set (a macro with sub-macros is a block unless `block: false`) |
+
+Not added: go-to-definition of a custom macro. Every discovered macro carries
+`nameStart`/`nameEnd` (UTF-16 offsets into the source given to `discoverMacros`),
+so it is cheap for JS/TS files (offset = document offset) and for script passages
+(offset into the passage body, after the header line); StoryInit `{do}` pieces would
+need the piece offset added.
