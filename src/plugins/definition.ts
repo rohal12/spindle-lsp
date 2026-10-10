@@ -1,7 +1,7 @@
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
+import { macroHeadAt } from '../core/markup/macro-heads.js';
 import { passageRefAt } from '../core/markup/passage-refs.js';
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ export function getDefinition(
   if (passageResult) return passageResult;
 
   // --- Widget name -> definition ---
-  const widgetResult = getWidgetDefinition(uri, text, position, workspace);
+  const widgetResult = getWidgetDefinition(uri, position, workspace);
   if (widgetResult) return widgetResult;
 
   return null;
@@ -66,11 +66,11 @@ function getPassageRefDefinition(
 
 function getWidgetDefinition(
   uri: string,
-  text: string,
   position: Position,
   workspace: WorkspaceModel,
 ): DefinitionResult | null {
-  const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
+  const doc = workspace.markup.get(uri);
+  const head = doc && macroHeadAt(doc, position);
   if (!head) return null;
   // Only if it's not a known macro
   if (workspace.macros.getMacro(head.name)) return null;

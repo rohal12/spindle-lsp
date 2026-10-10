@@ -7,7 +7,7 @@ import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
 import { passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
-import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
+import { macroHeadAt } from '../core/markup/macro-heads.js';
 import { isReservedPassageName, parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageRefs,
@@ -343,18 +343,16 @@ function resolveSymbolAtCursor(
   }
 
   // --- Widget invocation: {widgetName ...} or block widget closing tag {/widgetName} ---
-  {
-    const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
-    if (head) {
-      const widget = workspace.widgets.getWidget(head.name);
-      if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
-        return { kind: 'widget', name: head.name, range: head.range };
-      }
+  const doc = workspace.markup.get(uri);
+  const head = doc && macroHeadAt(doc, position);
+  if (head) {
+    const widget = workspace.widgets.getWidget(head.name);
+    if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
+      return { kind: 'widget', name: head.name, range: head.range };
     }
   }
 
   // --- Passage name written out: [[link]] or a quoted macro argument ---
-  const doc = workspace.markup.get(uri);
   const passageRef = doc && passageRefAt(doc, position);
   if (passageRef && workspace.passages.getPassage(passageRef.name) && !isReservedPassageName(passageRef.name)) {
     return { kind: 'passage', name: passageRef.name, range: passageRef.range };

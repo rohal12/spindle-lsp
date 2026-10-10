@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VariableTracker, executableCode } from '../../src/core/workspace/variable-tracker.js';
+import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 import type { MacroNode } from '../../src/core/types.js';
 
 describe('VariableTracker', () => {
@@ -719,14 +719,5 @@ describe('VariableTracker references the tooling API reads', () => {
     const tracker = scan(':: StoryScript\n{$a}\n:: Start\n{$b}');
     expect(tracker.getUsages('a')).toEqual([]);
     expect(tracker.getUndeclared(uri).map(u => u.name)).toEqual(['a', 'b']);
-  });
-});
-
-describe('executableCode', () => {
-  it('keeps only the variable references, in place', () => {
-    const text = 'Hi $no {set _t to @l + %x} "$s" {$y.z}\r\n<!-- $c -->{for @i of $list}';
-    const code = executableCode(text);
-    expect(code.length).toBe(text.length);
-    expect(code.replace(/\s+/g, ' ').trim()).toBe('_t @l %x $y.z @i $list');
   });
 });

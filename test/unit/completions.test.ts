@@ -222,8 +222,9 @@ describe('getCompletions in half-typed and non-markup text', () => {
   });
 
   it('offers temp and local variables the document uses, and the parameters of its widgets', () => {
+    // The runtime reads the @ parameters of a widget only (parseWidgetDef): `_q` is no parameter
     const doc = ':: Widgets [widget]\n{widget "w" @p _q}{@p}{/widget}\n:: Start\n{set _t = 1}{_';
-    expect(at(doc, 3, 15)).toEqual(expect.arrayContaining(['_t', '_q']));
+    expect(at(doc, 3, 15)).toEqual(['_t']);
     expect(at(':: Widgets [widget]\n{widget "w" @p}{@p}{/widget}\n:: Start\n{@', 3, 2)).toEqual(['@p']);
   });
 

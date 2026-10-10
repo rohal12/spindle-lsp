@@ -31,6 +31,113 @@ describe('discoverMacrosFromSource', () => {
   });
 });
 
+describe('discoverMacrosFromSource: parameters', () => {
+  const source = `Story.defineMacro({
+  name: "damage", // the macro
+  description: 'Apply damage',
+  parameters: [
+    { name: "target", type: "variable", required: true, description: "The $variable" },
+    { name: 'amount', type: 'expression', required: true },
+    { name: 'label', type: 'text', holds: 'markup' },
+    { name: 'mode', type: 'options', parameters: [{ name: 'fast', type: 'flag' }, { name: 'by', type: 'string' }] },
+  ],
+  merged: true,
+  render: function (props, ctx) { return { name: 'not this one', block: true, parameters: [{ name: 'x', type: 'flag' }] }; },
+});`;
+
+  it('reads the typed parameters, options included', () => {
+    const [macro] = discoverMacrosFromSource(source);
+    expect(macro).toMatchObject({ name: 'damage', description: 'Apply damage', merged: true });
+    expect(macro.block).toBeUndefined();
+    expect(macro.parameters).toEqual([
+      { name: 'target', type: 'variable', required: true, description: 'The $variable' },
+      { name: 'amount', type: 'expression', required: true },
+      { name: 'label', type: 'text', holds: 'markup' },
+      { name: 'mode', type: 'options', parameters: [{ name: 'fast', type: 'flag' }, { name: 'by', type: 'string' }] },
+    ]);
+  });
+
+  it('reads no parameters when the definition declares none or one that Spindle rejects', () => {
+    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", render() {} });')[0].parameters).toBeUndefined();
+    // No type, or one that is not in the table: Story.defineMacro() throws, so the macro has no parameters
+    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: [{ name: "p" }], render() {} });')[0].parameters).toBeUndefined();
+    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: [{ name: "p", type: "bogus" }], render() {} });')[0].parameters).toBeUndefined();
+    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: params, render() {} });')[0].parameters).toBeUndefined();
+  });
+
+  it('declares an empty list of parameters', () => {
+    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: [], render() {} });')[0].parameters).toEqual([]);
+  });
+
+  it('reads the fields of the config, not those of a nested object or a comment', () => {
+    const [macro] = discoverMacrosFromSource(`Story.defineMacro({
+  /* name: "wrong", block: true */
+  render() { const o = { name: "inner", storeVar: true }; return o; },
+  name: "outer",
+  subMacros: ['a', "b"],
+});`);
+    expect(macro).toEqual({ name: 'outer', subMacros: ['a', 'b'] });
+  });
+
+  it('gives typed parameters to the registry and the tooling API', () => {
+    const registry = new MacroRegistry();
+    registry.loadBuiltins();
+    registry.setDiscoveredMacros(discoverMacrosFromSource(source));
+    expect(registry.getMacro('damage')?.parameterDefs?.map(p => p.type)).toEqual(['variable', 'expression', 'text', 'options']);
+    expect(registry.toolingMacros().find(m => m.name === 'damage')?.parameters).toHaveLength(4);
+
+    // A definition replaces the built-in of its name, parameters included
+    registry.setDiscoveredMacros([{ name: 'set', render: undefined } as never]);
+    expect(registry.getMacro('set')?.parameterDefs).toBeUndefined();
+    registry.setDiscoveredMacros([]);
+    expect(registry.getMacro('set')?.parameterDefs?.length).toBeGreaterThan(0);
+  });
+
+  it('carries storeVar to the tooling API', () => {
+    const registry = new MacroRegistry();
+    registry.loadBuiltins();
+    registry.setDiscoveredMacros([{ name: 'agebox', storeVar: true }]);
+    const byName = new Map(registry.toolingMacros().map(m => [m.name, m]));
+    expect(byName.get('agebox')?.storeVar).toBe(true);
+    expect(byName.get('textbox')?.storeVar).toBe(true);
+    expect(byName.get('set')?.storeVar).toBeFalsy();
+  });
+});
+
+describe('typed parameters make the code in a macro\'s arguments visible', () => {
+  const files = new Map([['file:///story.tw', `:: StoryInit
+{do}
+Story.defineMacro({
+  name: "damage",
+  parameters: [
+    { name: "target", type: "variable" },
+    { name: "amount", type: "expression" },
+  ],
+  render() { return null; },
+});
+Story.defineMacro({ name: "say", parameters: [{ name: "line", type: "text" }], render() { return null; } });
+Story.defineMacro({ name: "shout", render() { return null; } });
+{/do}
+
+:: StoryVariables
+$hp = 10
+
+:: Start
+{damage $hp $str * 2}
+{say $text}
+{shout $undeclared}
+`]]);
+
+  it('records the variables of an expression parameter, not those of a text parameter', () => {
+    const ws = new WorkspaceModel();
+    ws.initialize(files);
+    expect(ws.variables.getUsages('str').map(u => u.range.start.line)).toEqual([18]);
+    expect(ws.variables.getUndeclared('file:///story.tw').map(u => u.name)).toEqual(['str', 'undeclared']);
+    expect(ws.variables.getUsages('text')).toEqual([]);
+    ws.dispose();
+  });
+});
+
 describe('discoverMacrosFromStoryInit', () => {
   it('extracts from StoryInit passage content', () => {
     const content = `{do}
@@ -44,6 +151,17 @@ Story.defineMacro({
     expect(macros).toHaveLength(1);
     expect(macros[0].name).toBe('custom');
     expect(macros[0].block).toBe(true);
+  });
+
+  it('reads the {do} bodies as the tokenizer does', () => {
+    const define = (name: string) => `Story.defineMacro({ name: "${name}", render: () => null });`;
+    const found = discoverMacrosFromStoryInit([
+      `{DO}${define('upper')}{/DO}`,
+      `<!-- {do}${define('commented')}{/do} -->`,
+      `{print "{do}${define('instring')}{/do}"}`,
+      `{do}\r\n${define('crlf')}\r\n{/do}`,
+    ].join('\n'));
+    expect(found.map(m => m.name)).toEqual(['upper', 'crlf']);
   });
 });
 

@@ -14,14 +14,6 @@ import { findPrimitiveFieldAccess } from './variable-schema.js';
 const STORY_SCRIPT_PASSAGE = 'StoryScript';
 
 /**
- * Built-in input macros whose first argument names the bound story variable,
- * quoted or not (e.g. `{textbox "$name"}`).
- */
-export const BUILTIN_STORE_VAR_MACROS: ReadonlySet<string> = new Set([
-  'checkbox', 'cycle', 'listbox', 'numberbox', 'radiobutton', 'textarea', 'textbox',
-]);
-
-/**
  * What a tracker that is not given a document's markup knows of the macros:
  * the built-in ones. The workspace passes the markup it reads with its own
  * macros and widgets (see `scanDocument`).
@@ -32,27 +24,6 @@ function standaloneMarkup(uri: string, text: string): DocumentMarkup {
   const index = new PassageIndex();
   index.rebuild(uri, text);
   return new DocumentMarkup(uri, text, index.getPassagesInDocument(uri), BUILTIN_CONTEXT);
-}
-
-/**
- * The code Spindle evaluates in a passage body: `content` with everything
- * but its variable references blanked (line terminators and offsets kept).
- * `_temp` and `@local` variables only mean something there.
- */
-export function executableCode(content: string, _reading?: unknown): string {
-  const header = ':: P\n';
-  const markup = standaloneMarkup('file:///executable.tw', header + content).passages[0];
-  const blank = content.replace(/[^\r\n]/g, ' ');
-  let code = '';
-  let copied = 0;
-  for (const ref of collectVariableReferences(markup, BUILTIN_STORE_VAR_MACROS)) {
-    const start = Math.max(markup.docOffset(ref.start) - header.length, copied);
-    const end = markup.docEnd(ref.end) - header.length;
-    if (end <= start) continue;
-    code += blank.slice(copied, start) + content.slice(start, end);
-    copied = end;
-  }
-  return code + blank.slice(copied);
 }
 
 interface NullDeclaration {
@@ -185,12 +156,6 @@ export class VariableTracker {
   private transientUsagesByUri = new Map<string, VariableUsage[]>();
 
   /**
-   * Nothing depends on the target Spindle any more.
-   * @deprecated The minimum supported release has every behavior; delete with the capabilities.
-   */
-  setCapabilities(_capabilities: unknown): void {}
-
-  /**
    * Parse the StoryVariables passage content for declarations.
    * Each line like `$name = value` becomes a declaration.
    */
@@ -218,16 +183,19 @@ export class VariableTracker {
 
   /**
    * Scan a document for variable usages: the `$` and `%` references in the
-   * code of its markup passages. `storeVarMacros` (lowercase names) are the
-   * input macros whose first argument names a bound story variable. The
-   * workspace passes the `markup` it reads the document with, which knows
-   * the project's macros and widgets; without it the built-in macros decide.
+   * markup of its passages (see `collectVariableReferences`). The workspace
+   * passes the `markup` it reads the document with, which knows the project's
+   * macros and widgets; without it the built-in macros decide.
+   *
+   * `_macros` and `_storeVarMacros` are not read any more (a macro's
+   * `storeVar` flag says which macros bind a variable).
+   * @deprecated Pass only `markup`; drop the other arguments with their callers.
    */
   scanDocument(
     uri: string,
     text: string,
-    _macros: readonly unknown[],
-    storeVarMacros: ReadonlySet<string> = BUILTIN_STORE_VAR_MACROS,
+    _macros?: readonly unknown[],
+    _storeVarMacros?: ReadonlySet<string>,
     markup: DocumentMarkup = standaloneMarkup(uri, text),
   ): void {
     this.removeDocument(uri);
@@ -236,11 +204,10 @@ export class VariableTracker {
 
     for (const passage of markup.passages) {
       const indexed = passage.passage.name !== STORY_SCRIPT_PASSAGE;
-      for (const ref of collectVariableReferences(passage, storeVarMacros)) {
-        if (ref.sigil !== '$' && ref.sigil !== '%') continue;
+      for (const ref of collectVariableReferences(passage)) {
         const usage: VariableUsage = {
           uri,
-          baseName: ref.path.split('.')[0],
+          baseName: ref.name,
           fullName: ref.path,
           range: passage.range(ref.start, ref.end),
           indexed,

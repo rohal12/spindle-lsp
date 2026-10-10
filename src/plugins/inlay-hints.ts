@@ -1,8 +1,9 @@
-import { splitArgs, type Token } from '@rohal12/spindle/tooling';
+import { splitArgs } from '@rohal12/spindle/tooling';
 import type { Range, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
+import { macroTokens } from '../core/markup/tokens.js';
 
 // ---------------------------------------------------------------------------
 // Core inlay hints function (no LSP dependency)
@@ -53,13 +54,8 @@ function addWidgetParamHints(
 
   for (const passage of passages) {
     // Invocations in the labels and attribute values that hold markup count too
-    const tokens: Token[] = [...passage.tokens];
-    for (const piece of passage.pieces) {
-      if (piece.kind === 'text') tokens.push(...piece.tokens);
-    }
-
-    for (const token of tokens) {
-      if (token.type !== 'macro' || token.isClose || token.rawArgs === '') continue;
+    for (const token of macroTokens(passage)) {
+      if (token.isClose || token.rawArgs === '') continue;
       if (!inRange(passage.position(token.start).line)) continue;
 
       const widget = workspace.widgets.getWidget(token.name);
