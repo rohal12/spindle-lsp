@@ -19,12 +19,12 @@ export interface LinkRead {
 }
 
 /** The AST's `quoteArg`: `value` as a quoted macro argument, `\` and `"` escaped. */
-export function quoteArg(value: string): string {
+function quoteArg(value: string): string {
   return `"${value.replace(/[\\"]/g, '\\$&')}"`;
 }
 
 /** What the link macro reads from `{link ...rawArgs}`. */
-export function readLinkMacro(rawArgs: string): LinkRead {
+function readLinkMacro(rawArgs: string): LinkRead {
   const pieces = passagePieces(`{link ${rawArgs}}`, builtinMacros).filter(piece => !piece.nested);
   const label = pieces.find(piece => piece.kind === 'text');
   const name = pieces.find(piece => piece.kind === 'passage');
@@ -42,11 +42,8 @@ export function readBracketLink(display: string, target: string): LinkRead {
 /**
  * The runtime reading of a bracket link when it is not the link the source
  * says (display and target as the tokenizer splits them), else null.
- * `escapes` is ignored: the minimum Spindle always escapes (callers still
- * passing it should stop).
  */
-export function bracketLinkMismatch(display: string, target: string, escapes?: boolean): LinkRead | null {
-  void escapes;
+export function bracketLinkMismatch(display: string, target: string): LinkRead | null {
   const read = readBracketLink(display, target);
   return read.display === display && read.passage === target ? null : read;
 }

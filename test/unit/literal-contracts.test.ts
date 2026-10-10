@@ -22,7 +22,7 @@ import { getDefinition } from '../../src/plugins/definition.js';
 import { computeDocumentLinks } from '../../src/plugins/document-link.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
-import { decodeStringLiteralBody, encodeStringLiteralBody } from '../../src/core/parsing/js-string-literal.js';
+import { encodeStringLiteralBody } from '../../src/core/parsing/js-string-literal.js';
 
 const uri = 'file:///story.tw';
 const models: WorkspaceModel[] = [];
@@ -257,21 +257,20 @@ describe('R67 (extra): per-context encoding', () => {
 });
 
 describe('L77 (extra): static literal decoding', () => {
-  it('the remaining decoder agrees with passageTarget on the supported escapes', () => {
-    for (const [quote, body] of [
-      ['"', '\\u004eext'], ['"', '\\u{4e}ext'], ["'", '\\x4eext'], ['"', 'a\\nb\\tc\\0'],
-      ['"', 'Say \\"hi\\"'], ['"', 'a\\\nb'], ['"', '\\q'],
+  it('passageTarget reads the supported escapes', () => {
+    for (const [quote, body, value] of [
+      ['"', '\\u004eext', 'Next'], ['"', '\\u{4e}ext', 'Next'], ["'", '\\x4eext', 'Next'], ['"', 'a\\nb\\tc\\0', 'a\nb\tc\0'],
+      ['"', 'Say \\"hi\\"', 'Say "hi"'], ['"', 'a\\\nb', 'ab'], ['"', '\\q', 'q'],
     ] as const) {
-      expect(literalName(`${quote}${body}${quote}`), body).toBe(decodeStringLiteralBody(body, quote));
+      expect(literalName(`${quote}${body}${quote}`), body).toBe(value);
     }
   });
   it('treats malformed or legacy escapes as undecidable: an expression, no name', () => {
     for (const body of ['\\u00', '\\x4', '\\u{110000}', '\\u{}', 'a\\']) {
-      expect(decodeStringLiteralBody(body, '"'), body).toBeNull();
       expect(passageTarget(`"${body}"`).kind, body).toBe('expression');
     }
-    expect(decodeStringLiteralBody('a"b', '"')).toBeNull();
-    // non-strict JavaScript reads a legacy octal escape (the stricter decoder does not)
+    expect(passageTarget('"a"b"').kind).toBe('expression');
+    // non-strict JavaScript reads a legacy octal escape
     expect(passageTarget('"\\1"')).toEqual({ kind: 'name', name: '\u0001' });
   });
   it('encode/read round-trip', () => {

@@ -1,6 +1,6 @@
 /**
- * Differential test: the LSP's field-access check (SP201) against Spindle's
- * own startup validation (`validateVariableReferences`, through
+ * Differential test: the SP201 of `computeDiagnostics` against Spindle's own
+ * startup validation (`validateVariableReferences`, through
  * test/helpers/story-variables-oracle.ts), over declarations evaluated by
  * `parseStoryVariables`.
  * Every field error the LSP reports must be one Spindle reports, with the
@@ -9,7 +9,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
-import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
+import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 
 const uri = 'file:///story.tw';
 
@@ -30,11 +31,9 @@ function runtimeErrors(vars: string, passages: Array<[string, string]>): string[
 /** The LSP's SP201 findings for the same story, in Spindle's wording. */
 function lspErrors(vars: string, passages: Array<[string, string]>): string[] {
   const text = [':: StoryVariables', vars, '', ...passages.flatMap(([name, content]) => [`:: ${name}`, content, ''])].join('\n');
-  const tracker = new VariableTracker();
-  tracker.parseStoryVariables(vars, 1, uri);
-  tracker.scanDocument(uri, text, []);
-  return tracker.getPrimitiveFieldAccesses(uri)
-    .map(a => `Cannot access field "${a.field}" on ${a.path} (type: ${a.type})`);
+  const model = new WorkspaceModel();
+  model.initialize(new Map([[uri, text]]));
+  return computeDiagnostics(uri, model).filter(d => d.code === 'SP201').map(d => d.message);
 }
 
 const DEFAULTS = [

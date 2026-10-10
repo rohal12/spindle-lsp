@@ -16,12 +16,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tokenize } from '../helpers/tooling.js';
 import { formatDocument } from '../../src/plugins/format.js';
-import { scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
+import { scanSpindleMarkup } from '../../src/plugins/format/placeholders.js';
 import { findSpindleTarget } from '../../src/core/workspace/story-format.js';
 import { checkFormatting, formatFiles } from '../../src/mcp/server.js';
 import { runFormat } from '../../src/cli/format.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { MINIMUM_SPINDLE_VERSION } from '../../src/core/workspace/spindle-version.js';
+
+const scanSpindleTokens = (text: string) => scanSpindleMarkup(text).tokens;
 
 /** The macro payloads and token kinds the installed tokenizer reads, ignoring text. */
 function payloads(text: string) {

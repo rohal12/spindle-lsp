@@ -1,36 +1,24 @@
 /**
- * Differential tests: the references the LSP validates (SP200/SP201) against
+ * Differential tests: the SP200/SP201 of `computeDiagnostics` against
  * Spindle's own startup validation (`validateVariableReferences`, through
  * test/helpers/story-variables-oracle.ts): executable references only;
- * members of a primitive's wrapper allowed.
+ * members of a primitive's wrapper allowed. The spans of the references the
+ * LSP finds (`collectVariableReferences`) are checked against the source.
  */
 import { describe, it, expect } from 'vitest';
 import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
 import { collectVariableReferences } from '../../src/core/parsing/executable-refs.js';
-import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 
 const uri = 'file:///story.tw';
 
-/** The compiler's line breaks: Spindle reads passages with LF. */
-function compiled(content: string): string {
-  return content.replace(/\r\n/g, '\n');
-}
-
-/** Every reference the runtime validates: all are undeclared in an empty schema. */
-function runtimeRefs(content: string): string[] {
-  const passages = new Map([['P', { name: 'P', tags: [], content: compiled(content) } as never]]);
-  return validatePassages(passages, new Map())
-    .map(e => /Undeclared variable: \$(.*)$/.exec(e)![1]);
-}
-
-/** The `$` references the LSP validates in the body of a passage, with their offsets in its (LF) content. */
+/** The `$` references the LSP finds in the body of a passage, with their offsets in its (LF) content. */
 function lspRefs(content: string): { content: string; refs: Array<{ path: string; start: number; end: number }> } {
   const model = new WorkspaceModel();
   model.initialize(new Map([[uri, `:: P\n${content}`]]));
   const passage = model.markup.get(uri)!.passages[0];
-  const refs = collectVariableReferences(passage)
-    .filter(r => r.sigil === '$' && r.validated);
+  const refs = collectVariableReferences(passage).filter(r => r.sigil === '$');
   return { content: passage.content, refs };
 }
 
@@ -81,15 +69,7 @@ function randomPassages(seed: number, count: number, size: number): string[] {
   return cases;
 }
 
-describe('executable references match the runtime', () => {
-  it('agrees with validatePassages on every fragment and on random passages', () => {
-    for (const content of randomPassages(42, 4000, 6)) {
-      // The same references; the LSP lists them in source order, and the runtime scans the selectors of a macro after its arguments
-      const lsp = lspRefs(content).refs.map(r => r.path).sort();
-      expect({ content, refs: lsp }).toEqual({ content, refs: runtimeRefs(content).sort() });
-    }
-  });
-
+describe('executable references', () => {
   it('reports the offset of each reference `$`', () => {
     for (const content of randomPassages(7, 1500, 5)) {
       const { content: lf, refs } = lspRefs(content);
@@ -119,12 +99,9 @@ describe('SP201 matches the runtime', () => {
           new Map([['Start', { name: 'Start', tags: [], content } as never]]),
           parseStoryVariables(vars),
         ).map(e => e.replace(/^Passage "[^"]*": /, ''));
-        const text = `:: StoryVariables\n${vars}\n\n:: Start\n${content}\n`;
-        const tracker = new VariableTracker();
-        tracker.parseStoryVariables(vars, 1, uri);
-        tracker.scanDocument(uri, text, []);
-        const lsp = tracker.getPrimitiveFieldAccesses(uri)
-          .map(a => `Cannot access field "${a.field}" on ${a.path} (type: ${a.type})`);
+        const model = new WorkspaceModel();
+        model.initialize(new Map([[uri, `:: StoryVariables\n${vars}\n\n:: Start\n${content}\n`]]));
+        const lsp = computeDiagnostics(uri, model).filter(d => d.code === 'SP201').map(d => d.message);
         // The LSP never reports what the runtime accepts; it may miss only
         // what it cannot type without evaluating code (none of these defaults)
         expect({ def, path, lsp }).toEqual({ def, path, lsp: runtime });
@@ -135,13 +112,14 @@ describe('SP201 matches the runtime', () => {
   });
 });
 
-/** The names the LSP reports undeclared in a document, against the runtime's. */
+/** The names the diagnostics report undeclared in a document (SP200). */
 function lspUndeclared(passages: Array<[string, string]>): string[] {
   const text = [':: StoryVariables', '$decl = 1', '', ...passages.flatMap(([n, c]) => [`:: ${n}`, c, ''])].join('\n');
-  const tracker = new VariableTracker();
-  tracker.parseStoryVariables('$decl = 1', 1, uri);
-  tracker.scanDocument(uri, text, []);
-  return tracker.getUndeclared(uri).map(u => u.name).sort();
+  const model = new WorkspaceModel();
+  model.initialize(new Map([[uri, text]]));
+  return [...new Set(computeDiagnostics(uri, model)
+    .filter(d => d.code === 'SP200')
+    .map(d => /Undeclared variable: \$(\w+)/.exec(d.message)![1]))].sort();
 }
 
 function runtimeUndeclared(passages: Array<[string, string]>): string[] {

@@ -1,4 +1,3 @@
-import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { walkNodes } from '../core/markup/tree.js';

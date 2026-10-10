@@ -205,27 +205,6 @@ export function findVariableReferences(
 }
 
 /**
- * Whether the `%name` at line/character is a transient reference. A name
- * starting with a digit is one only where the variable tracker records it
- * (in code, where Spindle evaluates it) or at its declaration: `%20` in
- * prose or an HTML attribute is URL encoding.
- */
-export function isTransientAt(
-  name: string,
-  uri: string,
-  line: number,
-  character: number,
-  workspace: WorkspaceModel,
-): boolean {
-  if (!/^\d/.test(name)) return true;
-  const at = (u: { uri?: string; range?: Range }) =>
-    u.uri === uri && u.range?.start.line === line && u.range.start.character === character;
-  const decl = workspace.variables.getDeclaredTransient().get(name);
-  if (decl && at({ uri: decl.declarationUri, range: decl.declarationRange })) return true;
-  return workspace.variables.getTransientUsages(name).some(at);
-}
-
-/**
  * Find all references to a transient variable across the workspace.
  */
 export function findTransientReferences(

@@ -376,7 +376,7 @@ export class WorkspaceModel extends EventEmitter {
     // (empty documents are scanned too, dropping their previous usages)
     this.widgets.clearInvocations();
     for (const doc of documents) {
-      this.variables.scanDocument(doc.uri, doc.text, undefined, undefined, doc);
+      this.variables.scanDocument(doc.uri, doc.text, doc);
       this.widgets.recordInvocations(doc.uri, doc.passages);
     }
   }

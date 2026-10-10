@@ -31,7 +31,6 @@ export function getDefinition(
 
   const lines = text.split('\n');
   if (position.line >= lines.length) return null;
-  const line = lines[position.line];
 
   // --- Passage name written out: [[link]] or a quoted macro argument ---
   const passageResult = getPassageRefDefinition(uri, position, workspace);

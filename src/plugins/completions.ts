@@ -211,7 +211,7 @@ function getDotPathCompletions(sigil: '$' | '%', varName: string, workspace: Wor
 function linkable(name: string): boolean {
   const { tokens } = tokenizeMarkupTolerant(`[[${name}]]`);
   const [link] = tokens;
-  return tokens.length === 1 && link.type === 'link' && link.target === name && !bracketLinkMismatch('label', name, true);
+  return tokens.length === 1 && link.type === 'link' && link.target === name && !bracketLinkMismatch('label', name);
 }
 
 function getPassageNameCompletions(workspace: WorkspaceModel): CompletionItem[] {

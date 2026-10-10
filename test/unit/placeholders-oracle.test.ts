@@ -11,8 +11,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { deepTokens, tokenize } from '../helpers/tooling.js';
-import { scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
+import { scanSpindleMarkup } from '../../src/plugins/format/placeholders.js';
 import { INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
+
+const scanSpindleTokens = (text: string) => scanSpindleMarkup(text).tokens;
 
 interface Span { start: number; end: number }
 

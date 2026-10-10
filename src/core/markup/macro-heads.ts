@@ -68,7 +68,7 @@ function* pairedHeads(paired: PairedMarkup, tokens: readonly Token[]): Generator
 }
 
 /** The macro heads of a passage, in source order. */
-export function passageMacroHeads(passage: PassageMarkup): readonly MacroHead[] {
+function passageMacroHeads(passage: PassageMarkup): readonly MacroHead[] {
   let heads = kept.get(passage);
   if (heads) return heads;
 

@@ -46,7 +46,7 @@ const kept = new WeakMap<PassageMarkup, readonly PassageRef[]>();
 const byName = new WeakMap<DocumentMarkup, Map<string, PassageRef[]>>();
 
 /** The passage names written out in a passage, in source order, labels and attribute values included. */
-export function passageRefs(passage: PassageMarkup): readonly PassageRef[] {
+function passageRefs(passage: PassageMarkup): readonly PassageRef[] {
   let refs = kept.get(passage);
   if (!refs) {
     refs = readRefs(passage);

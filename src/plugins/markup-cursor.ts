@@ -152,7 +152,7 @@ export class MarkupCursor {
    * macro's arguments or a `{do}` body.
    */
   headBeingTyped(): HeadBeingTyped | undefined {
-    const { content, at } = this;
+    const { at } = this;
     const typedHead = /\{(\/?)([\w-]*)$/.exec(this.lineBefore);
     if (!typedHead) return undefined;
     const brace = at - typedHead[0].length;

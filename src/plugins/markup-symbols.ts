@@ -1,27 +1,13 @@
-import { lexJs, pieceOffset, type MacroToken, type Sigil, type Token } from '@rohal12/spindle/tooling';
+import { lexJs, pieceOffset, type Sigil } from '@rohal12/spindle/tooling';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
+import { markupTokens } from '../core/markup/tokens.js';
 
 /**
  * What a passage's markup names, read from the tooling API's tokens and
- * pieces: the macros called (hover, semantic tokens) and the variables
- * referenced or declared (hover, semantic tokens, completions). Offsets are
+ * pieces: the variables referenced or declared (hover, semantic tokens,
+ * completions). Offsets are
  * `content` offsets of the passage (see PassageMarkup).
  */
-
-/** Every token of a passage's markup: the flat ones, and those inside the labels and attribute values that hold markup. */
-export function* markupTokens(passage: PassageMarkup): Generator<Token> {
-  yield* passage.tokens;
-  for (const piece of passage.pieces) {
-    if (piece.kind === 'text') yield* piece.tokens;
-  }
-}
-
-/** Every macro tag of a passage, closers included; the macro's name is `nameStart`..`nameEnd`. */
-export function* macroTokens(passage: PassageMarkup): Generator<MacroToken> {
-  for (const token of markupTokens(passage)) {
-    if (token.type === 'macro') yield token;
-  }
-}
 
 /** A variable reference or declaration. */
 export interface VariableUse {
