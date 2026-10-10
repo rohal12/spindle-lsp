@@ -32,9 +32,9 @@ import { tokenize } from '../helpers/tooling.js';
 import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
-import { findLiteralLinkInterpolations, findBracketLinks, linkSelectorInterpolationRanges } from '../../src/core/parsing/link-parser.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeRename } from '../../src/plugins/rename.js';
+import { findLiteralLinkInterpolations } from '../../src/core/parsing/link-parser.js';
 import { findVariableReferences } from '../../src/plugins/references.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 import type { Range } from '../../src/core/types.js';
@@ -244,12 +244,14 @@ describe('Q-diagnostic: SP305 flags {$x} where the link macro prints the braces'
     expect(sp305(workspace(':: Start [script]\nvar s = "[[Take {$item}->T]]";\n'))).toEqual([]);
   });
 
-  it('Q-diagnostic-selectors: only selector blocks are interpolated (range helper)', () => {
+  it('Q-diagnostic-selectors: the selectors of a link carry their interpolations, the label and target are separate spans', () => {
     const text = '[[.c{$k}#i{@j} Take {$item}->T{$n}]]';
-    const [link] = findBracketLinks(text);
-    expect(linkSelectorInterpolationRanges(text, link).map(([s, e]) => text.slice(s, e))).toEqual(['{$k}', '{@j}']);
     const token = tokenize(text)[0];
     expect(token).toMatchObject({ type: 'link', className: 'c{$k}', id: 'i{@j}' });
+    if (token.type !== 'link') throw new Error('not a link');
+    expect(text.slice(token.selectorsStart, token.selectorsEnd)).toBe('.c{$k}#i{@j}');
+    expect(text.slice(token.displayStart, token.displayEnd)).toBe('Take {$item}');
+    expect(text.slice(token.targetStart, token.targetEnd)).toBe('T{$n}');
   });
 });
 

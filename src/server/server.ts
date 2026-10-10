@@ -98,7 +98,7 @@ export function startServer(args: string[]): void {
     // Create workspace model
     workspace = new WorkspaceModel(workspaceRoot ? { workspaceRoot } : undefined);
     console.error('[spindle-lsp] workspaceRoot:', workspaceRoot ?? 'undefined');
-    const target: SpindleTarget = workspace.capabilities;
+    const target: SpindleTarget = workspace.target;
     console.error('[spindle-lsp] target Spindle:', target.version ? `${target.version} (${target.source})` : 'not detected');
     if (!target.supported) {
       const message = unsupportedVersionMessage(target);

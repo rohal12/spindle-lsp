@@ -6,7 +6,6 @@ import { VariableTracker } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
 import { MarkupIndex } from '../markup/markup-index.js';
 import type { PassageMarkup } from '../markup/passage-markup.js';
-import type { MacroHeadPairing } from '../parsing/macro-parser.js';
 import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
 import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
 import { isMacroSource } from './macro-sources.js';
@@ -16,8 +15,8 @@ import {
   storyDataFormats,
   storyDataFormatVersion,
 } from './story-format.js';
-import { readInstalledSpindleVersion, resolveSpindleCapabilities, resolveSpindleTarget } from './spindle-version.js';
-import type { SpindleCapabilities, SpindleTarget } from './spindle-version.js';
+import { readInstalledSpindleVersion, resolveSpindleTarget } from './spindle-version.js';
+import type { SpindleTarget } from './spindle-version.js';
 import type { StoryFormat } from './story-format.js';
 import type { Passage } from '../types.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
@@ -83,6 +82,7 @@ export class WorkspaceModel extends EventEmitter {
     this.documents = new DocumentStore();
     this.passages = new PassageIndex();
     this.macros = new MacroRegistry();
+    this.macros.onChange = () => this.markup?.invalidate();
     this.variables = new VariableTracker();
     this.widgets = new WidgetRegistry();
     this.markup = new MarkupIndex({
@@ -170,27 +170,6 @@ export class WorkspaceModel extends EventEmitter {
    */
   hasPassages(uri: string): boolean {
     return this.passages.getPassagesInDocument(uri).length > 0;
-  }
-
-  /**
-   * Every flag is true: the minimum supported Spindle has every behavior.
-   * @deprecated Read {@link target}. Delete with the code that reads the flags (diagnostics, the oracle layer).
-   */
-  get capabilities(): SpindleCapabilities {
-    return resolveSpindleCapabilities(this.installedVersion, this.declaredVersion);
-  }
-
-  /**
-   * Per-passage closer pairing for the regex macro-head scanner.
-   * @deprecated Read `macroHeadAt` / `documentMacroHeads` (src/core/markup/macro-heads.ts) from `markup`.
-   */
-  macroHeadPairing(uri: string): MacroHeadPairing {
-    return {
-      isBlock: (name) => this.isContainer(name),
-      passages: this.passages.getPassagesInDocument(uri),
-      rawDoBodies: true,
-      stringAwareBraces: true,
-    };
   }
 
   /**

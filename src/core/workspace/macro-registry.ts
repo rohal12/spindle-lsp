@@ -43,6 +43,9 @@ export class MacroRegistry {
   /** Tier 3: macros discovered from Story.defineMacro() calls, keyed by lowercase name. */
   private discovered = new Map<string, Partial<MacroInfo> & { name: string }>();
 
+  /** Called after the set of macros or their metadata changed. */
+  onChange: (() => void) | undefined;
+
   /** Tier 4: user config entries, kept so they can be re-applied over discovered macros. */
   private configEntries = new Map<string, SupplementEntry>();
 
@@ -73,6 +76,7 @@ export class MacroRegistry {
    */
   loadSupplements(supplements: Record<string, SupplementEntry>): void {
     this.mergeEntries(supplements);
+    this.onChange?.();
   }
 
   /**
@@ -103,6 +107,7 @@ export class MacroRegistry {
       this.configEntries.set(key, { ...this.configEntries.get(key), ...config[rawKey] });
     }
     this.mergeEntries(config);
+    this.onChange?.();
   }
 
   /**
@@ -143,6 +148,7 @@ export class MacroRegistry {
         }
       }
     }
+    this.onChange?.();
   }
 
   /** Add or replace a single macro entry. */
@@ -165,6 +171,7 @@ export class MacroRegistry {
       parents: info.parents ?? existing?.parents,
       skipArgs: info.skipArgs ?? existing?.skipArgs,
     });
+    this.onChange?.();
   }
 
   /** Get a macro by name (case-insensitive). */

@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { capabilitiesForVersion } from '../../src/core/workspace/spindle-version.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -14,10 +13,3 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const INSTALLED_SPINDLE_VERSION: string = (
   JSON.parse(readFileSync(join(here, '../../node_modules/@rohal12/spindle/package.json'), 'utf-8')) as { version: string }
 ).version;
-
-/**
- * The LSP's view of that installed runtime. A shim kept while `src/` still
- * carries per-release capability flags (every flag is true on the supported
- * releases); delete it with them.
- */
-export const INSTALLED_CAPABILITIES = capabilitiesForVersion(INSTALLED_SPINDLE_VERSION);

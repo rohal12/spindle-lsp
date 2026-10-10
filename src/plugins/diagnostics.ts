@@ -498,7 +498,7 @@ function arrayMemberDiagnostics(uri: string, workspace: WorkspaceModel): Spindle
  * raises nothing.
  */
 function versionDiagnostics(uri: string, doc: DocumentMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
-  const target: SpindleTarget = workspace.capabilities;
+  const target: SpindleTarget = workspace.target;
   if (target.supported || uri !== missingStoryVariablesOwner(workspace)) return [];
   const first = doc.passages[0].passage;
   return [makeDiag({ start: first.range.start, end: first.headerEnd.end }, DiagnosticCode.UnsupportedSpindleVersion, unsupportedVersionMessage(target))];

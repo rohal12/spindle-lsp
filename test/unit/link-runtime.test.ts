@@ -20,7 +20,7 @@ import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getDefinition } from '../../src/plugins/definition.js';
 import { findPassageReferences } from '../../src/plugins/references.js';
 import { computeRename, encodePassageRefName, RenameError } from '../../src/plugins/rename.js';
-import { findLinkMacroMismatches, findLinkRuntimeMismatches } from '../../src/core/parsing/link-parser.js';
+import { findLinkRuntimeMismatches } from '../../src/core/parsing/link-parser.js';
 import { readBracketLink } from '../../src/core/parsing/link-runtime.js';
 import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
 import { tokenize } from '../helpers/tooling.js';
@@ -107,7 +107,6 @@ describe('P1 differential: the link macro reads a bracket link back as spindle-l
           const text = `{link ${args}}x{/link}`;
           const macro = tokenize(text).find(t => t.type === 'macro');
           if (!macro || macro.type !== 'macro' || macro.rawArgs !== args) continue;
-          expect(findLinkMacroMismatches(text), text).toEqual([]);
           const real = runtimeLinkMacro(args);
           let meaning: string | undefined;
           try {

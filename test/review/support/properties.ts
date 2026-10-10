@@ -356,16 +356,8 @@ export function propRename(files: Files) {
         const nameDependent = proseTransient ? /SP30[034]|SP40[01]|SP103|SP203/ : /SP30[034]|SP40[01]|SP103/;
         const before = codeMultiset(model).filter(s => !nameDependent.test(s));
         const now = codeMultiset(next).filter(s => !nameDependent.test(s));
-        // Contract #44: literal text (strings, comments) is not renamed. Spindle < 0.50.1 still reads `$old`
-        // there when the story starts, so exactly those documents gain one SP200 for the now-undeclared name.
+        // Contract #44: literal text (strings, comments) is not renamed, and Spindle checks only the code a passage runs
         const expected = [...before];
-        if (kind === 'variable' && span[0] === '$' && !model.capabilities.executableRefsOnly) {
-          for (const uri2 of model.documents.getUris()) {
-            const name2 = uri2.replace('file:///', '');
-            const leftover = splitPassages(after[name2]).some(q => q.markup && new RegExp(`\\$${p.prep!.placeholder}(?![\\w$])`).test(after[name2].slice(q.bodyStart, q.bodyEnd)));
-            if (leftover) expected.push(`${uri2}|SP200`);
-          }
-        }
         expect(now, `rename ${key} -> ${JSON.stringify(newName)} changed diagnostics`).toEqual(expected.sort());
         // runtime payload: old name replaced by the new one, nothing else
         for (const uri2 of model.documents.getUris()) {
