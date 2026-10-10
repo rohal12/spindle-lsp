@@ -20,13 +20,6 @@ export interface VariableReference {
   /** Offsets in the passage's `content` of the sigil and of the end of the path. */
   start: number;
   end: number;
-  /**
-   * Whether Spindle's startup validation checks it: the references the
-   * tooling API's `variableReferences` finds. The others are only found, for
-   * navigation and rename: the variable a macro declares (`{unset $x}`) and
-   * the `{$name}` interpolations of the selectors of a link.
-   */
-  validated: boolean;
 }
 
 const SCOPE_SIGILS = Object.fromEntries(
@@ -56,14 +49,14 @@ function selectorReferences(
   const { tokens } = tokenizeMarkupTolerant(content.slice(base, token.selectorsEnd), { text: true });
   for (const t of tokens) {
     if (t.type !== 'variable' || (SCOPE_SIGILS[t.scope] !== '$' && SCOPE_SIGILS[t.scope] !== '%')) continue;
-    add({ sigil: SCOPE_SIGILS[t.scope] as '$' | '%', name: t.name.split('.')[0], path: t.name, start: base + t.nameStart - 1, end: base + t.nameEnd, validated: false });
+    add({ sigil: SCOPE_SIGILS[t.scope] as '$' | '%', name: t.name.split('.')[0], path: t.name, start: base + t.nameStart - 1, end: base + t.nameEnd });
   }
 }
 
 /**
  * The variable a macro with a `variable` parameter names in its first
  * argument (`{unset $x}`, `{computed "$x" = ...}`): `$name` or `"$name"` as
- * written. The story start does not check it.
+ * written. `variableReferences` does not return it.
  */
 function receiverReference(token: MacroToken, add: (reference: VariableReference) => void): void {
   const raw = token.rawArgs;
@@ -85,7 +78,7 @@ function receiverReference(token: MacroToken, add: (reference: VariableReference
       }
       // The quoted form names one variable and nothing else
       if (quoted && (index !== 0 || end !== inner.length)) return;
-      add({ sigil, name, path: inner.slice(index + 1, end), start: base + index, end: base + end, validated: false });
+      add({ sigil, name, path: inner.slice(index + 1, end), start: base + index, end: base + end });
     },
   });
 }
@@ -95,8 +88,8 @@ function receiverReference(token: MacroToken, add: (reference: VariableReference
  * in `markup.content`: the ones the tooling API's `variableReferences` finds
  * where the story start looks (displays, expressions, conditions, `{do}`
  * bodies, the code arguments of macros, the variable an input macro binds,
- * labels and attribute values), and, marked not validated, the variable a
- * macro declares (`{unset $x}`) and the `{$name}` of a link's selectors. Prose,
+ * labels and attribute values), and what it does not return: the variable a
+ * macro declares (`{unset $x}`) and the `{$name}` of a selector. Prose,
  * comments and the text of string literals hold none.
  */
 export function collectVariableReferences(markup: PassageMarkup): VariableReference[] {
@@ -112,7 +105,6 @@ export function collectVariableReferences(markup: PassageMarkup): VariableRefere
       path: [ref.name, ...ref.path].join('.'),
       start: ref.start,
       end: ref.end,
-      validated: true,
     });
   }
 

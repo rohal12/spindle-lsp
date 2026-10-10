@@ -1,16 +1,12 @@
-import { builtinMacros, isBlockMacro, type FieldSchema } from '@rohal12/spindle/tooling';
-import type { DeclaredVariable, Position, Range, VariableValueType } from '../types.js';
+import { builtinMacros, isBlockMacro } from '@rohal12/spindle/tooling';
+import type { DeclaredVariable, Position, Range } from '../types.js';
 import { collectVariableReferences } from '../parsing/executable-refs.js';
 import { DocumentMarkup, type MarkupContext } from '../markup/passage-markup.js';
 import { buildLineStarts, offsetToPosition } from '../text.js';
 import { PassageIndex } from './passage-index.js';
 import { readDeclarations, type DeclarationSigil } from './declaration-check.js';
-import { findPrimitiveFieldAccess } from './variable-schema.js';
 
-/**
- * `StoryScript` is not a passage Spindle treats specially (it validates its
- * references), but its text is script, not an executable usage (C-V73).
- */
+/** The text of `StoryScript` is script, not an executable usage (C-V73). */
 const STORY_SCRIPT_PASSAGE = 'StoryScript';
 
 /**
@@ -26,14 +22,6 @@ function standaloneMarkup(uri: string, text: string): DocumentMarkup {
   return new DocumentMarkup(uri, text, index.getPassagesInDocument(uri), BUILTIN_CONTEXT);
 }
 
-interface NullDeclaration {
-  name: string;
-  sigil: '$' | '%';
-  /** The object fields whose value is null, when it is not the whole default. */
-  field?: string[];
-  range: Range;
-}
-
 /** A StoryVariables / StoryTransients line that stops Spindle from starting. */
 export interface InvalidDeclaration {
   message: string;
@@ -44,22 +32,6 @@ interface VariableUsage {
   uri: string;
   baseName: string;
   fullName: string;
-  range: Range;
-  /** Whether rename and references list it (StoryScript is not markup to them). */
-  indexed: boolean;
-  /** Whether Spindle's startup validation checks it. */
-  validated: boolean;
-}
-
-/**
- * A `$var.a.b` path Spindle rejects at startup: `field` is accessed on
- * `path` (e.g. `$var.a`), whose StoryVariables default is a primitive.
- */
-export interface PrimitiveFieldAccess {
-  path: string;
-  field: string;
-  type: VariableValueType;
-  /** Range of the rejected field name. */
   range: Range;
 }
 
@@ -87,8 +59,6 @@ const ARRAY_MEMBERS: ReadonlySet<string> = new Set([
 class DeclarationSet {
   present = false;
   readonly declared = new Map<string, DeclaredVariable>();
-  /** The static schema of each declaration whose default has one. */
-  readonly schemas = new Map<string, FieldSchema>();
   /** Lines Spindle rejects. */
   problems: InvalidDeclaration[] = [];
   /** The names declared, with the range of sigil and name of the first. */
@@ -99,7 +69,6 @@ class DeclarationSet {
   clear(): void {
     this.present = false;
     this.declared.clear();
-    this.schemas.clear();
     this.problems = [];
     this.names.clear();
   }
@@ -128,9 +97,6 @@ class DeclarationSet {
       if (schema) {
         if (schema.type !== 'null') declared.type = schema.type;
         if (schema.fields && schema.fields.size > 0) declared.fields = [...schema.fields.keys()];
-        this.schemas.set(name, schema);
-      } else {
-        this.schemas.delete(name);
       }
       // A name declared again replaces the first declaration, as when Spindle evaluates them
       this.declared.set(name, declared);
@@ -186,32 +152,21 @@ export class VariableTracker {
    * markup of its passages (see `collectVariableReferences`). The workspace
    * passes the `markup` it reads the document with, which knows the project's
    * macros and widgets; without it the built-in macros decide.
-   *
-   * `_macros` and `_storeVarMacros` are not read any more (a macro's
-   * `storeVar` flag says which macros bind a variable).
-   * @deprecated Pass only `markup`; drop the other arguments with their callers.
    */
-  scanDocument(
-    uri: string,
-    text: string,
-    _macros?: readonly unknown[],
-    _storeVarMacros?: ReadonlySet<string>,
-    markup: DocumentMarkup = standaloneMarkup(uri, text),
-  ): void {
+  scanDocument(uri: string, text: string, markup: DocumentMarkup = standaloneMarkup(uri, text)): void {
     this.removeDocument(uri);
     const usages: VariableUsage[] = [];
     const transientUsages: VariableUsage[] = [];
 
     for (const passage of markup.passages) {
-      const indexed = passage.passage.name !== STORY_SCRIPT_PASSAGE;
+      // StoryScript is script, not markup: rename and references do not list it
+      if (passage.passage.name === STORY_SCRIPT_PASSAGE) continue;
       for (const ref of collectVariableReferences(passage)) {
         const usage: VariableUsage = {
           uri,
           baseName: ref.name,
           fullName: ref.path,
           range: passage.range(ref.start, ref.end),
-          indexed,
-          validated: ref.validated,
         };
         (ref.sigil === '$' ? usages : transientUsages).push(usage);
       }
@@ -234,48 +189,7 @@ export class VariableTracker {
 
   /** Get all usages of a variable by base name. */
   getUsages(name: string): Array<{ uri: string; range: Range }> {
-    return indexedUsages(this.usagesByUri, name);
-  }
-
-  /**
-   * Get undeclared variable references in a specific document: the ones
-   * Spindle rejects when the story starts.
-   */
-  getUndeclared(uri: string): Array<{ name: string; range: Range }> {
-    return undeclared((this.usagesByUri.get(uri) ?? []).filter(u => u.validated), this.variables.declared);
-  }
-
-  /**
-   * Get the `$var.a.b` paths in a document that Spindle rejects at startup
-   * because they access a field of a number, string or boolean, judged by
-   * the StoryVariables defaults as Spindle's startup validation does
-   * (members of the primitive's wrapper such as `$s.length` are allowed).
-   * Every occurrence is reported; defaults that are not static are not
-   * checked.
-   */
-  getPrimitiveFieldAccesses(uri: string): PrimitiveFieldAccess[] {
-    const results: PrimitiveFieldAccess[] = [];
-    for (const ref of this.usagesByUri.get(uri) ?? []) {
-      const schema = ref.validated ? this.variables.schemas.get(ref.baseName) : undefined;
-      if (!schema) continue;
-      const parts = ref.fullName.split('.');
-      const found = findPrimitiveFieldAccess(schema, parts.slice(1));
-      if (!found) continue;
-
-      const owner = parts.slice(0, found.index + 1).join('.');
-      const field = parts[found.index + 1];
-      const start = ref.range.start.character + 1 + owner.length + 1;
-      results.push({
-        path: `$${owner}`,
-        field,
-        type: found.type,
-        range: {
-          start: { line: ref.range.start.line, character: start },
-          end: { line: ref.range.start.line, character: start + field.length },
-        },
-      });
-    }
-    return results;
+    return usagesOf(this.usagesByUri, name);
   }
 
   /** Whether a StoryVariables passage has been parsed. */
@@ -290,12 +204,7 @@ export class VariableTracker {
 
   /** Get all usages of a transient variable by base name. */
   getTransientUsages(name: string): Array<{ uri: string; range: Range }> {
-    return indexedUsages(this.transientUsagesByUri, name);
-  }
-
-  /** Get undeclared transient variable usages in a specific document. */
-  getUndeclaredTransient(uri: string): Array<{ name: string; range: Range }> {
-    return undeclared((this.transientUsagesByUri.get(uri) ?? []).filter(u => u.indexed), this.transients.declared);
+    return usagesOf(this.transientUsagesByUri, name);
   }
 
   /** Whether a StoryTransients passage has been parsed. */
@@ -318,22 +227,13 @@ export class VariableTracker {
     for (const [sigil, usages, declared] of sources) {
       for (const u of usages ?? []) {
         const member = u.fullName.split('.')[1];
-        if (!u.indexed || member === undefined) continue;
+        if (member === undefined) continue;
         if (declared.get(u.baseName)?.type !== 'array') continue;
         if (ARRAY_MEMBERS.has(member)) continue;
         results.push({ sigil, name: u.baseName, member, range: u.range });
       }
     }
     return results;
-  }
-
-  /**
-   * Variables declared with null values in StoryVariables. Spindle accepts a
-   * `null` default (type `null`: it may hold anything later), so there are none.
-   * @deprecated Nothing reports null defaults any more; delete with SP204.
-   */
-  getNullDeclarations(): NullDeclaration[] {
-    return [];
   }
 
   /** StoryVariables lines that stop Spindle from starting. */
@@ -360,37 +260,14 @@ export class VariableTracker {
     return [...this.transients.problems, ...collisions]
       .sort((a, b) => a.range.start.line - b.range.start.line);
   }
-
-  /**
-   * Transient variables declared with null values in StoryTransients.
-   * @deprecated See getNullDeclarations().
-   */
-  getNullTransientDeclarations(): NullDeclaration[] {
-    return [];
-  }
 }
 
-function indexedUsages(byUri: ReadonlyMap<string, VariableUsage[]>, name: string): Array<{ uri: string; range: Range }> {
+function usagesOf(byUri: ReadonlyMap<string, VariableUsage[]>, name: string): Array<{ uri: string; range: Range }> {
   const results: Array<{ uri: string; range: Range }> = [];
   for (const usages of byUri.values()) {
     for (const u of usages) {
-      if (u.indexed && u.baseName === name) results.push({ uri: u.uri, range: u.range });
+      if (u.baseName === name) results.push({ uri: u.uri, range: u.range });
     }
-  }
-  return results;
-}
-
-/** The first usage of each name that is not declared. */
-function undeclared(
-  usages: readonly VariableUsage[],
-  declared: ReadonlyMap<string, DeclaredVariable>,
-): Array<{ name: string; range: Range }> {
-  const results: Array<{ name: string; range: Range }> = [];
-  const seen = new Set<string>();
-  for (const u of usages) {
-    if (declared.has(u.baseName) || seen.has(u.baseName)) continue;
-    seen.add(u.baseName);
-    results.push({ name: u.baseName, range: u.range });
   }
   return results;
 }

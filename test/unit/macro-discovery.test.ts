@@ -132,7 +132,10 @@ $hp = 10
     const ws = new WorkspaceModel();
     ws.initialize(files);
     expect(ws.variables.getUsages('str').map(u => u.range.start.line)).toEqual([18]);
-    expect(ws.variables.getUndeclared('file:///story.tw').map(u => u.name)).toEqual(['str', 'undeclared']);
+    expect(computeDiagnostics('file:///story.tw', ws).filter(d => d.code === 'SP200').map(d => d.message)).toEqual([
+      'Undeclared variable: $str',
+      'Undeclared variable: $undeclared',
+    ]);
     expect(ws.variables.getUsages('text')).toEqual([]);
     ws.dispose();
   });

@@ -85,7 +85,7 @@ describe('D1: macros in bracket-link labels are macros (a label holds markup)', 
   /** The names the variable tracker records as usages (executable reads). */
   function oursReads(text: string): string[] {
     const tracker = new VariableTracker();
-    tracker.scanDocument('file:///s.tw', `:: P\n${text}`, []);
+    tracker.scanDocument('file:///s.tw', `:: P\n${text}`);
     // Look for every name the fixtures use
     return ['x', 'a', 'b', 't', 'u', 'k', 'y']
       .flatMap(name => [

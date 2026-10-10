@@ -19,9 +19,9 @@
  * runtime's interpolation reads (test/helpers/interpolation-oracle.ts, the
  * closest public equivalent of the runtime's own, which is not exported);
  * Q-diagnostic covers SP305; Q-rename applies the rename edits and reparses;
- * Q-validation compares SP200 with the installed startup validation (needs
- * upstream API: test/helpers/story-variables-oracle.ts). Every case runs with
- * LF and CRLF.
+ * Q-validation compares the SP200 of computeDiagnostics with the installed
+ * startup validation (test/helpers/story-variables-oracle.ts). Every case runs
+ * with LF and CRLF.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -90,7 +90,7 @@ describe('Q-differential: variable usages are what the runtime interpolates', ()
 
   function oursReads(text: string): string[] {
     const tracker = new VariableTracker();
-    tracker.scanDocument(uri, `:: P\n${text}`, []);
+    tracker.scanDocument(uri, `:: P\n${text}`);
     return ['x', 'a', 'b', 't', 'u', 'k', 'y', 'n', 'item']
       .flatMap(name => [
         ...tracker.getUsages(name).map(() => name),
@@ -332,11 +332,12 @@ describe('Q-validation: SP200 follows the installed startup validation', () => {
     'plain text with $nope and {$nope}',
   ];
 
+  /** The names SP200 reports for `content`, from the diagnostics of the document. */
   function lspUndeclared(content: string): string[] {
-    const tracker = new VariableTracker();
-    tracker.parseStoryVariables('$decl = 1', 1, uri);
-    tracker.scanDocument(uri, [':: StoryVariables', '$decl = 1', ':: Start', content, ''].join('\n'), []);
-    return tracker.getUndeclared(uri).map(u => u.name).sort();
+    const model = workspace([':: StoryVariables', '$decl = 1', ':: Start', content, ''].join('\n'));
+    return [...new Set(computeDiagnostics(uri, model)
+      .filter(d => d.code === 'SP200')
+      .map(d => /Undeclared variable: \$(\w+)/.exec(d.message)![1]))].sort();
   }
 
   function runtimeUndeclared(content: string): string[] {
