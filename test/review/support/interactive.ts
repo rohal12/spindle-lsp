@@ -13,12 +13,13 @@ import { pathToFileURL } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import {
   createMessageConnection, StreamMessageReader, StreamMessageWriter, type MessageConnection,
-} from 'vscode-languageserver/node.js';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { CompletionItem } from 'vscode-languageserver';
-import { tokenize } from '../../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
-import { buildAST, registerBlockMacro, unregisterBlockMacro } from '../../../node_modules/@rohal12/spindle/src/markup/ast.js';
-import { parseStoryVariables } from '../../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { isBlockMacro } from '@rohal12/spindle/tooling';
+import { tokenize } from '../../helpers/tooling.js';
+import { runtimeMarkupFailure } from '../../helpers/runtime-ast.js';
+import { fieldNames, parseStoryVariables } from '../../helpers/story-variables-oracle.js';
 import { getCompletions } from '../../../src/plugins/completions.js';
 import { getSignatureHelp } from '../../../src/plugins/signature.js';
 import { computeDiagnostics } from '../../../src/plugins/diagnostics.js';
@@ -165,10 +166,10 @@ export function registerInteractiveCells(cell: CellFn, ctx: Ctx): void {
       }
       // the first offered closer is the innermost open container
       expect(items[0].label).toBe('{/BlockOne}');
-      registerBlockMacro('blockone');
-      try {
-        expect(() => buildAST(tokenize(apply(text, items[0]).split('\n').slice(1).join('\n') + '{/if}'))).not.toThrow();
-      } finally { unregisterBlockMacro('blockone'); }
+      // the story's block widget is a block macro for the runtime's pairing
+      const blockWidget = (name: string) => name.toLowerCase() === 'blockone' || isBlockMacro(name);
+      const paired = apply(text, items[0]).split('\n').slice(1).join('\n') + '{/if}';
+      expect(runtimeMarkupFailure(paired, blockWidget), 'the runtime pairs the completed closer').toBeNull();
     });
   }
 
@@ -190,7 +191,7 @@ export function registerInteractiveCells(cell: CellFn, ctx: Ctx): void {
     }
     cell(`I/completion/variables/${bname}/property-path`, { role: 'ordinary', context: 'variable/property path', spelling: 'dotted property', boundary: bname, state: 'multi-file', consumer: 'completion applied, runtime-parsed object fields' }, () => {
       const { items, text, offset } = complete(baseFiles, wrap(`$o.${CURSOR}`));
-      const fields = Object.keys(decls.get('o')!.fields ?? {}).sort();
+      const fields = fieldNames(decls.get('o')).sort();
       expect(items.map(i => i.label).sort()).toEqual(fields);
       const endsWithAt = (result: string, source: string, cursorAt: number, want: string) => {
         const after = source.slice(cursorAt);
@@ -219,8 +220,15 @@ export function registerInteractiveCells(cell: CellFn, ctx: Ctx): void {
     }
   });
   cell('I/completion/attribute-value', { role: 'ordinary', context: 'HTML attribute', spelling: 'plain', boundary: 'eof-no-newline', state: 'multi-file', consumer: 'completion' }, () => {
+    // Spindle 0.59 reads an attribute value as markup of its own, in text mode (test/helpers/tooling.ts `deepTokens`):
+    // `{` there starts a macro (macro names are offered), `{/` has no open container to close, `[[` is text.
     for (const typed of ['{', '{/', '[[']) {
-      expect(complete(baseFiles, `:: Start\n<a title="${typed}${CURSOR}${typed === '[[' ? '' : '}'}">x</a>`).items.map(i => i.label), `attribute ${typed}`).toEqual([]);
+      const labels = complete(baseFiles, `:: Start\n<a title="${typed}${CURSOR}${typed === '[[' ? '' : '}'}">x</a>`).items.map(i => i.label);
+      if (typed === '{') {
+        expect(labels, 'a macro head in an attribute value').toEqual(expect.arrayContaining(['if', 'set', 'my-widget']));
+      } else {
+        expect(labels, `attribute ${typed}`).toEqual([]);
+      }
     }
   });
 
@@ -256,9 +264,14 @@ export function registerInteractiveCells(cell: CellFn, ctx: Ctx): void {
     });
   }
   cell('I/signature/attribute-value', { role: 'ordinary', context: 'HTML attribute', spelling: 'plain', boundary: 'eof-no-newline', state: 'multi-file', consumer: 'signature help' }, () => {
+    // a macro in an attribute value is a macro of the markup the value holds (Spindle 0.59), so it has a signature
     const cursor = at(`:: Start\n<p title="{pw 1 ${CURSOR}}">x</p>`);
     const model = build({ ...baseFiles, 'story.tw': cursor.text });
-    expect(getSignatureHelp('file:///story.tw', doc(cursor.text).positionAt(cursor.offset), model), 'macro in an attribute value is output as text').toBeNull();
+    const help = getSignatureHelp('file:///story.tw', doc(cursor.text).positionAt(cursor.offset), model);
+    expect(help, 'macro in an attribute value').not.toBeNull();
+    expect(help!.signatures[help!.activeSignature].label).toContain('{pw ');
+    expect(help!.activeParameter).toBe(1);
+    expect(runtimeTokens(cursor.text).filter(t => t.nested && t.token.type === 'macro' && t.token.name === 'pw').length, 'the runtime reads the macro').toBe(1);
   });
   cell('I/signature/runtime-agreement', { role: 'ordinary', context: 'macro arg', spelling: 'all', boundary: 'eof-newline', state: 'multi-file', consumer: 'signature help vs runtime macro tokens' }, () => {
     const story = ':: Start\n{pw 1 2 3} {set $v = 1} {if $v}x{/if} text {pw "a b"} <p title="{pw 1}">y</p> [[go|Target]]\n';

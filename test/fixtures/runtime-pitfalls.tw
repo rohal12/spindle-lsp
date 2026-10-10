@@ -15,4 +15,4 @@ $buildings = [{ name: "Smelter" }, { name: "Farm" }]
 {/for}
 {for @b of $buildings}{BuildingRow @b}{/for}
 {if $flags.discovered_corruption}Corrupted.{/if}
-{include ActResist}
+{include "ActResist"}

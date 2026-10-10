@@ -3,8 +3,8 @@ import { stripBom } from './document-store.js';
 import type { Passage } from '../types.js';
 import { PassageIndex } from './passage-index.js';
 import { findProjectFiles, findProjectRoot } from './macro-sources.js';
-import { readInstalledSpindleVersion, resolveSpindleCapabilities } from './spindle-capabilities.js';
-import type { SpindleCapabilities } from './spindle-capabilities.js';
+import { readInstalledSpindleVersion, resolveSpindleTarget } from './spindle-version.js';
+import type { SpindleTarget } from './spindle-version.js';
 
 /**
  * The story format a project declares in its Twee 3 StoryData passage
@@ -31,7 +31,7 @@ export interface StoryFormat {
 export const UNDECLARED_STORY_FORMAT: StoryFormat = { name: undefined, isSpindle: true };
 
 /** Whether a declared format name names Spindle (case-insensitive, trimmed). */
-export function isSpindleFormatName(name: string): boolean {
+function isSpindleFormatName(name: string): boolean {
   return name.trim().toLowerCase() === 'spindle';
 }
 
@@ -58,7 +58,7 @@ export function readStoryDataFormat(content: string): string | undefined {
  * a StoryData that names Spindle or no format. Undefined if the content does
  * not parse, names another format, or has no string `format-version`.
  */
-export function readStoryDataFormatVersion(content: string): string | undefined {
+function readStoryDataFormatVersion(content: string): string | undefined {
   let data: unknown;
   try {
     data = JSON.parse(content);
@@ -190,11 +190,12 @@ function storyFormatVersionOfTexts(texts: Iterable<string>): string | undefined 
  * The target Spindle of files processed without a workspace (the CLI and MCP
  * formatter), resolved like the workspace does: the `@rohal12/spindle`
  * installed at or above `dir`, else the `format-version` of a StoryData among
- * `texts` or in the project containing `dir`, else the default behavior.
+ * `texts` or in the project containing `dir`, else none. Only used to tell
+ * the user when it is older than the oldest supported release.
  */
-export async function findSpindleCapabilities(texts: Iterable<string>, dir: string): Promise<SpindleCapabilities> {
+export async function findSpindleTarget(texts: Iterable<string>, dir: string): Promise<SpindleTarget> {
   const installed = readInstalledSpindleVersion(dir);
-  if (installed) return resolveSpindleCapabilities(installed);
+  if (installed) return resolveSpindleTarget(installed);
   const own = [...texts];
   let version = storyFormatVersionOfTexts(own);
   if (version === undefined && !storyFormatOfTexts(own).hasStoryData) {
@@ -208,7 +209,7 @@ export async function findSpindleCapabilities(texts: Iterable<string>, dir: stri
     }
     version = storyFormatVersionOfTexts(projectTexts);
   }
-  return resolveSpindleCapabilities(undefined, version);
+  return resolveSpindleTarget(undefined, version);
 }
 
 /** Note shown by the CLI and MCP tools when they skip a non-Spindle project. */

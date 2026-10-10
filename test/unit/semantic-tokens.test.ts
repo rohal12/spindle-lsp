@@ -185,16 +185,29 @@ describe('CSS-prefixed variable displays (#58)', () => {
   });
 });
 
-describe('semantic tokens inside HTML attribute values', () => {
-  it('does not mark a macro written inside an attribute value as a macro', () => {
-    // Spindle outputs it there as text (SP103).
-    const ws = createWorkspace({
-      name: 'test.tw',
-      content: ':: Start\n<span class="{if $x}a{/if}">t</span>{if $x}b{/if}',
-    });
-    const tokens = computeSemanticTokensAbsolute('file:///test.tw', ws);
-    const functionTokens = tokens.filter(t => t.tokenType === typeIdx('function'));
-    expect(functionTokens.map(t => t.startChar)).toEqual([37, 46]);
+describe('semantic tokens inside HTML attribute values, labels and comments', () => {
+  const tokensOf = (body: string) => computeSemanticTokensAbsolute('file:///test.tw', createWorkspace({ name: 'test.tw', content: `:: Start\n${body}` }));
+  const functionStarts = (body: string) => tokensOf(body).filter(t => t.tokenType === typeIdx('function')).map(t => t.startChar);
+
+  it('marks a macro written inside an attribute value: Spindle reads the value as markup', () => {
+    expect(functionStarts('<span class="{if $x}a{/if}">t</span>{if $x}b{/if}')).toEqual([14, 23, 37, 46]);
+  });
+
+  it('marks a macro and a variable inside the label of a link and of a button', () => {
+    const tokens = tokensOf('[[Go {if $x}now{/if}->T]] {button "Press {_k}"}x{/button}');
+    expect(tokens.filter(t => t.tokenType === typeIdx('function')).map(t => t.startChar)).toEqual([6, 17, 27, 50]);
+    expect(tokens.filter(t => t.tokenType === typeIdx('variable')).map(t => t.startChar)).toEqual([9, 42]);
+  });
+
+  it('marks nothing written inside a closed HTML comment: it is one text token', () => {
+    expect(tokensOf('<!-- {if $x}a{/if} {$x} {goto "T"} -->').filter(t => t.line === 1)).toEqual([]);
+    expect(functionStarts('<!-- {x} -->{if $x}b{/if}')).toEqual([13, 22]);
+  });
+
+  it('marks nothing in a {do} body or in a string of code but its variables', () => {
+    const tokens = tokensOf('{do}_a = "{if}"{/do}{print "$x {if}"}');
+    expect(tokens.filter(t => t.tokenType === typeIdx('function')).map(t => t.startChar)).toEqual([1, 17, 21]);
+    expect(tokens.filter(t => t.tokenType === typeIdx('variable')).map(t => t.startChar)).toEqual([4]);
   });
 });
 
@@ -275,7 +288,7 @@ describe('S80: variable identifiers never overlap other semantic tokens (#80)', 
   });
 
   it('S80-template-crlf-utf16: CRLF and astral characters keep UTF-16 columns and in-line ranges', () => {
-    const text = ':: Start\r\n{print `\u{1F600} ${$a\r\n  is $c} \u{1F600} and`}\r\n$d';
+    const text = ':: Start\r\n{print `\u{1F600} ${$a\r\n  is $c} \u{1F600} and`}\r\n{$d}';
     expectNoOverlap(text);
     expectNoKeywords(text);
     const lines = text.split('\r\n');

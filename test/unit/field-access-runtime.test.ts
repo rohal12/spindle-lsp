@@ -1,17 +1,16 @@
 /**
- * Differential test: the LSP's field-access check (SP201) against Spindle's
- * own startup validation, imported from the installed runtime's source.
+ * Differential test: the SP201 of `computeDiagnostics` against Spindle's own
+ * startup validation (`validateVariableReferences`, through
+ * test/helpers/story-variables-oracle.ts), over declarations evaluated by
+ * `parseStoryVariables`.
  * Every field error the LSP reports must be one Spindle reports, with the
  * same message; the only errors the LSP may miss are those whose default is
  * not a literal it can type without evaluating code.
  */
 import { describe, it, expect } from 'vitest';
-import {
-  parseStoryVariables,
-  validatePassages,
-} from '../../node_modules/@rohal12/spindle/src/story-variables.js';
-import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
+import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
+import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 
 const uri = 'file:///story.tw';
 
@@ -32,12 +31,9 @@ function runtimeErrors(vars: string, passages: Array<[string, string]>): string[
 /** The LSP's SP201 findings for the same story, in Spindle's wording. */
 function lspErrors(vars: string, passages: Array<[string, string]>): string[] {
   const text = [':: StoryVariables', vars, '', ...passages.flatMap(([name, content]) => [`:: ${name}`, content, ''])].join('\n');
-  const tracker = new VariableTracker();
-  tracker.setCapabilities(INSTALLED_CAPABILITIES); // the LSP follows the runtime it targets
-  tracker.parseStoryVariables(vars, 1, uri);
-  tracker.scanDocument(uri, text, []);
-  return tracker.getPrimitiveFieldAccesses(uri)
-    .map(a => `Cannot access field "${a.field}" on ${a.path} (type: ${a.type})`);
+  const model = new WorkspaceModel();
+  model.initialize(new Map([[uri, text]]));
+  return computeDiagnostics(uri, model).filter(d => d.code === 'SP201').map(d => d.message);
 }
 
 const DEFAULTS = [
@@ -49,7 +45,7 @@ const DEFAULTS = [
   '{a: "x", b: [], c: {d: 1, e: {f: true}}}',
   '{"a": {b: 2}}', "{'a': 'q', b: `t`}", '{2: "x", a: {b: {c: {d: 1}}}}',
   '{a: 1, a: {b: 2}}',
-  '{...{a: 1}}', '{a: 1, ...{a: {b: 1}}}', '{a: {b: 1}, ...{}}',
+  '{...{a: 1}}', '{a: {b: 1}, ...{}}',
   '{get a() { return 1 }}', '{a() { return 1 }}', '{__proto__: {a: 1}}',
   '{["a"]: 1}', '{a: 1 + 1, b: "x"}', '{a: [1].length, b: {c: 1}}', '{a: 10 / 2, b: 1}',
   '2 * 3', '"a" + "b"', 'Math.max(1, 2)', 'new Date()', '[1].length', '({a: 1}).a',
@@ -89,12 +85,26 @@ describe('SP201 agrees with Spindle\'s validatePassages', () => {
     expect([...rejected]).toEqual(['{a() { return 1 }}']);
     // Defaults whose value is only known by evaluating them: the LSP stays silent.
     expect([...missed]).toEqual([
-      '0x10', '`a${1}`',
-      '{...{a: 1}}', '{a: 1, ...{a: {b: 1}}}', '{a: {b: 1}, ...{}}',
+      '`a${1}`',
+      '{...{a: 1}}', '{a: {b: 1}, ...{}}',
       '{get a() { return 1 }}', '{["a"]: 1}', '{a: 1 + 1, b: "x"}', '{a: [1].length, b: {c: 1}}', '{a: 10 / 2, b: 1}',
       '2 * 3', '"a" + "b"', 'Math.max(1, 2)', '[1].length', '({a: 1}).a',
       'String(1)', '!0', 'typeof 1',
     ]);
+  });
+
+  // parseDeclarations once gave `a: number` for `{a: 1, ...{a: {b: 1}}}`, whose spread replaces it with
+  // an object (rohal12/spindle#466, fixed in 0.59.27). Its own test, so that the differential above
+  // stays meaningful.
+  it('{a: 1, ...{a: {b: 1}}}: a member before a spread is not reliable, the spread may replace it', () => {
+    const vars = '$v = {a: 1, ...{a: {b: 1}}}';
+    // The members of an object with a spread are unknown to the tooling API, so the LSP stays silent
+    // where the runtime (which evaluates the default) can find an error: never the other way round.
+    for (const path of ['a.b', 'a.x', 'a.length', 'a.b.c']) {
+      const passages: Array<[string, string]> = [['Start', `{print $v.${path}}`]];
+      const runtime = runtimeErrors(vars, passages);
+      for (const error of lspErrors(vars, passages)) expect({ path, error }).toEqual({ path, error: expect.toBeOneOf(runtime) });
+    }
   });
 
   it('agrees on whole stories: prose, strings, {for} locals and several passages', () => {
@@ -118,11 +128,9 @@ describe('SP201 agrees with Spindle\'s validatePassages', () => {
       ['W [widget]', '{widget "w"}{$on.flag}{/widget}'],
     ];
     const runtime = runtimeErrors(vars, passages.map(([n, c]) => [n.replace(/ \[.*\]$/, ''), c]));
-    // The {for @name} in Start makes every $name there a local, as in Spindle.
-    // Before 0.50.1 prose, strings and comments are validated too; 0.51.1
-    // also allows primitive members ($name.length).
-    const { executableRefsOnly, primitiveMembers } = INSTALLED_CAPABILITIES;
-    expect(runtime).toHaveLength(executableRefsOnly ? (primitiveMembers ? 3 : 4) : 8);
+    // Only what a passage executes is validated (not prose, strings or comments), a {for @name}
+    // binds a local and not $name, and members of a primitive's wrapper ($name.length) are allowed.
+    expect(runtime).toHaveLength(3);
     expect(lspErrors(vars, passages)).toEqual(runtime);
   });
 });

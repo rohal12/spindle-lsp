@@ -11,7 +11,7 @@ import {
   StreamMessageWriter,
   type MessageConnection,
   type Diagnostic as LspDiagnostic,
-} from 'vscode-languageserver/node.js';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
@@ -310,10 +310,10 @@ Content here.
   });
 
   // -----------------------------------------------------------------------
-  // 6b. SP110: cross-file passage parameter validation
+  // 6b. SP300: cross-file passage existence
   // -----------------------------------------------------------------------
 
-  it('SP110: passage parameter resolves across files (issue #9)', () => {
+  it('SP300: passage parameter resolves across files (issue #9)', () => {
     // Simulate a macro with a "passage" parameter type (e.g. {choice})
     const file1 = `:: arrival-docking [intro]
 {goto "arrival-alma-flickers"}
@@ -328,15 +328,11 @@ Content here.
     });
 
     // Override goto's parameter to use "passage" type (simulates user-defined macro config)
-    workspace.macros.addMacro({
-      name: 'goto',
-      parameters: ['passage'],
-    });
 
     const diags = computeDiagnostics('file:///docking.tw', workspace);
-    const sp110 = diags.filter(d => d.code === 'SP110');
-    // Passage exists in another file — no SP110 expected
-    expect(sp110).toHaveLength(0);
+    const sp300 = diags.filter(d => d.code === 'SP300');
+    // Passage exists in another file — no SP300 expected
+    expect(sp300).toHaveLength(0);
   });
 
   // -----------------------------------------------------------------------
@@ -356,15 +352,11 @@ Content.
       'file2.tw': file2,
     });
 
-    workspace.macros.addMacro({
-      name: 'goto',
-      parameters: ['passage'],
-    });
 
-    // Initially correct — no SP110
+    // Initially correct — no SP300
     let diags = computeDiagnostics('file:///file1.tw', workspace);
-    let sp110 = diags.filter(d => d.code === 'SP110');
-    expect(sp110).toHaveLength(0);
+    let sp300 = diags.filter(d => d.code === 'SP300');
+    expect(sp300).toHaveLength(0);
 
     // At the WorkspaceModel level, close() removes passages (expected).
     // The server's onDidCloseTextDocument handler is responsible for
@@ -372,23 +364,19 @@ Content.
     workspace.documents.close('file:///file2.tw');
 
     diags = computeDiagnostics('file:///file1.tw', workspace);
-    sp110 = diags.filter(d => d.code === 'SP110');
-    // After close, the document store no longer has file2, so SP110 fires.
+    sp300 = diags.filter(d => d.code === 'SP300');
+    // After close, the document store no longer has file2, so SP300 fires.
     // In the real LSP server, onDidCloseTextDocument re-reads from disk.
-    expect(sp110.length).toBeGreaterThan(0);
+    expect(sp300.length).toBeGreaterThan(0);
   });
 
   // -----------------------------------------------------------------------
   // 6d. LSP flow: didOpen before workspace scan, then scan completes
   // -----------------------------------------------------------------------
 
-  it('SP110: editor opens file before workspace scan, scan completes later', async () => {
+  it('SP300: editor opens file before workspace scan, scan completes later', async () => {
     // Simulate LSP flow: workspace not yet initialized, editor opens a file
     workspace = new WorkspaceModel();
-    workspace.macros.addMacro({
-      name: 'goto',
-      parameters: ['passage'],
-    });
 
     const file1 = `:: Start
 {goto "PageTwo"}
@@ -413,21 +401,17 @@ Content.
 
     // Step 3: After initialization, diagnostics should be correct
     diags = computeDiagnostics('file:///file1.tw', workspace);
-    const sp110 = diags.filter(d => d.code === 'SP110');
-    expect(sp110).toHaveLength(0);
+    const sp300 = diags.filter(d => d.code === 'SP300');
+    expect(sp300).toHaveLength(0);
   });
 
   // -----------------------------------------------------------------------
   // 6e. LSP flow: workspace scan finds no files (workspaceRoot undefined)
   // -----------------------------------------------------------------------
 
-  it('SP110: empty workspace scan then didOpen produces false positive', () => {
+  it('SP300: empty workspace scan then didOpen produces false positive', () => {
     // Simulate: workspaceRoot is undefined → scan returns empty map
     workspace = new WorkspaceModel();
-    workspace.macros.addMacro({
-      name: 'goto',
-      parameters: ['passage'],
-    });
 
     const file1 = `:: Start
 {goto "PageTwo"}
@@ -441,9 +425,9 @@ Content.
 
     // Now diagnostics run with only file1's passages
     const diags = computeDiagnostics('file:///file1.tw', workspace);
-    const sp110 = diags.filter(d => d.code === 'SP110');
-    // PageTwo doesn't exist → SP110 fires (this is correct behavior since no other files)
-    expect(sp110.length).toBeGreaterThan(0);
+    const sp300 = diags.filter(d => d.code === 'SP300');
+    // PageTwo doesn't exist → SP300 fires (this is correct behavior since no other files)
+    expect(sp300.length).toBeGreaterThan(0);
   });
 
   // -----------------------------------------------------------------------
@@ -978,7 +962,7 @@ describe('Integration: LSP server over stdio', () => {
     expect(session.latest(uri)).toEqual([]);
   });
 
-  it('publishes SP200 for undeclared variables in StoryInit, interpolations and receivers (#62)', async () => {
+  it('publishes SP200 for undeclared variables in StoryInit, interpolations and receivers, not prose (#62)', async () => {
     const dir = makeTempWorkspace({
       'story.twee': [
         ':: StoryVariables',
@@ -997,11 +981,10 @@ describe('Integration: LSP server over stdio', () => {
     const session = await startLsp(dir);
     const diags = await session.waitForDiagnostics(uri, hasCode('SP200'));
     expect(diags.filter(d => d.code === 'SP200').map(d => d.message)).toEqual([
-      "Variable '$missingInit' is not declared in StoryVariables",
-      "Variable '$missingTemplate' is not declared in StoryVariables",
-      "Variable '$missingReceiver' is not declared in StoryVariables",
-      "Variable '$missingCode' is not declared in StoryVariables",
-      "Variable '$missingProse' is not declared in StoryVariables",
+      'Undeclared variable: $missingInit',
+      'Undeclared variable: $missingTemplate',
+      'Undeclared variable: $missingReceiver',
+      'Undeclared variable: $missingCode',
     ]);
   });
 
@@ -1132,8 +1115,8 @@ describe('Integration: LSP server over stdio', () => {
     const diags = await session.waitForDiagnostics(uri, hasCode('SP300'));
     const sp100 = diags.filter(d => d.code === 'SP100').map(d => d.message);
     expect(sp100).toEqual([
-      'Unrecognized macro: {vendored}',
-      'Unrecognized macro: {bundled}',
+      'Unknown macro {vendored}.',
+      'Unknown macro {bundled}.',
     ]);
 
     // Watcher events for excluded files don't add them either
@@ -1143,8 +1126,8 @@ describe('Integration: LSP server over stdio', () => {
     await didChangeFull(session, uri, 2, ':: Start\n{vendored}\n{bundled}\n[[Missing]]\n');
     const after = await session.waitForDiagnostics(uri, hasCode('SP300'), mark);
     expect(after.filter(d => d.code === 'SP100').map(d => d.message)).toEqual([
-      'Unrecognized macro: {vendored}',
-      'Unrecognized macro: {bundled}',
+      'Unknown macro {vendored}.',
+      'Unknown macro {bundled}.',
     ]);
   });
 
@@ -1167,7 +1150,7 @@ describe('Integration: LSP server over stdio', () => {
     const session = await startLsp(dir);
     await didOpen(session, uri, readFileSync(join(dir, 'story.tw'), 'utf-8'));
 
-    const expected = ['Unrecognized macro: {storybook}', 'Unrecognized macro: {cfg}'];
+    const expected = ['Unknown macro {storybook}.', 'Unknown macro {cfg}. Did you mean {if}?'];
     const diags = await session.waitForDiagnostics(uri, hasCode('SP300'));
     expect(diags.filter(d => d.code === 'SP100').map(d => d.message)).toEqual(expected);
 

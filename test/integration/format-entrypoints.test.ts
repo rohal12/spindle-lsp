@@ -11,11 +11,11 @@ import { pathToFileURL } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import {
   createMessageConnection, StreamMessageReader, StreamMessageWriter, type MessageConnection,
-} from 'vscode-languageserver/node.js';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { buildDist, type DistBuild } from './support/dist-build.js';
 
 /** What the runtime executes: compiler-normalized newlines, macro payloads. */

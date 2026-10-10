@@ -2,10 +2,12 @@ import { ErrorCodes, ResponseError } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
+import { passagePieces, type Piece } from '@rohal12/spindle/tooling';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
-import { findPassageRefAt, isVerbatimBareName, parseLinks, resolveLinkMacroTarget, type LinkRuntimeOptions, type PassageRef } from '../core/parsing/link-parser.js';
+import { passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
+import type { PassageMarkup } from '../core/markup/passage-markup.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
-import { macroHeadNameAt } from '../core/parsing/macro-parser.js';
+import { macroHeadAt } from '../core/markup/macro-heads.js';
 import { isReservedPassageName, parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageRefs,
@@ -65,10 +67,10 @@ export function computeRename(
 
   switch (symbol.kind) {
     case 'passage': {
-      // Each reference spells its target in its own context (bracket link,
-      // JavaScript string, MacroLink string); encode per reference and fail
-      // before returning any edit when a spelling cannot hold the name. The
-      // error names the reference that cannot.
+      // Each reference spells its name in its own context (bracket link,
+      // JavaScript string, text); encode per reference and fail before
+      // returning any edit when a spelling cannot hold the name. The error
+      // names the reference that cannot.
       // Renaming to its own name changes nothing; re-spelling references
       // could only alter their meaning.
       if (newName === symbol.name) return new Map();
@@ -77,13 +79,22 @@ export function computeRename(
       if (workspace.passages.getPassage(newName)) {
         throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: a passage with that name already exists.`).at(uri, symbol.range);
       }
-      const refEdits: Array<{ uri: string; range: Range; text: string }> = [];
+      const refEdits: Array<{ uri: string; ref: PassageRef; text: string }> = [];
       for (const { uri: refUri, ref } of findPassageRefs(symbol.name, workspace)) {
         try {
-          refEdits.push({ uri: refUri, range: ref.range, text: encodePassageRefName(ref, newName, workspace.capabilities) });
+          refEdits.push({ uri: refUri, ref, text: encodePassageRefName(ref, newName) });
         } catch (error) {
           if (error instanceof RenameError) throw error.at(refUri, ref.range);
           throw error;
+        }
+      }
+      // What each spelling means is the tooling API's to say: read the
+      // rewritten passages back before any edit is returned
+      for (const [passage, edits] of groupByPassage(refEdits)) {
+        const broken = misreadRewrite(passage, edits, symbol.name, newName);
+        if (broken) {
+          const refUri = refEdits.find(edit => edit.ref === broken)!.uri;
+          throw unrepresentable(newName, describeRef(broken)).at(refUri, broken.range);
         }
       }
       // The header spells the name with Twee escapes (`A\[B`); links and
@@ -96,7 +107,7 @@ export function computeRename(
         if (problem) throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: ${problem}.`).at(declaration.uri, declaration.nameRange);
         addEdit(declaration.uri, declaration.nameRange, escapePassageName(newName));
       }
-      for (const { uri: refUri, range, text } of refEdits) addEdit(refUri, range, text);
+      for (const { uri: refUri, ref, text } of refEdits) addEdit(refUri, ref.range, text);
       break;
     }
 
@@ -109,6 +120,13 @@ export function computeRename(
       if (!/^\w+$/.test(bareName)) {
         throw new RenameError(
           `Cannot rename to ${JSON.stringify(newName)}: a variable name must be word characters only (letters, digits and _; no \`$\`, \`%\`, \`.\` or spaces).`,
+        ).at(uri, symbol.range);
+      }
+      // In code `%5` is the modulo operator, not a transient (`transform('%5')`
+      // throws), so a transient cannot be named by digits first.
+      if (symbol.sigil === '%' && /^\d/.test(bareName)) {
+        throw new RenameError(
+          `Cannot rename to ${JSON.stringify(newName)}: a transient name cannot start with a digit, \`%5\` is the modulo operator in code.`,
         ).at(uri, symbol.range);
       }
       const refs = symbol.sigil === '%'
@@ -183,58 +201,93 @@ function passageHeaderProblem(name: string): string | null {
   return null;
 }
 
+function unrepresentable(newName: string, where: string): RenameError {
+  return new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it cannot be written inside ${where}.`);
+}
+
+/** Where a reference is written, for a message. */
+function describeRef(ref: PassageRef): string {
+  switch (ref.form) {
+    case 'bracket': return 'a [[link]] (it cannot contain |, ->, <-, [[, ]], a line break, or leading/trailing whitespace)';
+    case 'text': return `the text of {${ref.macro}}`;
+    case 'quoted': return `a ${ref.quote ?? '"'}-quoted {${ref.macro}} argument`;
+  }
+}
+
 /**
  * Spell `newName` for the reference's context so that Spindle reads the
- * same name back. Throws RenameError when the context cannot represent it.
+ * same name back: a bracket link target as written, a quoted argument as a
+ * JavaScript string literal (the escapes of quote, backslash and line breaks
+ * included; `passageTarget` reads it), and, inside the quoted argument of
+ * another macro (a label), once more with that string's escapes. Throws
+ * RenameError when the context cannot represent it. computeRename also reads
+ * the rewritten passage back, which decides what only the markup can (a name
+ * with `->` in a link, a quote in an attribute value).
  */
-export function encodePassageRefName(ref: PassageRef, newName: string, options: LinkRuntimeOptions = {}): string {
-  const unrepresentable = (where: string): RenameError =>
-    new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it cannot be written inside ${where}.`);
-  const isInclude = ref.source === 'macro' && ref.macro === 'include';
-  // Before Spindle 0.51.1 `{include}` removes the first `inline` word from
-  // its arguments even inside a quoted target, so the word is spelled with a
-  // JavaScript escape (`\u0069nline`) that the evaluator reads back as `i`.
-  const encodeInclude = (literal: string): string =>
-    isInclude && !options.includeInlineScoped ? literal.replace(/\binline\b/g, '\\u0069nline') : literal;
-
+export function encodePassageRefName(ref: PassageRef, newName: string): string {
+  let spelling: string;
   switch (ref.form) {
-    case 'js-string':
-      return encodeInclude(encodeStringLiteralBody(newName, ref.quote ?? '"'));
-    case 'bare': {
-      // An unquoted target is a text fallback, used only when evaluating it
-      // throws. Anything else (`1 + 2`, `a-b`, `true`) evaluates to another
-      // value, so quote it. A bare name Spindle 0.51.1+ would read as the
-      // `inline` flag is quoted as well.
-      if (isVerbatimBareName(newName) && !(isInclude && /\binline\b/.test(newName))) return newName;
-      return encodeInclude(`"${encodeStringLiteralBody(newName, '"')}"`);
-    }
-    case 'link-string': {
-      // The link macro reads its quoted arguments with a quote regex: before
-      // Spindle 0.51.1 nothing is escaped, from 0.51.1 `\\` and the
-      // delimiter are (see link-runtime.ts).
-      const quote = ref.quote ?? '"';
-      const body = options.linkQuoteEscapes
-        ? newName.replace(/\\/g, '\\\\').split(quote).join(`\\${quote}`)
-        : newName;
-      const probe = resolveLinkMacroTarget(`"label" ${quote}${body}${quote}`, options);
-      if (!probe || probe.name !== newName) {
-        throw unrepresentable(`a {link} ${quote}-quoted argument (it cannot contain the quote, a line break or a backslash before Spindle 0.51.1)`);
-      }
-      return body;
-    }
-    case 'bracket': {
-      const probe = parseLinks(`[[${newName}]]`, 0, options);
-      if (probe.length !== 1 || probe[0].name !== newName) {
-        throw unrepresentable('a [[link]] (it cannot contain |, ->, <-, [[, ]], or leading/trailing whitespace)');
-      }
-      // The link macro that renders the link must read the name back: before
-      // Spindle 0.51.1 a double quote or a line break sends the click elsewhere.
-      if (bracketLinkMismatch('label', newName, options.linkQuoteEscapes === true)) {
-        throw unrepresentable('a [[link]] (Spindle before 0.51.1 reads the link text with a quote regex, so it cannot contain a double quote or a line break)');
-      }
-      return newName;
-    }
+    case 'bracket':
+      // The link macro that renders the link must carry the name: a line
+      // break makes its quoted target an expression, and the click fails
+      if (bracketLinkMismatch('label', newName)) throw unrepresentable(newName, describeRef(ref));
+      spelling = newName;
+      break;
+    case 'quoted':
+      spelling = encodeStringLiteralBody(newName, ref.quote ?? '"');
+      break;
+    case 'text':
+      spelling = newName;
+      break;
   }
+  const within = ref.within;
+  if (!within || within.attribute) return spelling;
+  // The text of a quoted macro argument is unescaped (`\"`, `\'`, `\\`) before its markup is read
+  return spelling.replace(/\\/g, '\\\\').replace(/["']/g, quote => (quote === within.quote ? `\\${quote}` : quote));
+}
+
+function groupByPassage(edits: Array<{ ref: PassageRef; text: string }>): Map<PassageMarkup, Array<{ ref: PassageRef; text: string }>> {
+  const groups = new Map<PassageMarkup, Array<{ ref: PassageRef; text: string }>>();
+  for (const edit of edits) {
+    const group = groups.get(edit.ref.passage);
+    if (group) group.push(edit);
+    else groups.set(edit.ref.passage, [edit]);
+  }
+  return groups;
+}
+
+/** What a piece is, for comparing a passage before and after a rename (`rename` maps passage names). */
+function signature(piece: Piece, rename: (name: string) => string): string {
+  switch (piece.kind) {
+    case 'passage': return `passage ${piece.macro} ${rename(piece.name)}`;
+    case 'code': return `code ${piece.goal} ${piece.macro ?? ''} ${piece.code}`;
+    case 'text': return `text ${piece.where}`;
+    case 'argument-error': return `error ${piece.macro}`;
+  }
+}
+
+/**
+ * Apply the edits to the passage and read it back with the tooling API: the
+ * rewrite must name `newName` where it named `oldName` and read every other
+ * piece as before. Returns the first reference that does not, else null.
+ */
+function misreadRewrite(
+  passage: PassageMarkup,
+  edits: Array<{ ref: PassageRef; text: string }>,
+  oldName: string,
+  newName: string,
+): PassageRef | null {
+  let content = passage.content;
+  for (const { ref, text } of [...edits].sort((a, b) => b.ref.start - a.ref.start)) {
+    content = content.slice(0, ref.start) + text + content.slice(ref.end);
+  }
+  const before = passage.pieces.map(piece => signature(piece, name => (name === oldName ? newName : name)));
+  const after = passagePieces(content, passage.doc.context.macros).map(piece => signature(piece, name => name));
+  const at = before.findIndex((sig, index) => sig !== after[index]);
+  if (at === -1 && before.length === after.length) return null;
+  const index = at === -1 ? before.length : at;
+  const owner = edits.filter(edit => edit.ref.piece <= index).at(-1) ?? edits[0];
+  return owner.ref;
 }
 
 /** Escape the Twee header metacharacters (`[ ] { } \`) in a passage name. */
@@ -297,18 +350,17 @@ function resolveSymbolAtCursor(
   }
 
   // --- Widget invocation: {widgetName ...} or block widget closing tag {/widgetName} ---
-  {
-    const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
-    if (head) {
-      const widget = workspace.widgets.getWidget(head.name);
-      if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
-        return { kind: 'widget', name: head.name, range: head.range };
-      }
+  const doc = workspace.markup.get(uri);
+  const head = doc && macroHeadAt(doc, position);
+  if (head) {
+    const widget = workspace.widgets.getWidget(head.name);
+    if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
+      return { kind: 'widget', name: head.name, range: head.range };
     }
   }
 
-  // --- Passage reference in [[link]] or macro arguments (goto, include, link) ---
-  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
+  // --- Passage name written out: [[link]] or a quoted macro argument ---
+  const passageRef = doc && passageRefAt(doc, position);
   if (passageRef && workspace.passages.getPassage(passageRef.name) && !isReservedPassageName(passageRef.name)) {
     return { kind: 'passage', name: passageRef.name, range: passageRef.range };
   }

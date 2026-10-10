@@ -32,9 +32,9 @@ describe('SP101: container nesting and passage boundaries', () => {
   it('reports crossed containers in one passage', () => {
     const sp101 = codes(':: Start\n{if true}{for @x of []}{/if}{/for}', 'SP101');
     expect(sp101).toHaveLength(2);
-    // Spindle throws "Expected {/for} but found {/if}" at the first closer
-    expect(sp101.some(d => d.message.includes('expected {/for} but found {/if}'))).toBe(true);
-    expect(sp101.some(d => d.message.includes('no matching {/if}'))).toBe(true);
+    // pairMarkup: the first closer is found where {/for} should close, and the second closes nothing
+    expect(sp101.some(d => d.message.startsWith('{/if} found where {/for} should close the {for}'))).toBe(true);
+    expect(sp101.some(d => d.message === '{/for} closes nothing: no {for} is open here')).toBe(true);
   });
 
   it('accepts properly nested containers', () => {
@@ -43,13 +43,10 @@ describe('SP101: container nesting and passage boundaries', () => {
   });
 });
 
-describe('argument validation with receiver parameters', () => {
-  it('validates macros that follow a receiver macro', () => {
-    const sp109 = codes(':: Start\n{textbox "$x" ""}\n{goto}', 'SP109');
-    expect(sp109).toHaveLength(1);
-    expect(sp109[0].message).toContain('{goto}');
-  });
-
+describe('argument validation', () => {
+  // Spindle declares the parameters of the macros it defines and the tooling API reports the arguments that do not have
+  // their form (`argument-error`, SP109). Arguments the runtime does not reject (a missing target, a receiver that is
+  // no variable, an extra word) are not diagnosed, whatever the LSP's own schema (macro-supplements.json) says.
   it('accepts the documented form controls', () => {
     const text = [
       ':: Start',
@@ -66,23 +63,31 @@ describe('argument validation with receiver parameters', () => {
     expect(argDiags).toEqual([]);
   });
 
-  it('accepts the noclose modifier of dialog', () => {
-    const text = ':: Start\n{dialog "Open" noclose}Target{/dialog}\n{dialog "Open"}Target{/dialog}\n:: Target\nHi';
-    expect(diagnose(text).filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
-    expect(codes(':: Start\n{dialog "Open" extra}Target{/dialog}', 'SP109')).toHaveLength(1);
-  });
-
-  it('rejects a receiver that is not a variable', () => {
-    const sp109 = codes(':: Start\n{textbox 42 "x"}', 'SP109');
+  it('reports arguments that do not have their parameter\'s form as Spindle does (SP109)', () => {
+    const diags = diagnose(':: Start\n{link Go}x{/link}');
+    const sp109 = diags.filter(d => d.code === 'SP109');
     expect(sp109).toHaveLength(1);
-    expect(sp109[0].message).toContain('receiver');
+    expect(sp109[0].severity).toBe('error');
+    expect(sp109[0].message).toBe('The text must be a quoted string ("\u2026" or \'\u2026\'), not Go in {link Go}');
+    expect(sp109[0].range).toEqual({ start: { line: 1, character: 6 }, end: { line: 1, character: 8 } });
   });
 
-  it('isolates a malformed custom parameter schema to its own macro', () => {
-    const workspace = createWorkspaceFrom({ name: 'test.tw', content: ':: Start\n{broken 1}\n{goto}' });
-    workspace.macros.loadSupplements({ broken: { name: 'broken', parameters: ['nosuchtype'] } });
+  it('does not report what the runtime does not reject', () => {
+    const text = ':: Start\n{textbox 42 "x"}\n{dialog "Open" extra}Start{/dialog}\n{include}\n{include inline}\n{goto}\n{back 1}';
+    expect(diagnose(text).filter(d => /^SP1(08|09|10|11)$/.test(d.code))).toEqual([]);
+  });
+
+  it('checks the arguments of a configured macro against its parameter schema, and isolates a malformed schema', () => {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: ':: Start\n{broken 1}\n{ban}\n{ban "x"}\n{ban "x" "y"}' });
+    workspace.macros.loadSupplements({
+      broken: { name: 'broken', parameters: ['nosuchtype'] },
+      ban: { name: 'ban', parameters: ['text'] },
+    });
     const diags = computeDiagnostics('file:///test.tw', workspace);
-    expect(diags.filter(d => d.code === 'SP109' && d.message.includes('{goto}'))).toHaveLength(1);
+    expect(diags.filter(d => /^SP1(08|09|10|11)$/.test(d.code)).map(d => [d.code, d.range.start.line, d.message.startsWith('{ban}')])).toEqual([
+      ['SP109', 2, true],
+      ['SP111', 4, true],
+    ]);
   });
 });
 
@@ -91,47 +96,44 @@ describe('{include} arguments', () => {
 
   it('accepts a trailing inline modifier', () => {
     const diags = diagnose(`:: Start\n{include "Target" inline}${target}`);
-    expect(diags.filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
+    expect(diags).toEqual([]);
   });
 
   it('accepts a leading inline modifier', () => {
     const diags = diagnose(`:: Start\n{include inline "Target"}${target}`);
-    expect(diags.filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
+    expect(diags).toEqual([]);
   });
 
   it('accepts a dynamic expression target containing whitespace', () => {
     const text = `:: StoryVariables\n$suffix = "get"\n\n:: Start\n{include "Tar" + $suffix}${target}`;
-    const diags = diagnose(text);
-    expect(diags.filter(d => ['SP109', 'SP111'].includes(d.code))).toEqual([]);
+    expect(diagnose(text)).toEqual([]);
   });
 
-  it('still reports a missing target', () => {
-    expect(codes(':: Start\n{include}', 'SP109')).toHaveLength(1);
-    expect(codes(':: Start\n{include inline}', 'SP109')).toHaveLength(1);
+  it('reads a target without quotes as an expression, as Spindle does', () => {
+    // There is no text fallback: `{include Target}` throws a ReferenceError, and Spindle reports the unquoted name
+    expect(codes(`:: Start\n{include Target}${target}`, 'SP113')).toHaveLength(1);
+    expect(codes(`:: Start\n{include Target inline}${target}`, 'SP113')).toHaveLength(1);
   });
 });
 
 describe('{goto} arguments', () => {
   const chapter = '\n:: Chapter 1\nHello';
-  const argDiags = (text: string) => diagnose(text).filter(d => ['SP108', 'SP109', 'SP111'].includes(d.code));
 
   it('accepts a literal target', () => {
-    expect(argDiags(`:: Start\n{goto "Chapter 1"}${chapter}`)).toEqual([]);
-    expect(argDiags(`:: Start\n{goto 'Chapter 1'}${chapter}`)).toEqual([]);
+    expect(diagnose(`:: Start\n{goto "Chapter 1"}${chapter}`)).toEqual([]);
+    expect(diagnose(`:: Start\n{goto 'Chapter 1'}${chapter}`)).toEqual([]);
   });
 
   it('accepts a dynamic expression target containing whitespace', () => {
     const text = `:: StoryVariables\n$n = 1\n\n:: Start\n{goto "Chapter " + $n}\n{.cls goto "Chapter " + $n}${chapter}`;
-    expect(argDiags(text)).toEqual([]);
+    expect(diagnose(text)).toEqual([]);
   });
 
-  it('accepts a bare multiword target, which Spindle reads as raw text', () => {
-    expect(argDiags(`:: Start\n{goto Chapter 1}${chapter}`)).toEqual([]);
-  });
-
-  it('still reports a missing target', () => {
-    const sp109 = codes(':: Start\n{goto}\n{goto   }', 'SP109');
-    expect(sp109.map(d => d.range.start.line)).toEqual([1, 2]);
+  it('reads a bare multiword target as code, which is a syntax error (there is no text fallback)', () => {
+    const sp106 = codes(`:: Start\n{goto Chapter 1}${chapter}`, 'SP106');
+    expect(sp106).toHaveLength(1);
+    expect(sp106[0].severity).toBe('error');
+    expect(sp106[0].message).toContain('a passage name is a quoted string or an expression');
   });
 });
 

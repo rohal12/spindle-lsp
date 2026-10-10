@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { formatJS, formatCSS, formatHTML, isPrettierAvailable } from '../../src/plugins/format/prettier-bridge.js';
+import { formatJS, formatCSS, formatHTML } from '../../src/plugins/format/prettier-bridge.js';
 
 describe('prettier-bridge', () => {
-  it('isPrettierAvailable returns true when prettier is installed', async () => {
-    expect(await isPrettierAvailable()).toBe(true);
-  });
-
   it('formats JavaScript code', async () => {
     const input = 'const   x=1;const y = 2';
     const result = await formatJS(input);

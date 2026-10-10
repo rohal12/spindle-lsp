@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../src/core/types.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
@@ -106,9 +106,9 @@ describe('W74: widget spelling shared by navigation and edits (#74)', () => {
     expect(heads).toHaveLength(4);
   });
 
-  it('C-W74: HTML attribute text and string literals do not invent invocations', () => {
-    const model = workspace(':: StoryVariables\n:: Start\n<a title="{greeting}">x</a>\n{print "{greeting}"}', [[declUri, ':: Widgets [widget]\n{widget "greeting"}hi{/widget}']]);
-    expect(findWidgetReferences('greeting', model, false)).toHaveLength(0);
+  it('C-W74: an HTML attribute value holds markup; the string of {print} and a comment do not', () => {
+    const model = workspace(':: StoryVariables\n:: Start\n<a title="{greeting}">x</a>\n{print "{greeting}"}\n<!-- {greeting} -->', [[declUri, ':: Widgets [widget]\n{widget "greeting"}hi{/widget}']]);
+    expect(findWidgetReferences('greeting', model, false).map(l => l.range.start.line)).toEqual([2]);
   });
 
   it('C-W74: built-in macro names take precedence over widgets', () => {

@@ -1,40 +1,45 @@
 /**
  * Contract K66-scan (#66): the formatter protects exactly the spans the
- * installed Spindle runtime tokenizes as macros, variables, expressions and
- * links. The oracle is Spindle's own tokenizer, whichever release is installed.
+ * installed Spindle runtime reads as macros, variables, expressions and links,
+ * and those in the values of HTML attributes. The oracle is Spindle's own
+ * tooling API: the tokens of `tokenizeMarkupTolerant`, and the markup
+ * `passagePieces` finds in attribute values.
  *
- * Before 0.50.1 Spindle's tokenizer counts braces and ignores string
- * contents, so a stray `{` inside a string extends the macro to the next
- * balanced `}` at runtime; the formatter must protect that same (longer) span:
- * it is the runtime's payload, and reformatting inside it changes the macro's
- * arguments. From 0.50.1 the tokenizer skips string and template literals
- * (`stringAwareBraces`), so the stray brace is inert and the span ends at the
- * macro's own `}`. The scan follows the installed release in both cases.
+ * The tokenizer skips string and template literals when it counts braces, so
+ * a stray `{` in a string is inert and the span ends at the macro's own `}`.
+ * There is one reading: the scan is the tokenizer's.
  */
 import { describe, expect, it } from 'vitest';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
-import { scanSpindleTokens as scanWith } from '../../src/plugins/format/placeholders.js';
-import { INSTALLED_CAPABILITIES, INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
+import { deepTokens, tokenize } from '../helpers/tooling.js';
+import { scanSpindleMarkup } from '../../src/plugins/format/placeholders.js';
+import { INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
 
-const STRING_AWARE = INSTALLED_CAPABILITIES.stringAwareBraces;
-const scanSpindleTokens = (text: string) => scanWith(text, { stringAwareBraces: STRING_AWARE });
+const scanSpindleTokens = (text: string) => scanSpindleMarkup(text).tokens;
 
 interface Span { start: number; end: number }
 
-/** Spans of every executable token the oracle finds outside HTML tags. */
+const EXECUTABLE = new Set(['macro', 'variable', 'expression', 'link']);
+
+/**
+ * The spans the runtime executes at the top level of the text, plus the macros
+ * and variables in the values of HTML attributes (markup of their own).
+ */
 function oracleSpans(text: string): Span[] {
-  return tokenize(text)
-    .filter(t => t.type === 'macro' || t.type === 'variable' || t.type === 'expression' || t.type === 'link')
-    .map(t => ({ start: t.start, end: t.end }));
+  const all = deepTokens(text);
+  const top = all.filter(t => !t.nested).map(t => t.token);
+  const outer = top.filter(t => EXECUTABLE.has(t.type));
+  const tags = top.filter(t => t.type === 'html');
+  const inAttributes = all
+    .filter(t => t.nested && EXECUTABLE.has(t.token.type))
+    .map(t => t.token)
+    // Markup of a label is part of its macro or link: only the tag's attributes count
+    .filter(t => tags.some(tag => t.start >= tag.start && t.end <= tag.end));
+  return [...outer, ...inAttributes]
+    .map(t => ({ start: t.start, end: t.end }))
+    .sort((a, b) => a.start - b.start);
 }
 
-/** Our spans, minus those inside an HTML tag the oracle recognizes (attribute values). */
-function ourSpansOutsideTags(text: string): Span[] {
-  const tags = tokenize(text).filter(t => t.type === 'html');
-  return scanSpindleTokens(text)
-    .filter(m => !tags.some(t => m.start >= t.start && m.end <= t.end))
-    .map(m => ({ start: m.start, end: m.end }));
-}
+const ours = (text: string): Span[] => scanSpindleTokens(text).map(m => ({ start: m.start, end: m.end }));
 
 const FIXTURES: Record<string, string> = {
   'plain macro': 'a {set $x = 1} b',
@@ -93,6 +98,8 @@ const FIXTURES: Record<string, string> = {
   'token at end': 'x {a',
   'only brace': '{',
   'only closing brace': '}',
+  'do block with an object literal': '{do}\nconst o = {a: 1};\n{/do} {$x}',
+  'do block with a template': '{do}\nconst s = `x\n  y`;\n{/do}',
   'html attr macro': '<div class="{$c}">{$x}</div>',
   'html attr with stray brace': '<div title="{">{set $a = 1}</div>',
   'html multi attr': '<a href="x" data-a=\'{$b}\'>[[Go|Home]]</a>',
@@ -107,12 +114,14 @@ const FIXTURES: Record<string, string> = {
   'html custom element': '<my-el a="{$b}">{print 1}</my-el>',
   'html comparison text': 'a < b {set $a = 1} c > d',
   'html tag across lines': '<div\n  class="{$c}"\n>{$x}</div>',
+  'html unquoted attr value': '<div class={$c}>{$x}</div>',
+  'html comment with markup': '<!-- {if $x} --> {$y}',
 };
 
 describe(`K66-scan: scanSpindleTokens matches the Spindle ${INSTALLED_SPINDLE_VERSION} tokenizer`, () => {
   for (const [name, text] of Object.entries(FIXTURES)) {
     it(`K66-scan fixture: ${name}`, () => {
-      expect(ourSpansOutsideTags(text)).toEqual(oracleSpans(text));
+      expect(ours(text)).toEqual(oracleSpans(text));
     });
   }
 
@@ -128,46 +137,29 @@ describe(`K66-scan: scanSpindleTokens matches the Spindle ${INSTALLED_SPINDLE_VE
       const length = 1 + Math.floor(next() * 24);
       let text = '';
       for (let i = 0; i < length; i++) text += pieces[Math.floor(next() * pieces.length)];
-      expect(ourSpansOutsideTags(text), JSON.stringify(text)).toEqual(oracleSpans(text));
+      expect(ours(text), JSON.stringify(text)).toEqual(oracleSpans(text));
     }
   });
 
   it('K66-scan: attribute values inside recognized tags are scanned too', () => {
     const text = '<div class="{$c}" title=\'{if $x}a{/if}\'>x</div>';
-    expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{$c}', '{if $x}', '{/if}']);
+    const found = scanSpindleTokens(text);
+    expect(found.map(m => m.token)).toEqual(['{$c}', '{if $x}', '{/if}']);
+    expect(found.every(m => m.inAttribute)).toBe(true);
   });
 
-  it('K66-scan: a stray brace in a string protects the runtime span, not the line', () => {
-    // Before 0.50.1 the `{` inside the string is counted, so the macro runs on
-    // to the prose `}` two lines down: that whole span is its runtime payload.
-    // From 0.50.1 the string is skipped and the macro ends at its own `}`.
+  it('K66-scan: a stray brace in a string does not extend the macro', () => {
+    // The string is skipped, so the macro ends at its own `}` and the prose
+    // `}` two lines down is text.
     const text = '{set $s = "{"}\nprose   here }\nafter';
     const macros = tokenize(text).filter(t => t.type === 'macro');
     expect(macros).toHaveLength(1);
-    if (STRING_AWARE) {
-      expect(macros[0].rawArgs).toBe('$s = "{"');
-      expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{set $s = "{"}']);
-    } else {
-      expect(macros[0].rawArgs).toContain('prose   here');
-      expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{set $s = "{"}\nprose   here }']);
-    }
+    expect(macros[0].rawArgs).toBe('$s = "{"');
+    expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{set $s = "{"}']);
   });
 
-  it('K66-scan control: the same stray brace without a later `}`', () => {
-    // Before 0.50.1 the macro is text (no balancing `}`); from 0.50.1 it is a macro.
-    const text = '{set $s = "{"}\nprose   here\n{set $t = 1}';
-    const expected = STRING_AWARE ? ['$s = "{"', '$t = 1'] : ['$t = 1'];
-    expect(tokenize(text).filter(t => t.type === 'macro').map(t => t.rawArgs)).toEqual(expected);
-    expect(scanSpindleTokens(text).map(m => m.token)).toEqual(STRING_AWARE ? ['{set $s = "{"}', '{set $t = 1}'] : ['{set $t = 1}']);
-  });
-
-  it('K66-scan: the capability follows the installed release', () => {
-    expect(STRING_AWARE).toBe(tokenize('{set $s = "{"}').filter(t => t.type === 'macro').length === 1);
-  });
-
-  it('K66-scan: both modes agree where no string holds a brace', () => {
-    for (const text of ['{set $a = 1} b {$c}', '{if $x}a{/if}', '[[Go->Home]] {print "ok"}', '<div class="{$c}">{$x}</div>']) {
-      expect(scanWith(text, { stringAwareBraces: true })).toEqual(scanWith(text, { stringAwareBraces: false }));
-    }
+  it('K66-scan: the body of {do} is JavaScript, not markup', () => {
+    const text = '{do}\nconst o = {a: 1};\nconst s = `x\n  ${ {b: 2}.b }`;\n{/do}\nafter {$v}';
+    expect(scanSpindleTokens(text).map(m => m.token)).toEqual(['{do}', '{/do}', '{$v}']);
   });
 });

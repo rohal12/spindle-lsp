@@ -1,4 +1,4 @@
-import type { Passage, Range } from '../types.js';
+import type { Passage } from '../types.js';
 import { parsePassageHeader } from '../parsing/passage-parser.js';
 
 /**

@@ -1,3 +1,5 @@
+import type { ParameterDef } from '@rohal12/spindle/tooling';
+
 export interface Position {
   line: number;
   character: number;
@@ -6,34 +8,6 @@ export interface Position {
 export interface Range {
   start: Position;
   end: Position;
-}
-
-export interface MacroNode {
-  id: number;
-  pair: number;
-  name: string;
-  open: boolean;
-  range: Range;
-  cssPrefix?: string;
-  rawArgs?: string;
-  /**
-   * Set by pairMacros() on a closer that crosses a container still to be
-   * closed: the name of the container on top of the stack, which Spindle's
-   * buildAST expects to be closed first.
-   */
-  expected?: string;
-  /**
-   * Set by pairMacros() on a closer that cannot close its container because
-   * an HTML element opened inside it is still open and is closed later
-   * (`{wrap}<div>{/wrap}</div>`): the tag name of that element, which
-   * Spindle's buildAST expects to be closed first. SP102 reports it.
-   */
-  expectedElement?: string;
-  /**
-   * Set by pairMacros() when the innermost node on Spindle's AST stack at
-   * this macro is an HTML element: its tag name.
-   */
-  element?: string;
 }
 
 export interface MacroInfo {
@@ -46,6 +20,8 @@ export interface MacroInfo {
   source: 'builtin' | 'user';
   description?: string;
   parameters?: string[];
+  /** The typed parameters Spindle declares for the macro (tooling API); they tell which arguments are code. */
+  parameterDefs?: readonly ParameterDef[];
   /** Descriptive name and help for each argument position of `parameters`. */
   parameterDocs?: ParameterDoc[];
   children?: ChildConstraint[];
@@ -84,27 +60,11 @@ export interface Diagnostic {
 }
 
 /**
- * Runtime type of a declared variable's default value, mirroring the
- * `VarType` Spindle infers from StoryVariables/StoryTransients defaults.
+ * Runtime type of a declared variable's default value: the `VarType` the
+ * tooling API's `parseDeclarations` gives a static StoryVariables/StoryTransients
+ * default (`null` defaults have no type here: they may hold anything later).
  */
 export type VariableValueType = 'array' | 'object' | 'string' | 'number' | 'boolean';
-
-/**
- * The schema Spindle's inferSchema() (story-variables.ts) gives a
- * StoryVariables default: its type and, for an object, the schema of each
- * own field. Spindle checks every `$a.b.c` path in the story against it when
- * the story starts.
- */
-export interface ValueSchema {
-  type: VariableValueType;
-  /**
-   * An object's own fields: each maps to its schema, or to null when its
-   * value is not a literal whose type is known without evaluating it.
-   * Absent when the object's fields are unknown (a spread, a computed key,
-   * an accessor or a method decides them).
-   */
-  fields?: Map<string, ValueSchema | null>;
-}
 
 export interface DeclaredVariable {
   name: string;
@@ -112,8 +72,6 @@ export interface DeclaredVariable {
   fields?: string[];
   /** Type of the default value, set only when the default is a single literal. */
   type?: VariableValueType;
-  /** Schema Spindle infers from a StoryVariables default, set only when the default is a literal. */
-  schema?: ValueSchema;
   declarationUri?: string;
   declarationRange?: Range;
 }

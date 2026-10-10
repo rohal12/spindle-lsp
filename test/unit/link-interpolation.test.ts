@@ -2,48 +2,44 @@
  * Contract Q-link-interp: what Spindle interpolates in a link, and every
  * consumer of that fact.
  *
- * Runtime truth (every release from 0.43.0; rendered through tokenize,
- * buildAST and renderNodes in a DOM, see scripts/runtime-render.mjs and
- * docs/reviews/2026-10-06-convergence-fixes.md): `[[Take {$item}->T]]`
- * renders `Take {$item}` and `[[Go->T{$n}]]` navigates to a passage named
- * `T{$n}`. The link macro (MacroLink) prints and navigates to its text as
- * written. What is interpolated: the link's `.class#id` selectors (the macro
- * wrapper resolves className and id when the macro is defined with
- * `interpolate: true`), HTML attribute values, and the label of `{button}` and
- * `{dialog}` (they call `ctx.resolve`). A string in any other macro's
- * arguments is JavaScript, not a template.
+ * Runtime truth (Spindle 0.59; the macros' declared parameters in the public
+ * `builtinMacros`, and `passagePieces`, say what holds markup): the `{link}`
+ * macro, which every bracket link becomes (`[[Take {$item}->T]]` is
+ * `{link "Take {$item}" "T"}`), declares its `text` as a string holding
+ * markup, so the label is resolved (`Take 3`), while its `passage` is a name
+ * read as a JavaScript literal: `[[Go->T{$n}]]` navigates to a passage named
+ * `T{$n}`. The link's `.class#id` selectors are interpolated (the macro is
+ * `interpolate: true`), and so are HTML attribute values and the labels of
+ * `{button}`, `{dialog}` and `{meter}`. A string in any other macro's
+ * arguments is JavaScript, not a template. (Up to 0.51.3 the link macro
+ * printed its text as written; see docs/reviews/2026-10-10-tooling-migration.md.)
  *
- * Q-source pins that reading to the installed runtime's source;
+ * Q-source pins that reading to the installed runtime's macro metadata;
  * Q-differential compares the variable usages the LSP records with what the
- * runtime's own interpolate() reads; Q-diagnostic covers SP305; Q-rename
- * applies the rename edits and reparses; Q-validation compares SP200 with
- * the installed startup validation (raw text before 0.50.1, executable
- * references from it). Every case runs with LF and CRLF.
+ * runtime's interpolation reads (test/helpers/interpolation-oracle.ts, the
+ * closest public equivalent of the runtime's own, which is not exported);
+ * Q-diagnostic covers SP305; Q-rename applies the rename edits and reparses;
+ * Q-validation compares the SP200 of computeDiagnostics with the installed
+ * startup validation (test/helpers/story-variables-oracle.ts). Every case runs
+ * with LF and CRLF.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { interpolate } from '../../node_modules/@rohal12/spindle/src/interpolation.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
-import { parseStoryVariables, validatePassages } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { builtinMacros } from '@rohal12/spindle/tooling';
+import { everyNameScope, interpolate, interpolationReads } from '../helpers/interpolation-oracle.js';
+import { runtimeVariableReads } from '../helpers/variable-reads-oracle.js';
+import { tokenize } from '../helpers/tooling.js';
+import { parseStoryVariables, validatePassages } from '../helpers/story-variables-oracle.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { LITERAL_ARGUMENT_MACROS, VariableTracker } from '../../src/core/workspace/variable-tracker.js';
-import { findLiteralLinkInterpolations, findBracketLinks, linkSelectorInterpolationRanges } from '../../src/core/parsing/link-parser.js';
+import { VariableTracker } from '../../src/core/workspace/variable-tracker.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeRename } from '../../src/plugins/rename.js';
+import { findLiteralLinkInterpolations } from '../../src/core/parsing/link-parser.js';
 import { findVariableReferences } from '../../src/plugins/references.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 import type { Range } from '../../src/core/types.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 import { runtimeBracketLink, runtimeLinkMacro } from '../helpers/link-macro-oracle.js';
 
-// interpolate() reaches the store through expression.ts; the store needs a DOM framework
-vi.mock('../../node_modules/@rohal12/spindle/src/store.ts', () => ({
-  useStoryStore: { getState: () => ({ visitCounts: {}, renderCounts: {}, currentPassage: 'Start' }) },
-}));
-
-const spindle = join(process.cwd(), 'node_modules/@rohal12/spindle');
 const uri = 'file:///story.tw';
 const eols = [['LF', '\n'], ['CRLF', '\r\n']] as const;
 
@@ -61,121 +57,40 @@ function apply(text: string, edits: Array<{ range: Range; newText: string }> | u
 }
 
 describe('Q-source: what the installed runtime interpolates', () => {
-  const macroFiles = readdirSync(join(spindle, 'src/components/macros')).filter(name => name.endsWith('.tsx'));
-  const read = (name: string) => readFileSync(join(spindle, 'src/components/macros', name), 'utf-8');
-  const macroName = (source: string) => /defineMacro\(\{\s*name: '([^']+)'/.exec(source)?.[1];
+  const byName = new Map(builtinMacros.map(m => [m.name, m]));
+  /** The macros that declare a string argument holding markup, with the parameter. */
+  const markupStrings = () => builtinMacros
+    .flatMap(m => (m.parameters ?? []).filter(p => (p.type === 'string' || p.type === 'text') && p.holds === 'markup').map(p => `${m.name}:${p.name}`))
+    .sort();
 
-  it('Q-source-link: MacroLink never resolves its text, only the wrapper resolves class and id', () => {
-    const link = read('MacroLink.tsx');
-    expect(macroName(link)).toBe('link');
-    expect(link).toMatch(/interpolate: true/);
-    // The display and the passage come out of parseArgs and are used as written
-    expect(link.slice(link.indexOf('defineMacro('))).not.toMatch(/resolve|interpolat(?!e: true)/);
-    const wrapper = readFileSync(join(spindle, 'src/define-macro.ts'), 'utf-8');
-    const block = /if \(config\.interpolate\) \{([\s\S]*?)\n    \}/.exec(wrapper)?.[1] ?? '';
-    expect(block).toMatch(/resolve = useInterpolate\(\)/);
-    expect(block).toMatch(/className = resolve\(className\)/);
-    expect(block).toMatch(/id = resolve\(id\)/);
-    expect(block.replace(/\/\/.*$/gm, '').split('\n').filter(line => line.trim()).length).toBe(3);
+  it('Q-source-link: the link macro resolves its text as markup; its passage is a name read as written', () => {
+    const link = byName.get('link');
+    expect(link?.interpolate, 'class and id are resolved by the macro wrapper').toBe(true);
+    expect(link?.parameters?.map(p => [p.name, p.type, p.holds])).toEqual([['text', 'string', 'markup'], ['passage', 'passage', undefined]]);
   });
 
-  it('Q-source-args: only {button} and {dialog} resolve their arguments; {if} and {timed} resolve section selectors', () => {
-    const resolvers = macroFiles
-      .filter(file => /ctx\.resolve/.test(read(file)))
-      .map(file => `${macroName(read(file))}:${/ctx\.resolve[!?]*\.?\(?(?:rawArgs|labelRaw)/.test(read(file)) || /resolve\?\.\((?:rawArgs|labelRaw)/.test(read(file)) ? 'args' : 'selectors'}`)
-      .sort();
-    expect(resolvers).toEqual(['button:args', 'dialog:args', 'if:selectors', 'timed:selectors']);
-  });
-
-  it('Q-source-registry: every built-in macro is classified (a new one forces a decision)', () => {
-    const registry = JSON.parse(readFileSync(join(spindle, 'dist/pkg/macro-registry.json'), 'utf-8')) as Array<{ name: string }>;
-    const classified = new Set([...LITERAL_ARGUMENT_MACROS, 'button', 'dialog']);
-    expect(registry.map(m => m.name).filter(name => !classified.has(name))).toEqual([]);
-    // and the literal list holds nothing the runtime does not ship
-    const shipped = new Set(registry.map(m => m.name));
-    expect([...LITERAL_ARGUMENT_MACROS].filter(name => !shipped.has(name))).toEqual([]);
+  it('Q-source-args: {button}, {dialog}, {link} and {meter} resolve a string argument; {if} and {timed} resolve section selectors', () => {
+    expect(markupStrings()).toEqual(['button:label', 'dialog:label', 'link:text', 'meter:label']);
+    expect(['if', 'timed'].map(name => byName.get(name)?.interpolate)).toEqual([true, true]);
   });
 });
 
-/** Names read by interpolate(), as `$x` / `%t`. */
-function interpolationReads(template: string | undefined): string[] {
-  if (template === undefined) return [];
-  const seen: string[] = [];
-  const scope = (prefix: string) => new Proxy({}, {
-    get: (_target, key) => {
-      if (typeof key === 'string') seen.push(prefix + key);
-      return undefined;
-    },
-    has: () => true,
-  });
-  try {
-    interpolate(template, scope('$') as never, scope('_') as never, scope('@') as never, scope('%') as never);
-  } catch {
-    // An expression that does not parse reads nothing
-  }
-  return seen;
-}
-
-/**
- * The `$` and `%` names a macro's arguments read as code: outside ordinary
- * strings (literal text), and inside the `${…}` parts of template literals.
- */
-function codeReads(rawArgs: string): string[] {
-  const reads: string[] = [];
-  const code = rawArgs.replace(/(["'`])((?:\\.|(?!\1)[^\\])*)\1/g, (_whole, quote: string, body: string) => {
-    if (quote === '`') for (const part of body.matchAll(/\$\{([^}]*)\}/g)) reads.push(...part[1].matchAll(/[$%]\w+/g).map(m => m[0]));
-    return ' ';
-  });
-  return [...reads, ...[...code.matchAll(/[$%]\w+/g)].map(m => m[0])];
-}
-
 /** Whether interpolate() would change `template` (it evaluates some block in it). */
 function interpolates(template: string): boolean {
-  const value = new Proxy({}, { get: (_t, key) => (typeof key === 'string' ? 'V' : undefined), has: () => true });
+  const value = everyNameScope('V');
   try {
-    return interpolate(template, value as never, value as never, value as never, value as never) !== template;
+    return interpolate(template, value, value, value, value) !== template;
   } catch {
     return true;
   }
 }
 
 describe('Q-differential: variable usages are what the runtime interpolates', () => {
-  /** `$` and `%` names the runtime reads from the passage markup, per the render path. */
-  function oracleReads(text: string): string[] {
-    const names = tokenize(text).flatMap((token): string[] => {
-      switch (token.type) {
-        case 'link':
-          // the {link} macro: class and id resolved, text as written
-          return [...interpolationReads(token.className), ...interpolationReads(token.id)];
-        case 'html':
-          return Object.values(token.attributes).flatMap(interpolationReads);
-        case 'variable':
-          return token.scope === 'variable' ? [`$${token.name.split('.')[0]}`]
-            : token.scope === 'transient' ? [`%${token.name.split('.')[0]}`] : [];
-        case 'macro': {
-          if (token.isClose) return [];
-          // {button} and {dialog} interpolate their label; no other macro interpolates a string
-          const label = token.name === 'button' ? token.rawArgs.replace(/^["']|["']$/g, '')
-            : token.name === 'dialog' ? token.rawArgs.replace(/\bnoclose\s*$/, '').trim().replace(/^["']|["']$/g, '')
-              : undefined;
-          return [
-            ...interpolationReads(label),
-            ...interpolationReads(token.className),
-            ...interpolationReads(token.id),
-            ...codeReads(token.rawArgs),
-          ];
-        }
-        default:
-          return [];
-      }
-    });
-    return names.filter(name => name[0] === '$' || name[0] === '%').map(name => name.slice(1)).sort();
-  }
+  const oracleReads = runtimeVariableReads;
 
   function oursReads(text: string): string[] {
     const tracker = new VariableTracker();
-    tracker.setCapabilities(INSTALLED_CAPABILITIES);
-    tracker.scanDocument(uri, `:: P\n${text}`, []);
+    tracker.scanDocument(uri, `:: P\n${text}`);
     return ['x', 'a', 'b', 't', 'u', 'k', 'y', 'n', 'item']
       .flatMap(name => [
         ...tracker.getUsages(name).map(() => name),
@@ -221,9 +136,9 @@ describe('Q-differential: variable usages are what the runtime interpolates', ()
     }
   }
 
-  it('Q-differential-render: a link renders its text as written (the call path the oracle models)', () => {
-    // buildAST turns the link into the `link` macro; its arguments are read by
-    // MacroLink.parseArgs (the real function, from the installed source)
+  it('Q-differential-render: the link macro reads the token\'s label and name (the call path the oracle models)', () => {
+    // the AST turns the link into `{link "label" "target"}`; the macro's
+    // arguments are read as its declared parameters say (passagePieces)
     for (const text of ['[[Take {$item}->T]]', '[[Go->T{$n}]]', '[[Take {$item}]]', '[[a|{$x}]]']) {
       const real = runtimeBracketLink(text)!;
       expect(real.display).toBe(real.token.display);
@@ -264,21 +179,18 @@ describe('Q-diagnostic: SP305 flags {$x} where the link macro prints the braces'
     ['block across the separator', '[[{$a->b}->T]]'],
   ];
 
-  /** The runtime prints (or navigates to) the text unchanged exactly where interpolate() would have changed it. */
+  /**
+   * The runtime navigates to the name unchanged exactly where interpolate() would have changed it. (The label
+   * is markup and is resolved: in 0.59 only the passage name is taken as written.)
+   */
   function expected(text: string): number {
     let count = 0;
     for (const token of tokenize(text)) {
       if (token.type === 'link') {
-        // `[[x]]` has one text, shown and navigated to
-        if (token.display === token.target) {
-          if (interpolates(token.display)) count += 1;
-        } else {
-          if (interpolates(token.display)) count += 1;
-          if (interpolates(token.target)) count += 1;
-        }
+        if (interpolates(token.target)) count += 1;
       } else if (token.type === 'macro' && !token.isClose && token.name === 'link') {
-        const strings = [...token.rawArgs.matchAll(/(["'])(.*?)\1/g)].slice(0, 2).map(m => m[2]);
-        for (const text of strings) if (interpolates(text)) count += 1;
+        const { passage } = runtimeLinkMacro(token.rawArgs);
+        if (passage !== null && interpolates(passage)) count += 1;
       }
     }
     return count;
@@ -307,26 +219,23 @@ describe('Q-diagnostic: SP305 flags {$x} where the link macro prints the braces'
     }
   }
 
-  it('Q-diagnostic-messages: the label and the target are told apart, with the alternative', () => {
+  it('Q-diagnostic-messages: only the passage name a click navigates to is taken as written (the label is markup)', () => {
     const found = sp305(workspace(':: Start\n[[Take {$item}->T{$n}]]\n:: T{$n}\nx\n'));
-    expect(found).toHaveLength(2);
-    expect(found[0].message).toContain('the label shown contains it as written');
-    expect(found[1].message).toContain('the passage name a click navigates to contains it as written');
-    expect(found[0].message).toContain('{button "Take {$item}"}{goto "Passage"}{/button}');
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain('the passage name a click navigates to contains it as written');
   });
 
   it('Q-diagnostic-ranges: each finding is exactly one block of the source', () => {
     const text = ':: Start\n[[A {$a} B {$b}->T {$n}]] {link "x {$x}" "T"}{/link}\n:: T\nx\n';
     const model = workspace(text);
     const blocks = sp305(model).map(d => TextDocument.create(uri, 'twee', 0, text).getText(d.range));
-    expect(blocks).toEqual(['{$a}', '{$b}', '{$n}', '{$x}']);
+    expect(blocks).toEqual(['{$n}']);
   });
 
-  it('Q-diagnostic-gating: the same on every release, with either brace reading', () => {
-    for (const stringAwareBraces of [false, true]) {
-      const found = findLiteralLinkInterpolations('[[A {$a + "}"}->T]] {link "q {$q}" "T"}x{/link}', { stringAwareBraces });
-      expect(found.map(f => f.block)).toEqual(stringAwareBraces ? ['{$a + "}"}', '{$q}'] : ['{$a + "}', '{$q}']);
-    }
+  it('Q-diagnostic-gating: only a passage name holds blocks as written, and a brace in a string does not end a block', () => {
+    const found = findLiteralLinkInterpolations('[[A {$a}->T{$a + "}"}]] {link "q {$q}" "T{$q}"}x{/link}');
+    expect(found.map(f => f.block)).toEqual(['{$a + "}"}', '{$q}']);
+    expect(found.map(f => f.place)).toEqual(['link-target', 'link-macro-passage']);
   });
 
   it('Q-diagnostic-silent: other formats and non-markup passages', () => {
@@ -335,12 +244,14 @@ describe('Q-diagnostic: SP305 flags {$x} where the link macro prints the braces'
     expect(sp305(workspace(':: Start [script]\nvar s = "[[Take {$item}->T]]";\n'))).toEqual([]);
   });
 
-  it('Q-diagnostic-selectors: only selector blocks are interpolated (range helper)', () => {
+  it('Q-diagnostic-selectors: the selectors of a link carry their interpolations, the label and target are separate spans', () => {
     const text = '[[.c{$k}#i{@j} Take {$item}->T{$n}]]';
-    const [link] = findBracketLinks(text);
-    expect(linkSelectorInterpolationRanges(text, link).map(([s, e]) => text.slice(s, e))).toEqual(['{$k}', '{@j}']);
     const token = tokenize(text)[0];
     expect(token).toMatchObject({ type: 'link', className: 'c{$k}', id: 'i{@j}' });
+    if (token.type !== 'link') throw new Error('not a link');
+    expect(text.slice(token.selectorsStart, token.selectorsEnd)).toBe('.c{$k}#i{@j}');
+    expect(text.slice(token.displayStart, token.displayEnd)).toBe('Take {$item}');
+    expect(text.slice(token.targetStart, token.targetEnd)).toBe('T{$n}');
   });
 });
 
@@ -357,21 +268,22 @@ describe('Q-rename: renaming a variable edits what is interpolated and nothing e
       '{print "{$x}"} {print $x}',
       ':: T', 'end', '');
 
-    it(`Q-rename-edits: selectors, button labels and attributes follow; link text and strings do not (${eolName})`, () => {
+    it(`Q-rename-edits: selectors, link and button labels and attributes follow; passage names and strings do not (${eolName})`, () => {
       const model = workspace(text);
       const refs = findVariableReferences('x', model, false).map(r => `${r.range.start.line}:${r.range.start.character}`);
-      // [[.k{$x} ...]] selector; {button} label; <a title>; {print $x}; no label/target/{link}/{print "..."} string
-      expect([...refs].sort()).toEqual(['4:5', '6:15', '7:11', '8:22']);
+      // [[.k{$x} ...]] selector and label; {link} text; {button} label; <a title>; the label of the link in it; {print $x};
+      // no passage name or {print "..."} string
+      expect([...refs].sort()).toEqual(['4:15', '4:5', '5:13', '6:15', '7:11', '7:22', '8:22']);
 
       const edits = computeRename(uri, { line: 1, character: 1 }, 'y', model);
       const output = apply(text, edits.get(uri));
       expect(output).toBe(lines(
         ':: StoryVariables', '$y = 1', '$item = 2',
         ':: Start',
-        '[[.k{$y} Take {$x}->T{$x}]]',
-        '{link "Take {$x}" "T"}go{/link}',
+        '[[.k{$y} Take {$y}->T{$x}]]',
+        '{link "Take {$y}" "T"}go{/link}',
         '{button "Take {$y}"}{goto "T"}{/button}',
-        '<a title="{$y}">[[Go {$x}->T]]</a>',
+        '<a title="{$y}">[[Go {$y}->T]]</a>',
         '{print "{$x}"} {print $y}',
         ':: T', 'end', ''));
     });
@@ -381,27 +293,28 @@ describe('Q-rename: renaming a variable edits what is interpolated and nothing e
       const output = apply(text, computeRename(uri, { line: 1, character: 1 }, 'y', model).get(uri));
       const body = (source: string) => source.split(/\r?\n/).slice(4, 9).join('\n');
       const reads = (source: string, name: string) => tokenize(body(source)).flatMap(token => {
-        if (token.type === 'link') return [token.className, token.id].flatMap(v => interpolationReads(v)).filter(n => n === `$${name}`);
+        if (token.type === 'link') return [token.className, token.id, token.display].flatMap(v => interpolationReads(v)).filter(n => n === `$${name}`);
         if (token.type === 'html') return Object.values(token.attributes).flatMap(v => interpolationReads(v)).filter(n => n === `$${name}`);
         if (token.type === 'macro' && token.name === 'button') return interpolationReads(token.rawArgs.replace(/^["']|["']$/g, '')).filter(n => n === `$${name}`);
+        if (token.type === 'macro' && token.name === 'link') return interpolationReads(runtimeLinkMacro(token.rawArgs).display).filter(n => n === `$${name}`);
         return [];
       });
       expect(reads(output, 'y')).toEqual(reads(text, 'x').map(name => name.replace('x', 'y')));
-      expect(reads(text, 'x')).toHaveLength(3);
+      expect(reads(text, 'x')).toHaveLength(6);
       expect(reads(output, 'x')).toEqual([]);
-      // The link text, which the runtime prints as written, is untouched
-      expect(tokenize(body(output)).filter(t => t.type === 'link').map(t => (t.type === 'link' ? [t.display, t.target] : [])))
-        .toEqual(tokenize(body(text)).filter(t => t.type === 'link').map(t => (t.type === 'link' ? [t.display, t.target] : [])));
+      // The passage names, which the runtime takes as written, are untouched
+      expect(tokenize(body(output)).filter(t => t.type === 'link').map(t => (t.type === 'link' ? t.target : '')))
+        .toEqual(tokenize(body(text)).filter(t => t.type === 'link').map(t => (t.type === 'link' ? t.target : '')));
       // Rebuild from the edited text: the model agrees
       const rebuilt = workspace(output);
-      expect(rebuilt.variables.getUsages('y')).toHaveLength(4);
+      expect(rebuilt.variables.getUsages('y')).toHaveLength(7);
       expect(rebuilt.variables.getUsages('x')).toHaveLength(0);
     });
 
     it(`Q-rename-lens: the reference count of the declaration is the usage count (${eolName})`, () => {
       const model = workspace(text);
       const lens = computeCodeLenses(uri, model).find(l => l.range.start.line === 1);
-      expect(lens?.command?.title).toBe('4 usages');
+      expect(lens?.command?.title).toBe('7 usages');
     });
   }
 });
@@ -419,12 +332,12 @@ describe('Q-validation: SP200 follows the installed startup validation', () => {
     'plain text with $nope and {$nope}',
   ];
 
+  /** The names SP200 reports for `content`, from the diagnostics of the document. */
   function lspUndeclared(content: string): string[] {
-    const tracker = new VariableTracker();
-    tracker.setCapabilities(INSTALLED_CAPABILITIES);
-    tracker.parseStoryVariables('$decl = 1', 1, uri);
-    tracker.scanDocument(uri, [':: StoryVariables', '$decl = 1', ':: Start', content, ''].join('\n'), []);
-    return tracker.getUndeclared(uri).map(u => u.name).sort();
+    const model = workspace([':: StoryVariables', '$decl = 1', ':: Start', content, ''].join('\n'));
+    return [...new Set(computeDiagnostics(uri, model)
+      .filter(d => d.code === 'SP200')
+      .map(d => /Undeclared variable: \$(\w+)/.exec(d.message)![1]))].sort();
   }
 
   function runtimeUndeclared(content: string): string[] {
@@ -440,15 +353,15 @@ describe('Q-validation: SP200 follows the installed startup validation', () => {
     });
   }
 
-  it('Q-validation-versions: raw text before 0.50.1, the tokenizer after (link text included)', () => {
-    const names = lspUndeclared('[[Take {$nope}->T]]');
-    expect(names).toEqual(INSTALLED_CAPABILITIES.executableRefsOnly ? [] : ['nope']);
+  it('Q-validation-label: the label of a link is markup, so a variable in it is validated; its name is not', () => {
+    expect(lspUndeclared('[[Take {$nope}->T]]')).toEqual(['nope']);
+    expect(lspUndeclared('[[Take->T{$nope}]]')).toEqual([]);
   });
 
-  it('Q-validation-diagnostics: SP200 and SP305 are independent findings on the same link', () => {
-    const model = workspace(':: StoryVariables\n$decl = 1\n:: Start\n[[Take {$nope}->T]]\n:: T\nx\n');
+  it('Q-validation-diagnostics: SP200 (the label) and SP305 (the passage name) are independent findings on the same link', () => {
+    const model = workspace(':: StoryVariables\n$decl = 1\n:: Start\n[[Take {$nope}->T{$decl}]]\n:: T{$decl}\nx\n');
     const codes = computeDiagnostics(uri, model).map(d => d.code);
     expect(codes).toContain('SP305');
-    expect(codes.includes('SP200')).toBe(!INSTALLED_CAPABILITIES.executableRefsOnly);
+    expect(codes).toContain('SP200');
   });
 });

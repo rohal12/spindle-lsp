@@ -1,10 +1,10 @@
 /**
- * Contract Q-format: the formatter protects the spans the target Spindle's
- * tokenizer executes, and the tokenizer changed in 0.50.1 (braces inside
- * string and template literals no longer count). The formatter follows the
- * target release (`SpindleCapabilities.stringAwareBraces`) in every entry
- * point: the LSP (workspace capabilities), the CLI and the MCP tools (the
- * installed `@rohal12/spindle`, else StoryData's `format-version`).
+ * Contract Q-format: the formatter protects the spans Spindle's tokenizer
+ * executes, and reads them one way in every entry point. Since 0.50.1 braces
+ * inside string and template literals do not count; the minimum supported
+ * Spindle (0.59.20) reads them like that, so there is no reading to choose and
+ * no option to pass. The Spindle version of the project is only used to warn
+ * when it is older than the minimum.
  *
  * The oracle is the installed runtime's tokenizer: formatting must keep every
  * macro's payload (`rawArgs`) and the passage's token sequence, and be
@@ -14,14 +14,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { formatDocument } from '../../src/plugins/format.js';
-import { scanSpindleTokens } from '../../src/plugins/format/placeholders.js';
-import { findSpindleCapabilities } from '../../src/core/workspace/story-format.js';
+import { scanSpindleMarkup } from '../../src/plugins/format/placeholders.js';
+import { findSpindleTarget } from '../../src/core/workspace/story-format.js';
 import { checkFormatting, formatFiles } from '../../src/mcp/server.js';
 import { runFormat } from '../../src/cli/format.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
+import { MINIMUM_SPINDLE_VERSION } from '../../src/core/workspace/spindle-version.js';
+
+const scanSpindleTokens = (text: string) => scanSpindleMarkup(text).tokens;
 
 /** The macro payloads and token kinds the installed tokenizer reads, ignoring text. */
 function payloads(text: string) {
@@ -36,26 +38,18 @@ describe('Q-format-oracle: formatting keeps what the installed tokenizer execute
     for (const eol of ['\n', '\r\n']) {
       it(`Q-format-payload ${name} (${eol === '\n' ? 'LF' : 'CRLF'})`, async () => {
         const source = text.replace(/\n/g, eol);
-        const out = await formatDocument(source, { stringAwareBraces: INSTALLED_CAPABILITIES.stringAwareBraces });
+        const out = await formatDocument(source);
         // Macro payloads are the runtime's arguments: byte-identical (CRLF normalizes to LF in the compiler)
         expect(payloads(out.replace(/\r\n/g, '\n'))).toEqual(payloads(source.replace(/\r\n/g, '\n')));
         // Idempotent
-        expect(await formatDocument(out, { stringAwareBraces: INSTALLED_CAPABILITIES.stringAwareBraces })).toBe(out);
+        expect(await formatDocument(out)).toBe(out);
       });
     }
   }
 
-  it('Q-format-wrong-reading: the other reading formats differently (the test is not vacuous)', async () => {
-    const right = await formatDocument(stray, { stringAwareBraces: INSTALLED_CAPABILITIES.stringAwareBraces });
-    const wrong = await formatDocument(stray, { stringAwareBraces: !INSTALLED_CAPABILITIES.stringAwareBraces });
-    expect(wrong).not.toBe(right);
-    // Before 0.50.1 the wrong (string-aware) reading re-indents text inside the macro's payload
-    if (!INSTALLED_CAPABILITIES.stringAwareBraces) expect(payloads(wrong)).not.toEqual(payloads(stray));
-  });
-
   it('Q-format-scan: the scanned spans are the tokenizer\'s, outside HTML tags', () => {
     for (const text of [stray, template, '{set $s = "{"}\nx {y}', '{print "}"} {z}']) {
-      const spans = scanSpindleTokens(text, INSTALLED_CAPABILITIES).map(m => [m.start, m.end]);
+      const spans = scanSpindleTokens(text).map(m => [m.start, m.end]);
       const expected = tokenize(text)
         .filter(t => t.type === 'macro' || t.type === 'variable' || t.type === 'expression' || t.type === 'link')
         .map(t => [t.start, t.end]);
@@ -64,19 +58,19 @@ describe('Q-format-oracle: formatting keeps what the installed tokenizer execute
   });
 });
 
-describe('Q-format-versions: the two readings, stated', () => {
-  it('Q-format-0.50.0: a stray brace in a string extends the macro to the next `}`', async () => {
+describe('Q-format-reading: the string is skipped, the macro ends at its own `}`', () => {
+  it('Q-format-stray-brace: the prose after a macro with a stray brace in a string is formatted', async () => {
     const out = await formatDocument(stray);
-    expect(out).toBe(':: Start\n{if $x}\n  {set $s = "{"}\n   keep   this }\n  after\n{/if}\n');
+    expect(out).toBe(':: Start\n{if $x}\n  {set $s = "{"}\n  keep   this }\n  after\n{/if}\n');
   });
 
-  it('Q-format-0.50.1: the string is skipped, the macro ends at its own `}`', async () => {
-    const out = await formatDocument(stray, { stringAwareBraces: true });
-    expect(out).toBe(':: Start\n{if $x}\n  {set $s = "{"}\n  keep   this }\n  after\n{/if}\n');
+  it('Q-format-stray-brace-template: the same for a template literal', async () => {
+    const out = await formatDocument(template);
+    expect(out).toBe(':: Start\n{if $x}\n  {print `a{`}\n  keep   this }\n{/if}\n');
   });
 });
 
-describe('Q-format-entrypoints: the target release comes from the project', () => {
+describe('Q-format-entrypoints: one reading everywhere; the project\'s Spindle only warns', () => {
   const dirs: string[] = [];
   afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
@@ -90,78 +84,75 @@ describe('Q-format-entrypoints: the target release comes from the project', () =
     }
     const data = storyDataVersion
       ? `:: StoryData\n{"format": "Spindle", "format-version": "${storyDataVersion}"}\n\n` : '';
-    writeFileSync(join(dir, 'story.tw'), data + stray.replace(':: Start\n', ':: Start\n'));
+    writeFileSync(join(dir, 'story.tw'), data + stray);
     return dir;
   }
 
-  const plain = (out: string) => out.includes('\n   keep   this }\n');
-  const aware = (out: string) => out.includes('\n  keep   this }\n');
+  const formatted = (out: string) => out.includes('\n  keep   this }\n');
 
-  it('Q-format-capabilities: installed version, then StoryData, then the default', async () => {
-    const texts = [readFileSync(join(project('0.50.1'), 'story.tw'), 'utf-8')];
-    expect((await findSpindleCapabilities(texts, project('0.50.1'))).stringAwareBraces).toBe(true);
-    expect((await findSpindleCapabilities(texts, project('0.50.0'))).stringAwareBraces).toBe(false);
-    expect((await findSpindleCapabilities(texts, project('0.45.1'))).version).toBe('0.45.1');
+  it('Q-format-target: installed version, then StoryData, then none', async () => {
+    const texts = [readFileSync(join(project('0.59.20'), 'story.tw'), 'utf-8')];
+    expect(await findSpindleTarget(texts, project('0.59.23'))).toMatchObject({ version: '0.59.23', source: 'installed', supported: true });
+    expect(await findSpindleTarget(texts, project('0.59.19'))).toMatchObject({ version: '0.59.19', supported: false });
     // no install: StoryData (own file, or the project's)
-    const withData = project(undefined, '0.51.0');
-    expect((await findSpindleCapabilities([readFileSync(join(withData, 'story.tw'), 'utf-8')], withData)).stringAwareBraces).toBe(true);
-    expect((await findSpindleCapabilities([], withData)).stringAwareBraces).toBe(true);
-    const old = project(undefined, '0.49.0');
-    expect((await findSpindleCapabilities([], old)).stringAwareBraces).toBe(false);
-    // nothing at all: the Spindle 0.45.1 behavior
-    const none = project(undefined);
-    expect(await findSpindleCapabilities([], none)).toMatchObject({ source: 'default', stringAwareBraces: false });
+    const withData = project(undefined, '0.59.20');
+    expect(await findSpindleTarget([readFileSync(join(withData, 'story.tw'), 'utf-8')], withData))
+      .toMatchObject({ version: '0.59.20', source: 'story-data', supported: true });
+    expect(await findSpindleTarget([], withData)).toMatchObject({ version: '0.59.20', source: 'story-data' });
+    expect((await findSpindleTarget([], project(undefined, '0.49.0'))).supported).toBe(false);
+    // nothing at all: nothing to warn about
+    expect(await findSpindleTarget([], project(undefined))).toMatchObject({ version: undefined, source: 'default', supported: true });
     // the installed version wins over StoryData
-    const both = project('0.50.0', '0.51.3');
-    expect((await findSpindleCapabilities([], both)).version).toBe('0.50.0');
+    expect((await findSpindleTarget([], project('0.59.21', '0.49.0'))).version).toBe('0.59.21');
   });
 
-  it('Q-format-mcp: spindle_format and spindle_format_check follow the installed release', async () => {
+  it('Q-format-mcp: spindle_format and spindle_format_check read the same for every release', async () => {
+    for (const version of [undefined, '0.59.20', '0.50.0']) {
+      const dir = project(version);
+      expect((await checkFormatting('**/*.tw', dir)).needsFormatting, String(version)).toEqual(['story.tw']);
+      const result = await formatFiles('**/*.tw', dir);
+      expect(result.formatted, String(version)).toBe(1);
+      expect(formatted(readFileSync(join(dir, 'story.tw'), 'utf-8')), String(version)).toBe(true);
+      expect((await checkFormatting('**/*.tw', dir)).needsFormatting).toEqual([]);
+    }
+  });
+
+  it('Q-format-mcp-warning: a project older than the minimum is told so, and still formatted', async () => {
     const old = project('0.50.0');
-    expect((await checkFormatting('**/*.tw', old)).needsFormatting).toEqual(['story.tw']);
-    expect((await formatFiles('**/*.tw', old)).formatted).toBe(1);
-    expect(plain(readFileSync(join(old, 'story.tw'), 'utf-8'))).toBe(true);
-    // formatted by its own release: nothing more to do
-    expect((await checkFormatting('**/*.tw', old)).needsFormatting).toEqual([]);
-
-    const modern = project('0.51.3');
-    expect((await formatFiles('**/*.tw', modern)).formatted).toBe(1);
-    expect(aware(readFileSync(join(modern, 'story.tw'), 'utf-8'))).toBe(true);
-    expect((await checkFormatting('**/*.tw', modern)).needsFormatting).toEqual([]);
-
-    // by StoryData when nothing is installed
-    const declared = project(undefined, '0.50.1');
-    await formatFiles('**/*.tw', declared);
-    expect(aware(readFileSync(join(declared, 'story.tw'), 'utf-8'))).toBe(true);
+    expect((await checkFormatting('**/*.tw', old)).warning).toContain(`older than ${MINIMUM_SPINDLE_VERSION}`);
+    expect((await formatFiles('**/*.tw', old)).warning).toContain(`older than ${MINIMUM_SPINDLE_VERSION}`);
+    const modern = project('0.59.23');
+    expect((await checkFormatting('**/*.tw', modern)).warning).toBeUndefined();
+    expect((await formatFiles('**/*.tw', modern)).warning).toBeUndefined();
+    expect((await formatFiles('**/*.tw', project(undefined))).warning).toBeUndefined();
   });
 
-  it('Q-format-cli: spindle-lsp format reads the release the same way', async () => {
+  it('Q-format-cli: spindle-lsp format reads the same for every release and warns below the minimum', async () => {
     const quiet = async (args: string[]) => {
       const log = console.log;
+      const error = console.error;
+      const errors: string[] = [];
       console.log = () => {};
-      try { return await runFormat(args); } finally { console.log = log; }
+      console.error = (...message: unknown[]) => { errors.push(message.join(' ')); };
+      try { return { code: await runFormat(args), errors }; } finally { console.log = log; console.error = error; }
     };
-    const old = project('0.50.0');
-    expect(await quiet(['--check', join(old, 'story.tw')])).toBe(1);
-    expect(await quiet([join(old, 'story.tw')])).toBe(0);
-    expect(plain(readFileSync(join(old, 'story.tw'), 'utf-8'))).toBe(true);
-    expect(await quiet(['--check', join(old, 'story.tw')])).toBe(0);
-
-    const modern = project('0.50.1');
-    expect(await quiet([join(modern, 'story.tw')])).toBe(0);
-    expect(aware(readFileSync(join(modern, 'story.tw'), 'utf-8'))).toBe(true);
-    expect(await quiet(['--check', join(modern, 'story.tw')])).toBe(0);
+    for (const version of ['0.59.23', '0.50.0']) {
+      const dir = project(version);
+      const file = join(dir, 'story.tw');
+      expect((await quiet(['--check', file])).code).toBe(1);
+      const run = await quiet([file]);
+      expect(run.code).toBe(0);
+      expect(run.errors.some(e => e.includes(`older than ${MINIMUM_SPINDLE_VERSION}`)), version).toBe(version === '0.50.0');
+      expect(formatted(readFileSync(file, 'utf-8'))).toBe(true);
+      expect((await quiet(['--check', file])).code).toBe(0);
+    }
   });
 
-  it('Q-format-lsp: the formatting request follows the workspace capabilities', async () => {
-    for (const [version, check] of [['0.50.0', plain], ['0.50.1', aware]] as const) {
-      const root = project(version);
-      const workspace = new WorkspaceModel({ workspaceRoot: root });
-      const options = {
-        isBlock: (name: string) => workspace.isContainer(name),
-        get stringAwareBraces() { return workspace.capabilities.stringAwareBraces; },
-      };
-      expect(check(await formatDocument(stray, options)), version).toBe(true);
+  it('Q-format-lsp: the formatting request reads the same, with the workspace\'s block macros', async () => {
+    for (const version of ['0.59.20', '0.59.23']) {
+      const workspace = new WorkspaceModel({ workspaceRoot: project(version) });
+      const options = { isBlock: (name: string) => workspace.isContainer(name) };
+      expect(formatted(await formatDocument(stray, options)), version).toBe(true);
       workspace.dispose();
     }
   });

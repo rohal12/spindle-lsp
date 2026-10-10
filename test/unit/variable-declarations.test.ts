@@ -198,7 +198,6 @@ describe('variable names Spindle accepts (#62)', () => {
     const at = (character: number) => ({ start: { line: 6, character }, end: { line: 6, character: character + 2 } });
     expect(findReferences(uri, { line: 6, character: 25 }, ws, true)).toEqual([
       { uri, range: { start: { line: 1, character: 0 }, end: { line: 1, character: 2 } } },
-      { uri, range: at(9) },
       { uri, range: at(18) },
       { uri, range: at(24) },
       { uri, range: at(32) },
@@ -220,31 +219,32 @@ describe('variable names Spindle accepts (#62)', () => {
     ]);
   });
 
-  // Spindle never validates `%` references and evaluates them only in code,
-  // so `%20` in prose, HTML attributes or links is URL encoding, not a transient.
-  describe('digit-leading transients outside code', () => {
+  // Spindle never validates `%` references and reads them only as `{%name}` displays and in code,
+  // so `%20` in prose, HTML attributes or links is URL encoding, not a transient. In code the
+  // expression transform reads `%20` as the modulo operator (`transform('%20')` is a syntax error).
+  describe('digit-leading transients outside a {%…} display', () => {
     const line = 'Save 20 %20 today. <a href="x%20y">a</a><a href="/%20">b</a> '
-      + '[[a%20b]] [[Shop|%20off]] {%5}{set _t to %20}';
+      + '[[a%20b]] [[Shop|%20off]] {%5}{set _t = %20}';
     const text = ':: StoryTransients\n%5 = 0\n:: Start\n' + line;
     const prose = [8, 29, 50, 64, 78];
+    const inCode = line.lastIndexOf('%20');
 
-    it('reports SP203 only for %20 in code', () => {
+    it('reports no SP203 for %20: it is text, and a modulo operator in code', () => {
       const ws = createWorkspace({ name: 'test.tw', content: text });
       const sp203 = computeDiagnostics(uri, ws).filter(d => d.code === 'SP203');
-      expect(sp203.map(d => [d.message, d.range.start.character])).toEqual([
-        ["Transient variable '%20' is not declared in StoryTransients", 102],
-      ]);
+      expect(sp203).toEqual([]);
     });
 
-    it('finds, hovers and highlights %20 only in code', () => {
+    it('finds, hovers and highlights %5 in its display, and never %20', () => {
       const ws = createWorkspace({ name: 'test.tw', content: text });
-      expect(findTransientReferences('20', ws, false).map(r => r.range.start.character)).toEqual([102]);
+      expect(findTransientReferences('20', ws, false)).toEqual([]);
       expect(findReferences(uri, { line: 3, character: 89 }, ws, false).map(r => r.range.start)).toEqual([
         { line: 3, character: 88 },
       ]);
       const tokens = computeSemanticTokensAbsolute(uri, ws).filter(t => t.line === 3).map(t => t.startChar);
-      expect(tokens).toEqual(expect.arrayContaining([88, 102]));
-      for (const character of prose) {
+      expect(tokens).toEqual(expect.arrayContaining([88]));
+      expect(tokens).not.toContain(inCode);
+      for (const character of [...prose, inCode]) {
         // Inside [[…]] the cursor is on a passage name, which is fine
         const pos = { line: 3, character: character + 1 };
         const refs = findReferences(uri, pos, ws, false).map(r => [r.range.start.character, r.range.end.character]);
@@ -255,11 +255,11 @@ describe('variable names Spindle accepts (#62)', () => {
       }
     });
 
-    it('still treats letter-leading transients in prose as before', () => {
-      const ws = createWorkspace({ name: 'test.tw', content: ':: StoryTransients\n%x = 0\n:: Start\nSee %x and %y.' });
+    it('reads letter-leading transients in prose as text too, and in code as references', () => {
+      const ws = createWorkspace({ name: 'test.tw', content: ':: StoryTransients\n%x = 0\n:: Start\nSee %x and %y. {print %x + %z}' });
       expect(findTransientReferences('x', ws, false)).toHaveLength(1);
       expect(computeDiagnostics(uri, ws).filter(d => d.code === 'SP203').map(d => d.message)).toEqual([
-        "Transient variable '%y' is not declared in StoryTransients",
+        'Undeclared transient: %z',
       ]);
     });
   });
@@ -270,7 +270,8 @@ describe('variable names Spindle accepts (#62)', () => {
     const edits = computeRename(uri, { line: 1, character: 1 }, '$price', ws).get(uri)!;
     const lines = TextDocument.applyEdits(doc, edits).split('\n');
     expect(lines[1]).toBe('$price = 0');
-    expect(lines[6]).toBe('It costs $price. {set $price to $price + 1}{$price}{%5}');
+    // The `$5` in the prose is text
+    expect(lines[6]).toBe('It costs $5. {set $price to $price + 1}{$price}{%5}');
   });
 
   it('hovers, highlights and completes $5 like any variable', () => {
@@ -279,7 +280,7 @@ describe('variable names Spindle accepts (#62)', () => {
     const varTokens = computeSemanticTokensAbsolute(uri, ws)
       .filter(t => t.line === 6)
       .map(t => [t.startChar, t.length]);
-    expect(varTokens).toEqual(expect.arrayContaining([[9, 2], [18, 2], [24, 2], [32, 2], [36, 2]]));
+    expect(varTokens).toEqual(expect.arrayContaining([[18, 2], [24, 2], [32, 2], [36, 2]]));
 
     const fieldWs = createWorkspace({ name: 'test.tw', content: content + '\n{$9lives.' });
     const items = getCompletions(uri, { line: 7, character: 10 }, '.', fieldWs);
@@ -296,6 +297,6 @@ describe('variable names Spindle accepts (#62)', () => {
     expect(storyVars.children!.map(c => c.name)).toEqual(['$5', '$9lives']);
 
     const lenses = computeCodeLenses(uri, ws).filter(l => l.range.start.line === 1);
-    expect(lenses.map(l => l.command.title)).toEqual(['4 usages']);
+    expect(lenses.map(l => l.command.title)).toEqual(['3 usages']);
   });
 });

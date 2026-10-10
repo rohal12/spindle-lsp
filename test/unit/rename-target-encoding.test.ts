@@ -4,14 +4,19 @@
  * contract are the passage-rename names in test/review/support/properties.ts
  * (RENAMES.passage) over the goto/include contexts of corpus.ts.
  * Runtime evaluation is limited to fixed benign literals written here.
+ *
+ * Spindle 0.59 reads the `passage` argument of {goto}, {include} and {link}
+ * as a JavaScript string literal when it is quoted and as an expression
+ * otherwise (`passageTarget`; there is no text fallback), so the only
+ * references are quoted and every new name is spelled as a quoted literal.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../src/core/types.js';
 import { computeRename, encodePassageRefName, RenameError } from '../../src/plugins/rename.js';
-import { parseMacroPassageRefs, type PassageRef } from '../../src/core/parsing/link-parser.js';
+import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
 import { gotoTarget } from '../review/support/oracle.js';
 import { runtimeGotoTarget } from '../helpers/expression-oracle.js';
 
@@ -30,26 +35,30 @@ function renamed(model: WorkspaceModel, name: string) {
   const list: Array<{ range: Range; newText: string }> = edits.get(uri) ?? [];
   return TextDocument.applyEdits(TextDocument.create(uri, 'twee', 0, model.documents.getText(uri)!), list);
 }
-const source = (macro: string, args = 'Old') => `:: StoryVariables\n:: Old\nhello\n:: Start\n{${macro} ${args}}`;
+const source = (macro: string, args = '"Old"') => `:: StoryVariables\n:: Old\nhello\n:: Start\n{${macro} ${args}}`;
+/** The passage names written out in `body`, a passage of its own. */
+function names(body: string): string[] {
+  const model = workspace(`:: Start\n${body}`);
+  return documentPassageRefs(model.markup.get(uri)!).map(ref => ref.name);
+}
 /** Where the installed runtime navigates for the last macro of `output`. */
 const navigates = (output: string, macro: 'goto' | 'include') =>
   gotoTarget(tokenize(output).filter(t => t.type === 'macro').at(-1)!.rawArgs, macro === 'include');
 
 describe('R67: arithmetic and other evaluating names', () => {
-  it('R67-goto-arithmetic: a bare target that would evaluate is quoted, and navigates to the name', () => {
+  it('R67-goto-arithmetic: a name that would evaluate stays quoted, and navigates to the name', () => {
     const output = renamed(workspace(source('goto')), '1 + 2');
     expect(output).toContain(':: 1 + 2\n');
     expect(output).toContain('{goto "1 + 2"}');
     expect(navigates(output, 'goto')).toBe('1 + 2');
   });
 
-  it('R67-bare-spelling: only names certain to throw (several plain words) stay bare; a single word is quoted', () => {
-    for (const [name, spelled] of [
-      ['New', '"New"'], ['New Name', 'New Name'], ['Chapter 2', 'Chapter 2'], ['_x1', '"_x1"'], ['URL', '"URL"'],
-      ['temporary', '"temporary"'], ['Image', '"Image"'], ['_x 1', '"_x 1"'], ['a _b', '"a _b"'],
-      ['1 + 2', '"1 + 2"'], ['5', '"5"'], ['a-b', '"a-b"'], ['true', '"true"'], ['null', '"null"'], ['Math', '"Math"'],
-      ['typeof x', '"typeof x"'], ['a  b', '"a  b"'], ['a(b)', '"a(b)"'], ["it's", '"it\'s"'], ['$v', '"$v"'],
+  it('R67-spelling: every name is spelled as a quoted literal, whatever it looks like', () => {
+    for (const name of [
+      'New', 'New Name', 'Chapter 2', '_x1', 'URL', 'temporary', 'Image', '_x 1', 'a _b',
+      '1 + 2', '5', 'a-b', 'true', 'null', 'Math', 'typeof x', 'a  b', 'a(b)', "it's", '$v',
     ]) {
+      const spelled = JSON.stringify(name);
       expect(renamed(workspace(source('goto')), name), name).toContain(`{goto ${spelled}}`);
       expect(renamed(workspace(source('include')), name), name).toContain(`{include ${spelled}}`);
     }
@@ -59,7 +68,7 @@ describe('R67: arithmetic and other evaluating names', () => {
     const scopes = [{}, { x1: 'Other', URL: 'Other', temporary: 'Other', Image: 'Other' }];
     for (const name of ['_x1', 'URL', 'temporary', 'Image', 'variables', 'Math', 'visited', 'New', 'Chapter 2']) {
       for (const macro of ['goto', 'include'] as const) {
-        const output = renamed(workspace(`${source(macro)} {${macro} Old}`), name);
+        const output = renamed(workspace(`${source(macro)} {${macro} "Old"}`), name);
         const call = tokenize(output).filter(t => t.type === 'macro').map(t => t.rawArgs);
         expect(call.length, name).toBe(2);
         for (const args of call) for (const temporary of scopes) {
@@ -75,77 +84,54 @@ describe('R67: arithmetic and other evaluating names', () => {
     expect(runtimeGotoTarget('URL')).toMatch(/URL/);
     expect(runtimeGotoTarget('URL')).not.toBe('URL');
     expect(runtimeGotoTarget('temporary')).toBe('[object Object]');
-    expect(runtimeGotoTarget('Chapter 2')).toBe('Chapter 2');
+    // Spindle 0.59 has no text fallback: a bare name is an expression, and one that does not evaluate throws
+    // when the macro runs, so it navigates nowhere (the 0.45.1 component used its text as the name)
+    expect(runtimeGotoTarget('Chapter 2')).toBeNull();
+    expect(runtimeGotoTarget('Old')).toBeNull();
     expect(runtimeGotoTarget('"_x1"', { x1: 'Other' })).toBe('_x1');
+    expect(runtimeGotoTarget('"Old"')).toBe('Old');
   });
 
-  it('R67-classifier: numeric expressions are not static names; canonical numbers and words are', () => {
-    expect(parseMacroPassageRefs('{goto 1 + 2}')).toEqual([]);
-    expect(parseMacroPassageRefs('{goto 2024-05-01}')).toEqual([]);
-    expect(parseMacroPassageRefs('{goto 1.0}')).toEqual([]);
-    expect(parseMacroPassageRefs('{goto 5}').map(r => r.name)).toEqual(['5']);
-    expect(parseMacroPassageRefs('{goto Chapter 1}').map(r => r.name)).toEqual(['Chapter 1']);
-    expect(parseMacroPassageRefs('{goto Chapter-1}').map(r => r.name)).toEqual(['Chapter-1']);
+  it('R67-classifier: only a quoted string names a passage; words, numbers and arithmetic are expressions', () => {
+    for (const bare of ['1 + 2', '2024-05-01', '1.0', '5', 'Chapter 1', 'Chapter-1', 'Chapter', '`Chapter`']) {
+      expect(names(`{goto ${bare}}`), bare).toEqual([]);
+    }
+    expect(names('{goto "5"} {goto \'Chapter 1\'}')).toEqual(['5', 'Chapter 1']);
   });
 });
 
-describe('R67: the {include} inline flag per release', () => {
-  const includeRef = (form: 'js-string' | 'bare'): PassageRef => ({
-    name: 'Old', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
-    source: 'macro', form, macro: 'include', quote: form === 'js-string' ? '"' : undefined,
-  });
+describe('R67: the {include} inline flag', () => {
+  /** The reference to `Old` in `{include <args>}`. */
+  function includeRef(args: string) {
+    const model = workspace(source('include', args));
+    const [ref] = documentPassageRefs(model.markup.get(uri)!);
+    return ref;
+  }
 
-  it('R67-include-inline-0.45.1: the first inline word is removed even inside quotes, so it is escaped', () => {
-    for (const form of ['js-string', 'bare'] as const) {
-      const spelled = encodePassageRefName(includeRef(form), 'inline', {});
-      expect(spelled).toBe(form === 'bare' ? '"\\u0069nline"' : '\\u0069nline');
-      const args = form === 'bare' ? spelled : `"${spelled}"`;
-      // Spindle 0.45.1: remove the first \binline\b, then evaluate the rest
-      expect(new Function(`return (${args.replace(/\binline\b/, '')})`)()).toBe('inline');
-    }
-    const encoded = encodePassageRefName(includeRef('js-string'), 'a\\inline "inline"', {});
-    expect(encoded).not.toMatch(/\binline\b/);
-    expect(new Function(`return ("${encoded}")`)()).toBe('a\\inline "inline"');
-    expect(encodePassageRefName(includeRef('js-string'), 'Plain', {})).toBe('Plain');
-  });
-
-  it('R67-include-inline-0.51.1: inside quotes the word is not the flag; bare it would be', () => {
-    const after = { includeInlineScoped: true };
-    expect(encodePassageRefName(includeRef('js-string'), 'inline', after)).toBe('inline');
-    expect(encodePassageRefName(includeRef('bare'), 'inline', after)).toBe('"inline"');
-    expect(encodePassageRefName(includeRef('bare'), 'New inline', after)).toBe('"New inline"');
-    expect(encodePassageRefName(includeRef('bare'), 'inline New', after)).toBe('"inline New"');
-    expect(encodePassageRefName(includeRef('bare'), 'New Name', after)).toBe('New Name');
-  });
-
-  it('R67-include-inline-goto: the inline word is no concern of {goto}', () => {
-    const ref = { ...includeRef('js-string'), macro: 'goto' };
-    expect(encodePassageRefName(ref, 'inline', {})).toBe('inline');
-    // a single word is quoted whatever the macro (it may be a binding)
-    expect(encodePassageRefName({ ...ref, form: 'bare' }, 'inline', {})).toBe('"inline"');
+  it('R67-include-inline-quoted: inside quotes the word is no flag, so the name is written as is', () => {
+    expect(encodePassageRefName(includeRef('"Old"'), 'inline')).toBe('inline');
+    expect(encodePassageRefName(includeRef('"Old" inline'), 'New inline')).toBe('New inline');
+    expect(encodePassageRefName(includeRef('inline "Old"'), 'inline New')).toBe('inline New');
+    expect(encodePassageRefName(includeRef("'Old'"), "it's")).toBe("it\\'s");
   });
 
   it('R67-include-inline-installed: renaming to inline navigates to inline on the installed runtime', () => {
-    for (const args of ['"Old"', 'Old', '"Old" inline', 'inline "Old"', 'Old inline']) {
+    for (const args of ['"Old"', '"Old" inline', 'inline "Old"']) {
       const output = renamed(workspace(source('include', args)), 'inline');
       expect(navigates(output, 'include'), args).toBe('inline');
       expect(output).toContain(':: inline\n');
     }
   });
 
-  it('R67-include-flag-reading: the flag is found per release (0.45.1 anywhere, 0.51.1 standalone at an end)', () => {
-    const names = (text: string, options = {}) => parseMacroPassageRefs(text, 0, options).map(r => r.name);
-    const scoped = { includeInlineScoped: true };
-    for (const options of [{}, scoped]) {
-      expect(names('{include Old inline}', options)).toEqual(['Old']);
-      expect(names('{include inline "Old"}', options)).toEqual(['Old']);
-      expect(names('{include "Old" inline}', options)).toEqual(['Old']);
-    }
-    expect(names('{include "inline"}', scoped)).toEqual(['inline']);
-    expect(names('{include "inline"}')).toEqual([]);
-    expect(names('{include New inline}', scoped)).toEqual(['New']);
-    expect(names('{include a inline b}', scoped)).toEqual(['a inline b']);
-    const [ref] = parseMacroPassageRefs('{include inline "Old"}', 0, scoped);
+  it('R67-include-flag-reading: the flag is the first or last word outside quotes; the name is the quoted string', () => {
+    expect(names('{include "Old" inline}')).toEqual(['Old']);
+    expect(names('{include inline "Old"}')).toEqual(['Old']);
+    expect(names('{include "inline"}')).toEqual(['inline']);
+    expect(names('{include "inline" inline}')).toEqual(['inline']);
+    // what is left is an expression, not a name
+    expect(names('{include Old inline}')).toEqual([]);
+    expect(names('{include a inline b}')).toEqual([]);
+    const ref = includeRef('inline "Old"');
     expect([ref.range.start.character, ref.range.end.character]).toEqual([17, 20]);
   });
 

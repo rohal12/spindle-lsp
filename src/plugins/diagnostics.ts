@@ -1,20 +1,34 @@
-import type { Diagnostic, MacroNode, Passage, Range } from '../core/types.js';
+import {
+  builtinMacros,
+  lexJs,
+  splitArgs,
+  validateStoryMarkup,
+  validateVariableReferences,
+  widgetDefinitions,
+  type FieldSchema,
+  type MacroToken,
+  type MarkupDiagnostic,
+  type MarkupDiagnosticCode,
+  type PairedNode,
+  type ToolingMacro,
+  type VariableDiagnostic,
+  type VariableDiagnosticCode,
+  type WidgetDefinition,
+} from '@rohal12/spindle/tooling';
+import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
-import type { DiagnosticCodeValue } from '../core/diagnostic-codes.js';
-import { maskRawDoBodies, parseMacros, parseDocumentStructure, buildLineStarts, offsetToPosition } from '../core/parsing/macro-parser.js';
-import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
-import { policyFor, scanHtmlTags } from '../core/parsing/html-scanner.js';
-import { findUnevaluatedBlocks } from '../core/parsing/attribute-blocks.js';
-import { splitWidgetArguments } from '../core/parsing/widget-arguments.js';
+import type { DiagnosticCodeValue, DiagnosticData, SpindleDiagnostic } from '../core/diagnostic-codes.js';
+import type { DocumentMarkup, PassageMarkup } from '../core/markup/passage-markup.js';
+import { macroTokens } from '../core/markup/tokens.js';
+import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
-import { includeNameExpression, findLinkMacroMismatches, findLinkRuntimeMismatches, findLiteralLinkInterpolations, parseLinks, type LinkRuntimeOptions } from '../core/parsing/link-parser.js';
-import { decodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
-import { isScriptOrStylesheetPassage, isMarkupPassage, maskNonMarkupPassages } from '../core/parsing/passage-parser.js';
+import { findLinkRuntimeMismatches, findLiteralLinkInterpolations } from '../core/parsing/link-parser.js';
+import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
-import { MINIMUM_SPINDLE_VERSION, unsupportedVersionMessage } from '../core/workspace/spindle-capabilities.js';
+import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace/spindle-version.js';
 
 // ---------------------------------------------------------------------------
 // Core diagnostic function (no LSP dependency)
@@ -23,22 +37,34 @@ import { MINIMUM_SPINDLE_VERSION, unsupportedVersionMessage } from '../core/work
 /**
  * Compute all diagnostics for a single document within the workspace context.
  *
- * Checks:
- *  - Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
- *  - HTML element structure Spindle cannot render (SP102)
- *  - Macros and expressions in HTML attributes Spindle outputs as text (SP103)
- *  - Argument/parameter validation (SP108, SP109, SP110, SP111, SP112)
- *  - Target Spindle version (SP001)
- *  - Variable validation (SP200, SP201, SP202, SP203, SP204, SP206)
- *  - StoryVariables / StoryTransients declarations Spindle rejects (SP207)
- *  - Temporaries assigned inside {for} (SP205)
- *  - Link/widget validation (SP300, SP301, SP302, SP303, SP304, SP305)
+ * Spindle's own checks come from its tooling API, which applies the rules
+ * the runtime applies when the story starts:
+ *  - `validateStoryMarkup`: malformed markup (SP101, SP102, SP104, SP105),
+ *    unknown macros (SP100), unquoted passage names (SP113), syntax errors in
+ *    code (SP106), argument errors (SP109), misplaced branches (SP107) and
+ *    passages that do not exist (SP300)
+ *  - `validateVariableReferences`: undeclared variables and transients, fields
+ *    of primitives, reserved names (SP200, SP201, SP203, SP208)
+ *  - `parseDeclarations`, through the variable tracker: declarations Spindle
+ *    rejects (SP207)
+ *
+ * The language server adds what Spindle does not check:
+ *  - macros outside the parents they need and children constraints (SP107,
+ *    SP114, SP115)
+ *  - arguments, against a parameter schema a project configures for a macro
+ *    Spindle declares nothing for (SP108-SP111)
+ *  - the Spindle version (SP001) and a missing StoryVariables (SP202)
+ *  - temporaries assigned in a loop (SP205) and array members (SP206)
+ *  - widgets: argument counts, includes of widget passages, unused ones
+ *    (SP301, SP302, SP303)
+ *  - links the runtime reads differently (SP304, SP305)
+ *  - line length (SP500)
  */
 export interface DiagnosticOptions {
   maxLineLength?: number;
 }
 
-export function computeDiagnostics(uri: string, workspace: WorkspaceModel, options?: DiagnosticOptions): Diagnostic[] {
+export function computeDiagnostics(uri: string, workspace: WorkspaceModel, options?: DiagnosticOptions): SpindleDiagnostic[] {
   // Don't emit any diagnostics until the full workspace scan is done.
   // Before that, passage/variable/widget indices are incomplete and
   // would produce false positives for cross-file references.
@@ -48,541 +74,365 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   // (SugarCube's <</if>> is not a stray closing tag).
   if (!workspace.isSpindleProject()) return [];
 
-  try {
-    const text = workspace.documents.getText(uri);
-    if (text === undefined) return [];
+  const doc = workspace.markup.get(uri);
+  if (!doc || doc.passages.length === 0) return [];
 
-    const passages = workspace.passages.getPassagesInDocument(uri);
-    if (passages.length === 0) return [];
-
-    const diagnostics: Diagnostic[] = [];
-
-    // Passages Spindle never tokenizes as markup (script/stylesheet, and
-    // the declaration/metadata passages in NON_MARKUP_PASSAGES): blank their
-    // bodies (keeping offsets) before parsing macros and links. Executable
-    // special passages such as StoryInit and StoryInterface stay markup.
-    const masked = maskNonMarkupPassages(text, passages);
-    // (from Spindle 0.50.1 a {do} body is JavaScript text, not markup)
-    const markupText = workspace.capabilities.rawDoBodies ? maskRawDoBodies(masked, workspace.capabilities) : masked;
-
-    // Parse macros for the whole document
-    // Containers pair together with the HTML elements, which share Spindle's
-    // AST stack with them.
-    const structure = parseDocumentStructure(text, passages, (name) => workspace.isContainer(name), workspace.capabilities);
-    const macros = structure.macros;
-
-    // Collect all passage names across workspace for link validation
-    const allPassages = workspace.passages.getAllPassages();
-    const passageNames = new Set(allPassages.map(p => p.name));
-
-    // Each validation step is wrapped individually so that a failure
-    // in one category still allows the others to produce diagnostics.
-
-    // SP102: where Spindle's AST builder throws on the HTML elements
-    for (const error of structure.errors) {
-      diagnostics.push(makeDiag(error.range, DiagnosticCode.MalformedElement, `Malformed element: ${error.message}`));
-    }
-    // The element directly enclosing each macro, by macro index
-    const elements = new Map<number, string>();
-    macros.forEach((macro, index) => {
-      if (macro.element !== undefined) elements.set(index, macro.element);
-    });
-
+  const diagnostics: SpindleDiagnostic[] = [];
+  // A failure in one category still lets the others report.
+  const attempt = (check: () => void) => {
     try {
-      validateAttributeBlocks(markupText, passages, workspace, diagnostics);
+      check();
     } catch {
-      // Attribute validation failed — continue
+      // continue with the other checks
     }
-
-    try {
-      validateMacros(macros, elements, workspace, diagnostics);
-    } catch {
-      // Macro validation failed — continue with other checks
-    }
-
-    try {
-      validateArguments(macros, workspace, passageNames, diagnostics);
-    } catch {
-      // Argument validation failed — continue
-    }
-
-    try {
-      validateSpindleVersion(uri, workspace, diagnostics);
-    } catch {
-      // Version check failed — continue
-    }
-
-    try {
-      validateVariables(uri, workspace, diagnostics);
-    } catch {
-      // Variable validation failed — continue
-    }
-
-    try {
-      validateLinks(markupText, passages, passageNames, workspace.capabilities, diagnostics);
-    } catch {
-      // Link validation failed — continue
-    }
-
-    try {
-      validateLinkRuntime(markupText, workspace, diagnostics);
-    } catch {
-      // Link runtime validation failed — continue
-    }
-
-    try {
-      validateLiteralLinkInterpolation(markupText, workspace, diagnostics);
-    } catch {
-      // Link interpolation validation failed — continue
-    }
-
-    try {
-      validateWidgetInvocations(macros, workspace, diagnostics);
-    } catch {
-      // Widget validation failed — continue
-    }
-
-    try {
-      validateArrayMemberAccess(uri, workspace, diagnostics);
-    } catch {
-      // Array member validation failed — continue
-    }
-
-    try {
-      validateLoopTemporaries(uri, text, macros, workspace, diagnostics);
-    } catch {
-      // Loop temporary validation failed — continue
-    }
-
-    try {
-      validateWidgetIncludes(text, macros, workspace, diagnostics);
-    } catch {
-      // Include validation failed — continue
-    }
-
-    try {
-      validateUnusedWidgets(uri, workspace, diagnostics);
-    } catch {
-      // Unused widget validation failed — continue
-    }
-
-    if (options?.maxLineLength) {
-      try {
-        validateLineLength(text, passages, options.maxLineLength, diagnostics);
-      } catch {
-        // Line-length validation failed — continue
-      }
-    }
-
-    return diagnostics;
-  } catch {
-    // Catastrophic failure — return empty diagnostics rather than crashing
-    return [];
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Macro validation (SP100, SP101, SP104, SP107, SP114, SP115)
-// ---------------------------------------------------------------------------
-
-/**
- * `elements` maps the index of each macro whose innermost enclosing node on
- * Spindle's AST stack is an HTML element to that element's tag name; see
- * pairMacros().
- */
-function validateMacros(
-  macros: MacroNode[],
-  elements: Map<number, string>,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  // Before Spindle 0.50.1 a {do} body is tokenized like any text, and {do}
-  // runs only its plain-text pieces (see rawDoBodies in the capabilities)
-  const inDoBody = new Set<number>();
-  macros.forEach((macro, index) => {
-    if (macro.open && macro.pair !== -1 && macro.name.toLowerCase() === 'do') {
-      for (let i = index + 1; i < macro.pair; i++) inDoBody.add(i);
-    }
-  });
-
-  for (let curIndex = 0; curIndex < macros.length; curIndex++) {
-    const macro = macros[curIndex];
-    const info = workspace.macros.getMacro(macro.name);
-
-    // Neither a macro nor a user-defined widget
-    if (!info && !workspace.widgets.getWidget(macro.name)) {
-      if (macro.open) {
-        // SP100: unrecognized macro
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.UndefinedMacro,
-          `Unrecognized macro: {${macro.name}}` + (inDoBody.has(curIndex)
-            ? `. Spindle ${workspace.capabilities.version ?? 'before 0.50.1'} reads it as a macro inside {do} and drops it from the code: ` +
-              'write a space after the brace of an object literal ({ name: 1 }), or use Spindle 0.50.1 or later'
-            : ''),
-        ));
-      } else {
-        // Whatever it is, Spindle's AST builder takes a closer only for the
-        // container on top of its stack, and an unknown macro is no container
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.IllegalClosingTag,
-          `Illegal closing tag: {${macro.name}} is not a container`,
-        ));
-      }
-      continue;
-    }
-
-    if (workspace.isContainer(macro.name)) {
-      // SP101: unmatched container
-      if (macro.open && macro.pair === -1) {
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.MalformedContainer,
-          `Malformed container: no matching {/${macro.name}}`,
-        ));
-      } else if (!macro.open && macro.pair === -1 && macro.expectedElement === undefined) {
-        // A closer over a container that is closed later is the one Spindle
-        // rejects: "Expected {/for} but found {/if}". (One over an element
-        // that is closed later is reported as SP102.)
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.MalformedContainer,
-          macro.expected
-            ? `Malformed container: expected {/${macro.expected}} but found {/${macro.name}}`
-            : `Malformed container: no matching {${macro.name}}`,
-        ));
-      }
-
-      // SP114/SP115: children constraints
-      if (info?.children && info.children.length > 0 && macro.open && macro.pair !== -1) {
-        validateChildren(macros, curIndex, macro, info.children, elements, workspace, diagnostics);
-      }
-    } else if (!macro.open) {
-      // SP104: closing tag on non-container
-      diagnostics.push(makeDiag(
-        macro.range,
-        DiagnosticCode.IllegalClosingTag,
-        `Illegal closing tag: {${macro.name}} is not a container`,
-      ));
-    }
-
-    // SP107: parents constraint
-    if (info?.parents && info.parents.length > 0 && macro.open) {
-      const parentList = info.parents.join(', ');
-      if (DIRECT_CHILD_MACROS.has(macro.name.toLowerCase())) {
-        const element = elements.get(curIndex);
-        const enclosing = element === undefined ? innermostContainer(macros, curIndex, workspace) : undefined;
-        const parentSet = new Set(info.parents.map(p => p.toLowerCase()));
-        if (element !== undefined || !enclosing || !parentSet.has(enclosing.name.toLowerCase())) {
-          const where = element !== undefined
-            ? `, not inside <${element}>`
-            : enclosing ? `, not inside {${enclosing.name}}` : '';
-          diagnostics.push(makeDiag(
-            macro.range,
-            DiagnosticCode.InvalidChildren,
-            `Invalid: {${macro.name}} can only be directly inside {${parentList}}${where}`,
-          ));
-        }
-      } else if (!isInsideParent(macros, curIndex, info.parents, workspace)) {
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.InvalidChildren,
-          `Invalid: {${macro.name}} can only be inside {${parentList}}`,
-        ));
-      }
-    }
-  }
-}
-
-/**
- * Macros that only work as direct children of their parent container.
- *
- * Spindle's AST builder attaches a branch ({elseif}/{else}, {case}/{default},
- * {next}) to the block on top of its stack and throws when that block is
- * not the branch's parent, so a branch nested in another container or in an
- * HTML element inside its parent is an error. {listbox} and {cycle} read
- * their {option}s from their direct children only, so a nested {option} is
- * silently dropped.
- *
- * Other children, such as {stop}, reach their parent through React context
- * and may sit anywhere inside it.
- */
-const DIRECT_CHILD_MACROS = new Set(['elseif', 'else', 'case', 'default', 'next', 'option']);
-
-/**
- * The innermost container enclosing the macro at `index`, as on Spindle's
- * AST stack: built-in and custom block macros as well as block widgets.
- * Containers without a closing tag are skipped; SP101 reports them. HTML
- * elements share that stack; pairMacros() finds those.
- */
-function innermostContainer(
-  macros: MacroNode[],
-  index: number,
-  workspace: WorkspaceModel,
-): MacroNode | undefined {
-  // Containers are paired with a stack, so the nearest opener whose closing
-  // tag lies past `index` is the innermost one.
-  for (let i = index - 1; i >= 0; i--) {
-    const candidate = macros[i];
-    if (!candidate.open || candidate.pair <= index) continue;
-    if (workspace.isContainer(candidate.name)) return candidate;
-  }
-  return undefined;
-}
-
-/** Elements whose content is not markup: their tags are not checked for SP103. */
-const RAW_TEXT_ELEMENTS = new Set(['script', 'style']);
-
-const MACRO_IN_ATTRIBUTE = (macro: string) =>
-  `Macros are not evaluated inside HTML attributes, so Spindle outputs this {${macro}} as text. `
-  + "Use an expression such as {$x ? 'a' : 'b'}";
-
-const EXPRESSION_IN_ATTRIBUTE = 'Spindle evaluates {…} in an HTML attribute only when $, _, @ or % follows the brace, '
-  + "so it outputs this block as text. Start the expression with a variable, as in {$x ? 'a' : 'b'}";
-
-/**
- * SP103: `{…}` blocks in HTML attribute values that Spindle outputs as text.
- *
- * Every tag Spindle's tokenizer reads becomes an element whose attribute
- * values HtmlNodeRenderer passes through interpolate(), and that evaluates
- * only blocks opening with a sigil (rohal12/spindle#225; unchanged on
- * upstream main). findUnevaluatedBlocks() decides which blocks look like
- * code. Only passages Spindle tokenizes are checked, only tags the scanner
- * reads before it stops, and not the content of <script> and <style>
- * elements. If a later Spindle evaluates macros in attributes, this check
- * needs a version gate.
- */
-function validateAttributeBlocks(
-  text: string,
-  passages: Passage[],
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  if (!text.includes('<')) return;
-  const lineStarts = buildLineStarts(text);
-  const lineOffset = (line: number) => lineStarts[line] ?? text.length;
-  const lookup = {
-    isMacro: (name: string) => workspace.macros.getMacro(name) !== undefined || workspace.widgets.getWidget(name) !== undefined,
-    isContainer: (name: string) => workspace.isContainer(name),
   };
 
+  const story = storyReport(workspace);
+  for (const passage of doc.passages) {
+    attempt(() => diagnostics.push(...markupDiagnostics(passage, story, workspace)));
+    attempt(() => diagnostics.push(...variableDiagnostics(passage, story)));
+    attempt(() => diagnostics.push(...structureDiagnostics(passage, workspace)));
+    attempt(() => diagnostics.push(...argumentDiagnostics(passage, workspace)));
+    attempt(() => diagnostics.push(...widgetDiagnostics(passage, story, workspace)));
+  }
+  attempt(() => diagnostics.push(...versionDiagnostics(uri, doc, workspace)));
+  attempt(() => diagnostics.push(...storyVariablesDiagnostics(uri, doc, story, workspace)));
+  attempt(() => diagnostics.push(...arrayMemberDiagnostics(uri, workspace)));
+  attempt(() => diagnostics.push(...linkDiagnostics(doc)));
+  attempt(() => diagnostics.push(...unusedWidgetDiagnostics(doc, story)));
+  if (options?.maxLineLength) {
+    const maxLength = options.maxLineLength;
+    attempt(() => diagnostics.push(...lineLengthDiagnostics(doc, maxLength)));
+  }
+
+  return diagnostics.sort((a, b) =>
+    a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character);
+}
+
+// ---------------------------------------------------------------------------
+// The story as the tooling API checks it
+// ---------------------------------------------------------------------------
+
+/** A widget the story defines, and the passage that defines it. */
+interface DefinedWidget {
+  definition: WidgetDefinition;
+  passage: PassageMarkup;
+}
+
+/**
+ * What the checks of the whole story share: they depend on every document, so
+ * they are computed once for each version of the workspace's markup (the
+ * markup index reads a document again only when it or the project's macros
+ * and widgets changed) and kept.
+ */
+interface StoryReport {
+  /** The documents it was computed from. */
+  readonly documents: readonly DocumentMarkup[];
+  /** The macros the story may use, with the variable an input macro binds. */
+  readonly macros: readonly ToolingMacro[];
+  /** `validateStoryMarkup`'s diagnostics, by the passage they are in. */
+  readonly markup: ReadonlyMap<PassageMarkup, MarkupDiagnostic[]>;
+  /** The widgets the story defines, by lower-case name (a later definition replaces an earlier one). */
+  readonly widgets: ReadonlyMap<string, DefinedWidget>;
+  readonly widgetList: readonly DefinedWidget[];
+  /** The lower-case names of the macros the story invokes. */
+  readonly invoked: ReadonlySet<string>;
+  /** What StoryVariables declares; undefined while the story has no such passage. */
+  readonly variables: ReadonlyMap<string, FieldSchema | undefined> | undefined;
+  /** What StoryTransients declares; undefined while the story has no such passage. */
+  readonly transients: ReadonlyMap<string, FieldSchema | undefined> | undefined;
+  /** `validateVariableReferences`, by passage, read when the passage is checked. */
+  readonly variableDiagnostics: Map<PassageMarkup, VariableDiagnostic[]>;
+}
+
+const reports = new WeakMap<WorkspaceModel, StoryReport>();
+
+/** The passages the compiler turns into story attributes: the runtime never has them. */
+const COMPILER_PASSAGES = new Set(['StoryTitle', 'StoryData']);
+
+function storyReport(workspace: WorkspaceModel): StoryReport {
+  const documents: DocumentMarkup[] = [];
+  for (const uri of workspace.documents.getUris()) {
+    if (isMacroSource(uri)) continue;
+    const doc = workspace.markup.get(uri);
+    if (doc) documents.push(doc);
+  }
+  const kept = reports.get(workspace);
+  if (kept && kept.documents.length === documents.length && kept.documents.every((doc, i) => doc === documents[i])) return kept;
+  const report = buildReport(documents, workspace);
+  reports.set(workspace, report);
+  return report;
+}
+
+function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceModel): StoryReport {
+  const toolingMacros = documents[0]?.context.macros ?? workspace.macros.toolingMacros();
+  const macros = toolingMacros.map((macro) => {
+    const storeVar = workspace.macros.getMacro(macro.name)?.storeVar;
+    return storeVar ? { ...macro, storeVar } : macro;
+  });
+
+  const passages: PassageMarkup[] = [];
+  for (const doc of documents) {
+    for (const passage of doc.passages) {
+      if (!COMPILER_PASSAGES.has(passage.passage.name)) passages.push(passage);
+    }
+  }
+
+  // validateStoryMarkup hands back the `data-source-file` it was given: the index of the passage
+  const markup = new Map<PassageMarkup, MarkupDiagnostic[]>();
+  const found = validateStoryMarkup(
+    passages.map((passage, index) => ({
+      name: passage.passage.name,
+      content: passage.content,
+      tags: passage.passage.tags,
+      metadata: { 'data-source-file': String(index) },
+    })),
+    toolingMacros,
+    // Every malformed tag and pairing error, and the checks of the markup around them
+    { tolerant: true },
+  );
+  for (const diagnostic of found) {
+    const passage = passages[Number(diagnostic.file)];
+    if (!passage) continue;
+    const list = markup.get(passage);
+    if (list) list.push(diagnostic);
+    else markup.set(passage, [diagnostic]);
+  }
+
+  const widgets = new Map<string, DefinedWidget>();
+  const widgetList: DefinedWidget[] = [];
+  const invoked = new Set<string>();
   for (const passage of passages) {
-    if (!isMarkupPassage(passage)) continue;
-    const base = lineOffset(passage.range.start.line + 1);
-    const content = text.slice(base, lineOffset(passage.range.end.line + 1));
-    if (!content.includes('<') || !content.includes('{')) continue;
-
-    let rawText: string | undefined;
-    for (const tag of scanHtmlTags(content, policyFor(workspace.capabilities)).tags) {
-      const name = tag.name.toLowerCase();
-      if (rawText !== undefined) {
-        if (tag.kind === 'close' && name === rawText) rawText = undefined;
-        continue;
-      }
-      for (const [start, end] of tag.values ?? []) {
-        for (const block of findUnevaluatedBlocks(content.slice(start, end), lookup)) {
-          const range = {
-            start: offsetToPosition(base + start + block.start, lineStarts),
-            end: offsetToPosition(base + start + block.end, lineStarts),
-          };
-          const message = block.kind === 'macro' ? MACRO_IN_ATTRIBUTE(block.macro!) : EXPRESSION_IN_ATTRIBUTE;
-          diagnostics.push(makeDiag(range, DiagnosticCode.UnevaluatedAttributeBlock, message));
-        }
-      }
-      if (tag.kind === 'open' && RAW_TEXT_ELEMENTS.has(name)) rawText = name;
+    if (!passage.isMarkup) continue;
+    for (const definition of widgetDefinitions([{ name: passage.passage.name, content: passage.content, tags: passage.passage.tags }], macros)) {
+      const widget = { definition, passage };
+      widgets.set(definition.name.toLowerCase(), widget);
+      widgetList.push(widget);
+    }
+    for (const token of macroTokens(passage)) {
+      if (!token.isClose) invoked.add(token.name.toLowerCase());
     }
   }
+
+  return {
+    documents,
+    macros,
+    markup,
+    widgets,
+    widgetList,
+    invoked,
+    variables: declarationsOf(workspace, 'StoryVariables'),
+    transients: declarationsOf(workspace, 'StoryTransients'),
+    variableDiagnostics: new Map(),
+  };
 }
 
-/**
- * Check whether the macro at `index` is inside one of the allowed parent containers.
- */
-function isInsideParent(
-  macros: MacroNode[],
-  index: number,
-  parents: string[],
-  workspace: WorkspaceModel,
-): boolean {
-  const parentSet = new Set(parents.map(p => p.toLowerCase()));
-
-  // Walk backwards to find an enclosing container
-  for (let i = index - 1; i >= 0; i--) {
-    const candidate = macros[i];
-    if (!candidate.open) continue;
-
-    const candidateInfo = workspace.macros.getMacro(candidate.name);
-    if (!candidateInfo?.block) continue;
-
-    // Check if the candidate's pair extends past our macro
-    if (candidate.pair !== -1 && candidate.pair > index) {
-      // We are inside this container
-      if (parentSet.has(candidate.name.toLowerCase())) {
-        return true;
-      }
-      // We're inside a different container — keep looking for allowed parents
-    }
-  }
-
-  return false;
-}
-
-/**
- * Validate children constraints for a paired container macro.
- */
-function validateChildren(
-  macros: MacroNode[],
-  curIndex: number,
-  parentMacro: MacroNode,
-  childConstraints: Array<{ name: string; min?: number; max?: number }>,
-  elements: Map<number, string>,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  const children: Record<string, number> = Object.create(null);
-  const startIndex = curIndex + 1;
-  const endIndex = parentMacro.pair;
-
-  for (let i = startIndex; i < endIndex; i++) {
-    const child = macros[i];
-
-    // Skip contents of nested containers, block widgets included
-    if (child.open && child.pair !== -1 && workspace.isContainer(child.name)) {
-      i = child.pair;
-      continue;
-    }
-
-    // Skip macros inside HTML elements, which are children of the element
-    if (elements.has(i)) continue;
-
-    if (!workspace.macros.getMacro(child.name)) continue;
-
-    // Count direct children that match constraints. Like macro lookup,
-    // matching ignores capitalization: Spindle lower-cases macro names.
-    const childKey = child.name.toLowerCase();
-    if (childConstraints.some(c => c.name.toLowerCase() === childKey)) {
-      children[childKey] = (children[childKey] ?? 0) + 1;
-    }
-  }
-
-  // Check constraints
-  for (const constraint of childConstraints) {
-    const count = children[constraint.name.toLowerCase()] ?? 0;
-
-    if (constraint.max !== undefined && count > constraint.max) {
-      diagnostics.push(makeDiag(
-        parentMacro.range,
-        DiagnosticCode.ChildMaxExceeded,
-        `Too many {${constraint.name}} in {${parentMacro.name}} (max ${constraint.max}, found ${count})`,
-      ));
-    }
-
-    if (constraint.min !== undefined && count < constraint.min) {
-      diagnostics.push(makeDiag(
-        parentMacro.range,
-        DiagnosticCode.ChildMinNotMet,
-        `Too few {${constraint.name}} in {${parentMacro.name}} (min ${constraint.min}, found ${count})`,
-      ));
-    }
-  }
+/** The names the passage `name` declares with the shape of their default, or undefined if the story has no such passage. */
+function declarationsOf(workspace: WorkspaceModel, name: 'StoryVariables' | 'StoryTransients'): Map<string, FieldSchema | undefined> | undefined {
+  const passage = name === 'StoryVariables' ? workspace.passages.getStoryVariables() : workspace.passages.getStoryTransients();
+  if (!passage) return undefined;
+  const markup = workspace.markup.get(passage.uri)?.passages.find((candidate) => candidate.passage === passage);
+  if (!markup) return undefined;
+  return new Map(markup.declarations.declarations.map((declaration) => [declaration.name, declaration.schema]));
 }
 
 // ---------------------------------------------------------------------------
-// Argument / parameter validation (SP108, SP109, SP110, SP111, SP112)
+// Markup: validateStoryMarkup
 // ---------------------------------------------------------------------------
 
-function validateArguments(
-  macros: MacroNode[],
-  workspace: WorkspaceModel,
-  passageNames: Set<string>,
-  diagnostics: Diagnostic[],
-): void {
-  for (const macro of macros) {
-    if (!macro.open) continue;
+/** The code each kind of markup diagnostic has (macros and elements are told apart below). */
+const MARKUP_CODES: Record<MarkupDiagnosticCode, DiagnosticCodeValue> = {
+  'unknown-macro': DiagnosticCode.UndefinedMacro,
+  'unclosed-block': DiagnosticCode.MalformedContainer,
+  'mismatched-closer': DiagnosticCode.MalformedContainer,
+  'stray-closer': DiagnosticCode.MalformedContainer,
+  'misplaced-branch': DiagnosticCode.InvalidChildren,
+  'invalid-closer': DiagnosticCode.IllegalClosingTag,
+  'closer-with-selectors': DiagnosticCode.IllegalClosingTag,
+  'closer-with-arguments': DiagnosticCode.IllegalClosingTag,
+  'unclosed-tag': DiagnosticCode.MalformedElement,
+  'unexpected-character': DiagnosticCode.MalformedElement,
+  'unclosed-attribute': DiagnosticCode.MalformedElement,
+  'unclosed-link': DiagnosticCode.UnclosedMarkup,
+  'unclosed-expression': DiagnosticCode.UnclosedMarkup,
+  'unclosed-macro': DiagnosticCode.UnclosedMarkup,
+  syntax: DiagnosticCode.UnclosedMarkup,
+  'argument-error': DiagnosticCode.ParameterTypeError,
+  'code-syntax': DiagnosticCode.CodeSyntaxError,
+  'unknown-passage': DiagnosticCode.BrokenPassageLink,
+  'unquoted-passage-name': DiagnosticCode.UnquotedPassageName,
+};
 
-    const info = workspace.macros.getMacro(macro.name);
-    if (!info) continue;
-    if (info.skipArgs) continue;
-    if (!info.parameters) continue;
+function markupDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  return (story.markup.get(passage) ?? []).map((found) => fromMarkup(passage, found, workspace));
+}
 
-    const rawArgs = macro.rawArgs ?? '';
-    const name = macro.name.toLowerCase();
-    const args = name === 'include'
-      ? targetArguments(includeNameExpression(rawArgs, workspace.capabilities))
-      : name === 'goto'
-        ? targetArguments(rawArgs.trim())
-        : lexArguments(rawArgs);
+function fromMarkup(passage: PassageMarkup, found: MarkupDiagnostic, workspace: WorkspaceModel): SpindleDiagnostic {
+  const range = passage.range(...visibleSpan(passage.content, found.start, found.end));
+  const name = text(found.data?.name);
+  let code = MARKUP_CODES[found.code];
+  let data: DiagnosticData | undefined;
 
-    // A malformed parameter schema (e.g. from a project config) only
-    // disables argument checks for its own macro.
-    let params: Parameters;
-    try {
-      params = new Parameters(info.parameters);
-    } catch {
-      continue;
+  switch (found.code) {
+    case 'unknown-macro': {
+      const token = [...macroTokens(passage)].find((candidate) => candidate.start === found.start);
+      data = {
+        kind: 'unknown-macro',
+        name,
+        suggestions: list(found.data?.suggestions),
+        nameRange: token ? passage.range(token.nameStart, token.nameEnd) : range,
+      };
+      break;
     }
-
-    // SP108: empty parameters but received args
-    if (params.isEmpty()) {
-      if (args.length > 0) {
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.ExpectedNoArguments,
-          `Expected no arguments for {${macro.name}}, got ${args.length}`,
-        ));
+    case 'unknown-passage':
+      data = { kind: 'unknown-passage', name, macro: text(found.data?.macro), suggestions: list(found.data?.suggestions) };
+      break;
+    case 'unquoted-passage-name':
+      data = { kind: 'unquoted-passage-name', name, macro: text(found.data?.macro) };
+      break;
+    case 'unclosed-block':
+    case 'mismatched-closer':
+    case 'stray-closer': {
+      // `{if}` and `</div>` read alike to the pairing; the tag at the diagnostic tells them apart
+      const element = passage.content[found.start] === '<';
+      if (element) code = DiagnosticCode.MalformedElement;
+      else if (found.code === 'stray-closer' && !workspace.isContainer(name)) code = DiagnosticCode.IllegalClosingTag;
+      if (found.code === 'unclosed-block') {
+        data = { kind: 'unclosed-block', closer: element ? `</${name}>` : `{/${name}}`, at: passage.position(passage.content.trimEnd().length) };
       }
-      continue;
-    }
-
-    const stateInfo = { passages: Array.from(passageNames) };
-    const result = params.validate(args, stateInfo);
-
-    if (result.variantIndex === null) {
-      // No variant matched at all — covered by isEmpty check above
-      continue;
-    }
-
-    // SP109: parameter type errors
-    for (const error of result.errors) {
-      // Determine if it's a "too many" error or a type error
-      if (error.message.startsWith('Too many arguments')) {
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.TooManyArguments,
-          `{${macro.name}}: ${error.message}`,
-        ));
-      } else {
-        diagnostics.push(makeDiag(
-          macro.range,
-          DiagnosticCode.ParameterTypeError,
-          `{${macro.name}}: ${error.message}`,
-        ));
-      }
-    }
-
-    // SP110: parameter warnings
-    for (const warning of result.warnings) {
-      diagnostics.push(makeDiag(
-        macro.range,
-        DiagnosticCode.ParameterWarning,
-        `{${macro.name}}: ${warning.message}`,
-      ));
+      break;
     }
   }
+
+  return makeDiag(range, code, found.message, data);
 }
 
 /**
- * The arguments of `{goto}` / `{include}` as Spindle reads them: the target
- * (for `{include}`, minus an `inline` keyword) is evaluated as a single
- * expression, falling back to the raw text when evaluation throws. A target
- * such as `"Chapter " + $n` or a bare `Chapter 1` therefore counts as one
- * argument, not several lexer tokens.
+ * The text a diagnostic underlines. One at the end of the code (`{set $x = }`,
+ * "Unexpected end of code") names no text: it underlines the character before
+ * it, else the one it stops at.
  */
-function targetArguments(expr: string): Arg[] {
-  if (expr === '') return [];
-  const args = lexArguments(expr);
-  if (args.length === 1) return args;
-  return [{ type: ArgType.Expression, text: expr, start: 0, end: expr.length }];
+function visibleSpan(content: string, start: number, end: number): [number, number] {
+  if (end > start) return [start, end];
+  const visible = (ch: string | undefined) => ch !== undefined && !/\s/.test(ch);
+  if (visible(content[start - 1])) return [start - 1, start];
+  if (visible(content[start])) return [start, start + 1];
+  return [start, end];
+}
+
+const text = (value: string | readonly string[] | undefined): string => (typeof value === 'string' ? value : '');
+const list = (value: string | readonly string[] | undefined): string[] => (typeof value === 'string' ? [value] : [...(value ?? [])]);
+
+// ---------------------------------------------------------------------------
+// Variables: validateVariableReferences (SP200, SP201, SP203, SP208)
+// ---------------------------------------------------------------------------
+
+const VARIABLE_CODES: Record<VariableDiagnosticCode, DiagnosticCodeValue> = {
+  'undeclared-variable': DiagnosticCode.UndeclaredVariable,
+  'undeclared-transient': DiagnosticCode.UndeclaredTransient,
+  'primitive-field': DiagnosticCode.PrimitiveFieldAccess,
+  'reserved-name': DiagnosticCode.ReservedVariableName,
+};
+
+function variableDiagnostics(passage: PassageMarkup, story: StoryReport): SpindleDiagnostic[] {
+  const { variables, transients } = story;
+  // Without a StoryVariables passage the story does not start (SP202); every `$name` would be undeclared
+  if (!passage.isMarkup || COMPILER_PASSAGES.has(passage.passage.name) || (!variables && !transients)) return [];
+
+  let found = story.variableDiagnostics.get(passage);
+  if (!found) {
+    found = validateVariableReferences(
+      [{ name: passage.passage.name, content: passage.content, tags: passage.passage.tags }],
+      { variables: variables ?? new Map(), transients },
+      story.macros,
+    );
+    story.variableDiagnostics.set(passage, found);
+  }
+
+  return found
+    .filter((diagnostic) => variables || (diagnostic.code !== 'undeclared-variable' && diagnostic.code !== 'primitive-field'))
+    .map((diagnostic) => {
+      const sigil = diagnostic.code === 'undeclared-transient' ? '%' : '$';
+      const data: DiagnosticData | undefined = diagnostic.code === 'undeclared-variable' || diagnostic.code === 'undeclared-transient'
+        ? { kind: 'undeclared-variable', name: diagnostic.name, sigil }
+        : undefined;
+      return makeDiag(passage.range(diagnostic.start, diagnostic.end), VARIABLE_CODES[diagnostic.code], diagnostic.message, data);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// StoryVariables declarations (SP202, SP207) and array members (SP206)
+// ---------------------------------------------------------------------------
+
+function storyVariablesDiagnostics(uri: string, doc: DocumentMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  const diagnostics: SpindleDiagnostic[] = [];
+
+  // SP202: Spindle refuses to start without a StoryVariables passage, whether
+  // or not any variable is used. Reported once, on the first story document.
+  // A project that does not declare its story format is still being edited,
+  // so there it requires a variable usage and stays informational; a declared
+  // Spindle story gets an error, since it cannot start.
+  if (!workspace.variables.hasStoryVariables() && uri === missingStoryVariablesOwner(workspace)) {
+    const declared = workspace.storyFormat !== undefined;
+    if (declared || storyUsesVariables(story)) {
+      const diagnostic = makeDiag(
+        doc.passages[0].passage.range,
+        DiagnosticCode.NoStoryVariables,
+        'No StoryVariables passage found. Declare all story variables with default values in a StoryVariables passage.',
+      );
+      if (declared) diagnostic.severity = 'error';
+      diagnostics.push(diagnostic);
+    }
+  }
+
+  // SP207: lines Spindle cannot read as declarations
+  const storyVars = workspace.passages.getStoryVariables();
+  if (storyVars?.uri === uri) {
+    for (const invalid of workspace.variables.getInvalidDeclarations()) {
+      diagnostics.push(makeDiag(invalid.range, DiagnosticCode.InvalidDeclaration, `${invalid.message} ${WILL_NOT_START}`));
+    }
+  }
+  const storyTransients = workspace.passages.getStoryTransients();
+  if (storyTransients?.uri === uri) {
+    for (const invalid of workspace.variables.getInvalidTransientDeclarations()) {
+      diagnostics.push(makeDiag(invalid.range, DiagnosticCode.InvalidDeclaration, `${invalid.message} ${WILL_NOT_START}`));
+    }
+  }
+  return diagnostics;
+}
+
+const WILL_NOT_START = 'Spindle will not start the story.';
+
+/** Whether any ordinary passage of the story references a `$variable`. */
+function storyUsesVariables(story: StoryReport): boolean {
+  const excluded = new Set(['StoryVariables', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface']);
+  return story.documents.some((doc) => doc.passages.some((passage) =>
+    passage.isMarkup && !excluded.has(passage.passage.name) &&
+    validateVariableReferences(
+      [{ name: passage.passage.name, content: passage.content }],
+      { variables: new Map() },
+      story.macros,
+    ).some((diagnostic) => diagnostic.code === 'undeclared-variable')));
+}
+
+/**
+ * SP206: `$var.name` where `$var` defaults to an array literal in StoryVariables
+ * (or `%var.name` in StoryTransients) and `name` is not an array property.
+ * Spindle evaluates `$var.name` as plain JavaScript property access, so the
+ * result is always `undefined`.
+ */
+function arrayMemberDiagnostics(uri: string, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  return workspace.variables.getArrayMemberAccesses(uri).map((access) => {
+    const passage = access.sigil === '%' ? 'StoryTransients' : 'StoryVariables';
+    const ref = `${access.sigil}${access.name}`;
+    return makeDiag(
+      access.range,
+      DiagnosticCode.ArrayMemberAccess,
+      `'${ref}' is declared as an array in ${passage}, and arrays have no '${access.member}' property: ` +
+        `'${ref}.${access.member}' is always undefined. ` +
+        `If you meant to test membership, use ${ref}.includes("${access.member}").`,
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -590,350 +440,126 @@ function targetArguments(expr: string): Arg[] {
 // ---------------------------------------------------------------------------
 
 /**
- * SP001: the detected Spindle is older than the supported floor (0.43.0,
- * which introduced transients). Reported once per workspace, on the first
- * story document, and on a StoryTransients passage, which the old runtime
- * refuses ("Invalid declaration"). An undetectable version raises nothing.
+ * SP001: the detected Spindle is older than the oldest one supported. Reported
+ * once per workspace, on the first story document. An undetectable version
+ * raises nothing.
  */
-function validateSpindleVersion(
-  uri: string,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  const caps = workspace.capabilities;
-  if (caps.supported) return;
-  const message = unsupportedVersionMessage(caps);
-
-  if (uri === missingStoryVariablesOwner(workspace)) {
-    const first = workspace.passages.getPassagesInDocument(uri)[0];
-    diagnostics.push(makeDiag(
-      { start: first.range.start, end: first.headerEnd.end },
-      DiagnosticCode.UnsupportedSpindleVersion,
-      message,
-    ));
-  }
-
-  const transients = workspace.passages.getStoryTransients();
-  if (transients && transients.uri === uri) {
-    const diagnostic = makeDiag(
-      { start: transients.range.start, end: transients.headerEnd.end },
-      DiagnosticCode.UnsupportedSpindleVersion,
-      `Spindle ${caps.version} does not support StoryTransients (added in ${MINIMUM_SPINDLE_VERSION}); ` +
-        'it rejects the passage when the story starts.',
-    );
-    diagnostic.severity = 'error';
-    diagnostics.push(diagnostic);
-  }
+function versionDiagnostics(uri: string, doc: DocumentMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  const target: SpindleTarget = workspace.target;
+  if (target.supported || uri !== missingStoryVariablesOwner(workspace)) return [];
+  const first = doc.passages[0].passage;
+  return [makeDiag({ start: first.range.start, end: first.headerEnd.end }, DiagnosticCode.UnsupportedSpindleVersion, unsupportedVersionMessage(target))];
 }
 
 // ---------------------------------------------------------------------------
-// Variable validation (SP200, SP201, SP202, SP203, SP204, SP207)
-// ---------------------------------------------------------------------------
-
-function validateVariables(
-  uri: string,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  if (!workspace.variables.hasStoryVariables()) {
-    // SP202: Spindle refuses to start without a StoryVariables passage,
-    // whether or not any variable is used. Report it once, on the first
-    // story document, after the full workspace scan (computeDiagnostics
-    // returns nothing before it). A project that does not declare its story
-    // format is still being edited, so there the diagnostic keeps requiring
-    // a variable usage and stays informational; a declared Spindle story
-    // gets an error, since it cannot start.
-    if (uri === missingStoryVariablesOwner(workspace)) {
-      const declared = workspace.storyFormat !== undefined;
-      if (declared || workspaceUsesVariables(workspace)) {
-        const passages = workspace.passages.getPassagesInDocument(uri);
-        const diagnostic = makeDiag(
-          passages[0].range,
-          DiagnosticCode.NoStoryVariables,
-          'No StoryVariables passage found. Declare all story variables with default values in a StoryVariables passage.',
-        );
-        if (declared) diagnostic.severity = 'error';
-        diagnostics.push(diagnostic);
-      }
-    }
-  } else {
-    // SP200: undeclared variable
-    const undeclared = workspace.variables.getUndeclared(uri);
-    for (const u of undeclared) {
-      diagnostics.push(makeDiag(
-        u.range,
-        DiagnosticCode.UndeclaredVariable,
-        `Variable '$${u.name}' is not declared in StoryVariables`,
-      ));
-    }
-
-    // SP201: field access on a primitive default (Spindle's validateRef).
-    // Disjoint from SP206: Spindle allows any field of an array.
-    for (const a of workspace.variables.getPrimitiveFieldAccesses(uri)) {
-      diagnostics.push(makeDiag(
-        a.range,
-        DiagnosticCode.PrimitiveFieldAccess,
-        `Cannot access field "${a.field}" on ${a.path} (type: ${a.type}). ` +
-          'Spindle checks field access against the StoryVariables defaults and will not start the story.',
-      ));
-    }
-
-    // SP204: null variable value in StoryVariables
-    // Only emit on the document that contains StoryVariables
-    const storyVars = workspace.passages.getStoryVariables();
-    if (storyVars && storyVars.uri === uri) {
-      for (const nd of workspace.variables.getNullDeclarations()) {
-        diagnostics.push(makeDiag(
-          nd.range,
-          DiagnosticCode.NullVariableValue,
-          `${nullSubject(nd)} is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
-        ));
-      }
-      // SP207: lines Spindle cannot parse as declarations
-      for (const d of workspace.variables.getInvalidDeclarations()) {
-        diagnostics.push(makeDiag(d.range, DiagnosticCode.InvalidDeclaration, `${d.message} ${WILL_NOT_START}`));
-      }
-    }
-  }
-
-  // SP203: undeclared transient variable (independent of StoryVariables)
-  if (workspace.variables.hasStoryTransients()) {
-    const undeclaredTransient = workspace.variables.getUndeclaredTransient(uri);
-    for (const u of undeclaredTransient) {
-      diagnostics.push(makeDiag(
-        u.range,
-        DiagnosticCode.UndeclaredTransient,
-        `Transient variable '%${u.name}' is not declared in StoryTransients`,
-      ));
-    }
-
-    // SP204: null transient value in StoryTransients
-    const storyTransients = workspace.passages.getStoryTransients();
-    if (storyTransients && storyTransients.uri === uri) {
-      for (const nd of workspace.variables.getNullTransientDeclarations()) {
-        diagnostics.push(makeDiag(
-          nd.range,
-          DiagnosticCode.NullVariableValue,
-          `${nullSubject(nd)} is set to null. Spindle does not support null — use a valid default (number, string, boolean, array, or object).`,
-        ));
-      }
-      // SP207: lines Spindle cannot parse, and names StoryVariables declares too
-      for (const d of workspace.variables.getInvalidTransientDeclarations()) {
-        diagnostics.push(makeDiag(d.range, DiagnosticCode.InvalidDeclaration, `${d.message} ${WILL_NOT_START}`));
-      }
-    }
-  }
-}
-
-/** Whether any ordinary passage in the workspace mentions a `$variable`. */
-function workspaceUsesVariables(workspace: WorkspaceModel): boolean {
-  const excluded = new Set(['StoryVariables', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface']);
-  for (const u of workspace.documents.getUris()) {
-    if (isMacroSource(u)) continue;
-    const text = workspace.documents.getText(u);
-    if (!text || !/\$[A-Za-z_$]/.test(text)) continue;
-    if (workspace.passages.getPassagesInDocument(u).some(
-      p => !excluded.has(p.name) && !p.tags?.includes('script') && !p.tags?.includes('stylesheet'),
-    )) return true;
-  }
-  return false;
-}
-
-const WILL_NOT_START = 'Spindle will not start the story.';
-
-/** What an SP204 null is: a variable, or a field of its object default. */
-function nullSubject(nd: { name: string; sigil: '$' | '%'; field?: string[] }): string {
-  const variable = nd.sigil === '%' ? 'Transient variable' : 'Variable';
-  if (nd.field?.length) return `Field '${nd.sigil}${[nd.name, ...nd.field].join('.')}'`;
-  return `${variable} '${nd.sigil}${nd.name}'`;
-}
-
-// ---------------------------------------------------------------------------
-// Link validation (SP300)
-// ---------------------------------------------------------------------------
-
-function validateLinks(
-  text: string,
-  passages: Array<{ name: string; range: import('../core/types.js').Range }>,
-  passageNames: Set<string>,
-  reading: LinkRuntimeOptions,
-  diagnostics: Diagnostic[],
-): void {
-  const links = parseLinks(text, 0, reading);
-  for (const link of links) {
-    if (!passageNames.has(link.name)) {
-      diagnostics.push(makeDiag(
-        link.range,
-        DiagnosticCode.BrokenPassageLink,
-        `Passage "${link.name}" not found in workspace`,
-      ));
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Link text the runtime reads differently (SP304)
-// ---------------------------------------------------------------------------
-
-/** How a click on a link navigates, for a message. */
-function describeNavigation(passage: string | null): string {
-  if (passage === null) return 'navigates nowhere';
-  if (passage === '') return 'navigates nowhere (the passage name it reads is empty)';
-  return `navigates to ${JSON.stringify(passage)}`;
-}
-
-/**
- * SP304: the link macro, which renders every bracket link and `{link}`,
- * reads its quoted arguments with a quote regex. Where that reading differs
- * from the source (a `"` or a line break in a bracket link's text before
- * Spindle 0.51.1, an escape in a `{link}` string), a click goes somewhere
- * else than the source says; see core/parsing/link-runtime.ts.
- */
-function validateLinkRuntime(
-  text: string,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  const caps = workspace.capabilities;
-  const options = { linkQuoteEscapes: caps.linkQuoteEscapes, stringAwareBraces: caps.stringAwareBraces };
-  const version = caps.version ?? 'before 0.51.1';
-  const fix = caps.linkQuoteEscapes
-    ? ''
-    : ' Remove the quote or line break from the link text, or update Spindle to 0.51.1 or later.';
-
-  for (const link of findLinkRuntimeMismatches(text, options)) {
-    diagnostics.push(makeDiag(
-      link.range,
-      DiagnosticCode.LinkRuntimeMismatch,
-      `Spindle ${version} reads this link differently from how it is written: the link macro reads ` +
-        `the label as ${JSON.stringify(link.runtime.display)} and a click ${describeNavigation(link.runtime.passage)}, ` +
-        `not to ${JSON.stringify(link.target)}.${fix}`,
-    ));
-  }
-
-  for (const link of findLinkMacroMismatches(text, options)) {
-    diagnostics.push(makeDiag(
-      link.range,
-      DiagnosticCode.LinkRuntimeMismatch,
-      `Spindle ${version} reads the strings of {link} differently from their JavaScript meaning: ` +
-        `the label is read as ${JSON.stringify(link.runtime.display)} and a click ${describeNavigation(link.runtime.passage)}, ` +
-        `not ${link.passage === null ? 'a link without a passage' : `to ${JSON.stringify(link.passage)}`}. ` +
-        (caps.linkQuoteEscapes
-          ? 'The macro decodes only \\\\, \\" and \\\' escapes; write other characters literally.'
-          : 'It decodes no escapes: write the text without backslash escapes or quotes, or update Spindle to 0.51.1 or later.'),
-    ));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Interpolation Spindle's link macro does not perform (SP305)
+// The tree of a passage: parents and children (SP107, SP114, SP115) and loops (SP205)
 // ---------------------------------------------------------------------------
 
 /**
- * SP305: Spindle renders every bracket link and `{link}` with MacroLink,
- * which prints the label and navigates to the passage exactly as written. It
- * interpolates the link's `.class#id` selectors and HTML attributes, and the
- * label of `{button}` / `{dialog}`, but not the text of a link: `[[Take
- * {$item}->T]]` shows `Take {$item}` and goes to `T`, and `[[Go->T{$n}]]`
- * goes to a passage named `T{$n}`. The same on every release from 0.43.0
- * (`findLiteralLinkInterpolations`).
+ * Macros Spindle's pairing attaches to their parent itself: `misplaced-branch`
+ * (SP107) reports one outside it.
  */
-function validateLiteralLinkInterpolation(
-  text: string,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  const caps = workspace.capabilities;
-  for (const found of findLiteralLinkInterpolations(text, {
-    linkQuoteEscapes: caps.linkQuoteEscapes,
-    stringAwareBraces: caps.stringAwareBraces,
-  })) {
-    const target = found.place === 'link-target' || found.place === 'link-macro-passage';
-    const what = target
-      ? 'the passage name a click navigates to'
-      : 'the label shown';
-    diagnostics.push(makeDiag(
-      found.range,
-      DiagnosticCode.LiteralLinkInterpolation,
-      `Spindle does not interpolate ${found.block} in the text of a link: ${what} contains it as written, ` +
-        'braces included. A link\'s class/id selectors, HTML attributes and the label of {button} and {dialog} ' +
-        'are interpolated; to build a label from a variable use `{button "Take {$item}"}{goto "Passage"}{/button}`, ' +
-        'or write the target as plain text.',
-    ));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Widget invocation validation (SP301)
-// ---------------------------------------------------------------------------
-
-function validateWidgetInvocations(
-  macros: MacroNode[],
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  for (const macro of macros) {
-    if (!macro.open) continue;
-
-    // Skip if it's a known macro (not a widget)
-    const info = workspace.macros.getMacro(macro.name);
-    if (info) continue;
-
-    const widget = workspace.widgets.getWidget(macro.name);
-    if (!widget) continue;
-
-    // Count arguments the way Spindle's WidgetInvocation splits them
-    const argCount = splitWidgetArguments(macro.rawArgs ?? '').length;
-    const expectedCount = widget.params.length;
-
-    if (argCount !== expectedCount) {
-      diagnostics.push(makeDiag(
-        macro.range,
-        DiagnosticCode.WidgetArgCountMismatch,
-        `Widget {${macro.name}} expects ${expectedCount} argument(s), got ${argCount}`,
-      ));
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Array member access validation (SP206)
-// ---------------------------------------------------------------------------
+const BRANCH_MACROS = new Set(['elseif', 'else', 'case', 'default', 'next']);
 
 /**
- * Flag `$var.name` where `$var` defaults to an array literal in StoryVariables
- * (or `%var.name` in StoryTransients) and `name` is not an array property.
- * Spindle evaluates `$var.name` as plain JavaScript property access, so the
- * result is always `undefined`.
+ * Macros that only work as direct children of their parent: {listbox} and
+ * {cycle} read their {option}s from their direct children only, so a nested
+ * {option} is silently dropped. Other children, such as {stop}, reach their
+ * parent through React context and may sit anywhere inside it.
  */
-function validateArrayMemberAccess(
-  uri: string,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  for (const a of workspace.variables.getArrayMemberAccesses(uri)) {
-    const passage = a.sigil === '%' ? 'StoryTransients' : 'StoryVariables';
-    const ref = `${a.sigil}${a.name}`;
-    diagnostics.push(makeDiag(
-      a.range,
-      DiagnosticCode.ArrayMemberAccess,
-      `'${ref}' is declared as an array in ${passage}, and arrays have no '${a.member}' property: ` +
-        `'${ref}.${a.member}' is always undefined. ` +
-        `If you meant to test membership, use ${ref}.includes("${a.member}").`,
-    ));
+const DIRECT_CHILD_MACROS = new Set(['option']);
+
+/** Containers whose body runs when the user clicks, not when the loop renders. */
+const DEFERRED_CONTAINERS = new Set(['link', 'button']);
+
+/** The macro or element a node of the tree is inside. */
+interface Ancestor {
+  node: PairedNode;
+  /** Lower-case macro name or tag name. */
+  name: string;
+  element: boolean;
+}
+
+function structureDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  const diagnostics: SpindleDiagnostic[] = [];
+  if (!passage.isMarkup) return diagnostics;
+
+  const visit = (nodes: readonly PairedNode[], ancestors: readonly Ancestor[]) => {
+    for (const node of nodes) {
+      const token = node.token;
+      if (token.type === 'macro' && !token.isClose) {
+        diagnostics.push(...parentDiagnostics(passage, token, ancestors, workspace));
+        diagnostics.push(...childDiagnostics(passage, node, token, workspace));
+        diagnostics.push(...loopDiagnostics(passage, token, ancestors));
+      }
+      if (!node.body) continue;
+      const inside = [...ancestors, {
+        node,
+        name: (token.type === 'macro' ? token.name : token.type === 'html' ? token.tag : '').toLowerCase(),
+        element: token.type === 'html',
+      }];
+      visit(node.body.children, inside);
+      for (const branch of node.body.branches) visit(branch.children, inside);
+    }
+  };
+  visit(passage.pairing.nodes, []);
+  return diagnostics;
+}
+
+/** SP107: a macro outside the parents the registry says it needs. */
+function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[], workspace: WorkspaceModel): SpindleDiagnostic[] {
+  const name = token.name.toLowerCase();
+  const parents = workspace.macros.getMacro(name)?.parents;
+  if (!parents || parents.length === 0 || BRANCH_MACROS.has(name)) return [];
+
+  const allowed = new Set(parents.map((parent) => parent.toLowerCase()));
+  const parentList = parents.join(', ');
+  const range = passage.range(token.start, token.end);
+  if (DIRECT_CHILD_MACROS.has(name)) {
+    const parent = ancestors[ancestors.length - 1];
+    if (parent && !parent.element && allowed.has(parent.name)) return [];
+    const where = parent ? (parent.element ? `, not inside <${parent.name}>` : `, not inside {${parent.name}}`) : '';
+    return [makeDiag(range, DiagnosticCode.InvalidChildren, `Invalid: {${token.name}} can only be directly inside {${parentList}}${where}`)];
   }
+  if (ancestors.some((ancestor) => !ancestor.element && allowed.has(ancestor.name))) return [];
+  return [makeDiag(range, DiagnosticCode.InvalidChildren, `Invalid: {${token.name}} can only be inside {${parentList}}`)];
+}
+
+/** SP114, SP115: the children a container needs or allows, by the registry's constraints. */
+function childDiagnostics(passage: PassageMarkup, node: PairedNode, token: MacroToken, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  const constraints = workspace.macros.getMacro(token.name)?.children;
+  // A container that is never closed is reported as such
+  if (!constraints || constraints.length === 0 || !node.body?.close) return [];
+
+  // The macros directly in the body (also after a branch such as {else}); those in an element or a nested container are its own
+  const direct: PairedNode[] = [...node.body.children];
+  for (const branch of node.body.branches) direct.push({ token: branch.tag, start: branch.tag.start, end: branch.tag.end }, ...branch.children);
+  const counts: Record<string, number> = Object.create(null);
+  for (const child of direct) {
+    if (child.token.type !== 'macro' || child.token.isClose) continue;
+    const key = child.token.name.toLowerCase();
+    if (workspace.macros.getMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
+  }
+
+  const diagnostics: SpindleDiagnostic[] = [];
+  const range = passage.range(token.start, token.end);
+  for (const constraint of constraints) {
+    const count = counts[constraint.name.toLowerCase()] ?? 0;
+    if (constraint.max !== undefined && count > constraint.max) {
+      diagnostics.push(makeDiag(range, DiagnosticCode.ChildMaxExceeded,
+        `Too many {${constraint.name}} in {${token.name}} (max ${constraint.max}, found ${count})`));
+    }
+    if (constraint.min !== undefined && count < constraint.min) {
+      diagnostics.push(makeDiag(range, DiagnosticCode.ChildMinNotMet,
+        `Too few {${constraint.name}} in {${token.name}} (min ${constraint.min}, found ${count})`));
+    }
+  }
+  return diagnostics;
 }
 
 // ---------------------------------------------------------------------------
 // Temporaries assigned inside {for} (SP205)
 // ---------------------------------------------------------------------------
-
-/**
- * Containers whose body runs when the user clicks, not when the loop renders.
- * Assigning a temporary there records the clicked iteration's value, which is
- * the normal way to hand a value out of a loop.
- */
-const DEFERRED_CONTAINERS = new Set(['link', 'button']);
 
 interface TemporaryTarget {
   /** Name without the `_` sigil. */
@@ -943,68 +569,32 @@ interface TemporaryTarget {
 }
 
 /** Matches a `_name` temporary reference, using Spindle's own boundary rule. */
-function temporaryRefRegex(name?: string): RegExp {
-  const ident = name ? escapeRegex(name) : '[A-Za-z_$][\\w$]*';
-  return new RegExp(`(?<![.\\w$@%])_(${ident})(?![\\w$])`, 'g');
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function temporaryRefRegex(name: string): RegExp {
+  return new RegExp(`(?<![.\\w$@%])_(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![\\w$])`, 'g');
 }
 
 /**
- * Replace the contents of string literals with spaces (keeping the quotes and
- * all offsets) so that sigils inside strings are not mistaken for code.
- * Template-literal `${…}` interpolations stay visible, because Spindle
- * transforms the sigils inside them like any other code.
+ * `code` with the contents of string literals, regular expressions and
+ * comments replaced by spaces (keeping the quotes' offsets), so that sigils in
+ * them are not mistaken for code. The code in a template literal's `${…}`
+ * stays, because Spindle transforms the sigils inside them like any other code.
  */
-function maskStrings(code: string): string {
-  let out = '';
-  let i = 0;
-  while (i < code.length) {
-    const ch = code[i];
-    if (ch === '"' || ch === "'" || ch === '`') {
-      out += ch;
-      i++;
-      while (i < code.length && code[i] !== ch) {
-        if (code[i] === '\\' && i + 1 < code.length) {
-          out += '  ';
-          i += 2;
-        } else if (ch === '`' && code[i] === '$' && code[i + 1] === '{') {
-          const end = interpolationEnd(code, i + 2);
-          out += maskStrings(code.slice(i, end));
-          i = end;
-        } else {
-          out += code[i] === '\n' ? '\n' : ' ';
-          i++;
-        }
-      }
-      if (i < code.length) {
-        out += ch;
-        i++;
-      }
-      continue;
-    }
-    out += ch;
-    i++;
-  }
-  return out;
-}
-
-/** Offset just past the `}` closing a `${` interpolation whose body starts at `from`. */
-function interpolationEnd(code: string, from: number): number {
-  let depth = 1;
-  for (let i = from; i < code.length; i++) {
-    if (code[i] === '{') depth++;
-    else if (code[i] === '}' && --depth === 0) return i + 1;
-  }
-  return code.length;
+function maskLiterals(code: string): string {
+  const chars: string[] = Array.from(code, (ch) => (ch === '\n' ? '\n' : ' '));
+  const copy = (text: string, index: number) => {
+    for (let i = 0; i < text.length; i++) chars[index + i] = text[i];
+  };
+  lexJs(code, {
+    code: copy,
+    variable: (sigil, name, index) => copy(sigil + name, index),
+  }, 'statements');
+  return chars.join('');
 }
 
 /**
- * The `_name` target of `{computed _name = expr}`, located the same way
- * Spindle's parseComputedArgs() does: the first `=` at bracket depth 0 that
- * is not part of `==` or `!=`.
+ * The `_name` target of `{computed _name = expr}`, located the way Spindle's
+ * parseComputedArgs() does: the first `=` at bracket depth 0 that is not part
+ * of `==` or `!=`.
  */
 function computedTemporaryTarget(rawArgs: string): TemporaryTarget[] {
   const lead = rawArgs.length - rawArgs.trimStart().length;
@@ -1035,7 +625,7 @@ function computedTemporaryTarget(rawArgs: string): TemporaryTarget[] {
  * carry a value from one iteration to the next.
  */
 function setTemporaryTargets(rawArgs: string): TemporaryTarget[] {
-  const code = maskStrings(rawArgs);
+  const code = maskLiterals(rawArgs);
   const targets: TemporaryTarget[] = [];
   const assignRe = /(?<![.\w$@%])_([A-Za-z_$][\w$]*)\s*=(?![=>])/g;
   let m: RegExpExecArray | null;
@@ -1061,50 +651,6 @@ function statementEnd(code: string, from: number): number {
 }
 
 /**
- * Index of the innermost `{for}` whose body contains `macros[index]` in the
- * same passage, or -1. Returns -1 as well when a `{link}`/`{button}` sits
- * between the two: that body runs on click, not once per iteration.
- */
-function enclosingLoop(
-  macros: MacroNode[],
-  index: number,
-  uri: string,
-  workspace: WorkspaceModel,
-): number {
-  for (let j = index - 1; j >= 0; j--) {
-    const candidate = macros[j];
-    if (!candidate.open || candidate.pair === -1 || candidate.pair < index) continue;
-    const name = candidate.name.toLowerCase();
-    if (DEFERRED_CONTAINERS.has(name)) return -1;
-    if (name !== 'for') continue;
-    const loopPassage = workspace.passages.getPassageAt(uri, candidate.range.start.line);
-    const macroPassage = workspace.passages.getPassageAt(uri, macros[index].range.start.line);
-    return loopPassage === macroPassage ? j : -1;
-  }
-  return -1;
-}
-
-function positionToOffset(pos: { line: number; character: number }, lineStarts: number[]): number {
-  return (lineStarts[pos.line] ?? 0) + pos.character;
-}
-
-/**
- * A macro's raw arguments as written in the document, with their start
- * offset. `MacroNode.rawArgs` comes from text in which `{$var}`-style
- * interpolations were blanked out, which also blanks `${_x}` inside template
- * literals, so it cannot be used to analyse expressions.
- */
-function sourceArgs(
-  macro: MacroNode,
-  text: string,
-  lineStarts: number[],
-): { args: string; start: number } {
-  const end = positionToOffset(macro.range.end, lineStarts) - 1; // closing brace
-  const start = end - (macro.rawArgs?.length ?? 0);
-  return { args: text.slice(start, end), start };
-}
-
-/**
  * SP205: a `_temporary` assigned by `{computed}` or `{set}` inside a `{for}`
  * body and read elsewhere in that body.
  *
@@ -1113,56 +659,44 @@ function sourceArgs(
  * iteration therefore writes the same `_name`, and once the passage
  * re-renders all iterations read whichever value was written last.
  * Assignments whose temporary is not read inside the loop (a flag or value
- * handed out to code after the loop) are not reported.
+ * handed out to code after the loop) are not reported, nor is one inside a
+ * `{link}` or `{button}` between the assignment and the loop: that body runs on
+ * click, not once per iteration.
  */
-function validateLoopTemporaries(
-  uri: string,
-  text: string,
-  macros: MacroNode[],
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  const lineStarts = buildLineStarts(text);
+function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[]): SpindleDiagnostic[] {
+  const macro = token.name.toLowerCase();
+  if ((macro !== 'computed' && macro !== 'set') || !token.rawArgs) return [];
 
-  for (let k = 0; k < macros.length; k++) {
-    const macro = macros[k];
-    if (!macro.open || !macro.rawArgs) continue;
-    const name = macro.name.toLowerCase();
-    if (name !== 'computed' && name !== 'set') continue;
-
-    const { args, start: argsStart } = sourceArgs(macro, text, lineStarts);
-    const targets = name === 'computed'
-      ? computedTemporaryTarget(args)
-      : setTemporaryTargets(args);
-    if (targets.length === 0) continue;
-
-    const loopIndex = enclosingLoop(macros, k, uri, workspace);
-    if (loopIndex === -1) continue;
-    const loop = macros[loopIndex];
-
-    const bodyStart = positionToOffset(loop.range.end, lineStarts);
-    const bodyEnd = positionToOffset(macros[loop.pair].range.start, lineStarts);
-    const macroStart = positionToOffset(macro.range.start, lineStarts);
-    const macroEnd = positionToOffset(macro.range.end, lineStarts);
-    const body = text.slice(bodyStart, bodyEnd);
-
-    for (const target of targets) {
-      if (!isReadInBody(body, bodyStart, target.name, macroStart, macroEnd)) continue;
-
-      const start = argsStart + target.offset;
-      diagnostics.push(makeDiag(
-        {
-          start: offsetToPosition(start, lineStarts),
-          end: offsetToPosition(start + 1 + target.name.length, lineStarts),
-        },
-        DiagnosticCode.TemporaryAssignedInLoop,
-        `Temporary '_${target.name}' is assigned inside {${loop.name}} and read in the loop body. ` +
-          'Temporaries are shared by every iteration, so all iterations end up seeing the value ' +
-          `assigned by the last one. Use the iteration-local '@${target.name}' instead, ` +
-          'or assign it once before the loop if the value does not depend on the iteration.',
-      ));
+  let loop: Ancestor | undefined;
+  for (let i = ancestors.length - 1; i >= 0; i--) {
+    const ancestor = ancestors[i];
+    if (ancestor.element) continue;
+    if (DEFERRED_CONTAINERS.has(ancestor.name)) return [];
+    if (ancestor.name === 'for') {
+      loop = ancestor;
+      break;
     }
   }
+  const close = loop?.node.body?.close;
+  if (!loop || !close) return [];
+
+  const targets = macro === 'computed' ? computedTemporaryTarget(token.rawArgs) : setTemporaryTargets(token.rawArgs);
+  const bodyStart = loop.node.token.end;
+  const body = passage.content.slice(bodyStart, close.start);
+  const diagnostics: SpindleDiagnostic[] = [];
+  for (const target of targets) {
+    if (!isReadInBody(body, bodyStart, target.name, token.start, token.end)) continue;
+    const start = token.argsStart + target.offset;
+    diagnostics.push(makeDiag(
+      passage.range(start, start + 1 + target.name.length),
+      DiagnosticCode.TemporaryAssignedInLoop,
+      `Temporary '_${target.name}' is assigned inside {${loop.name}} and read in the loop body. ` +
+        'Temporaries are shared by every iteration, so all iterations end up seeing the value ' +
+        `assigned by the last one. Use the iteration-local '@${target.name}' instead, ` +
+        'or assign it once before the loop if the value does not depend on the iteration.',
+    ));
+  }
+  return diagnostics;
 }
 
 /**
@@ -1170,13 +704,7 @@ function validateLoopTemporaries(
  * macro. Occurrences that are themselves plain assignment targets
  * (`_name = …`) do not count as reads.
  */
-function isReadInBody(
-  body: string,
-  bodyOffset: number,
-  name: string,
-  macroStart: number,
-  macroEnd: number,
-): boolean {
+function isReadInBody(body: string, bodyOffset: number, name: string, macroStart: number, macroEnd: number): boolean {
   const re = temporaryRefRegex(name);
   let m: RegExpExecArray | null;
   while ((m = re.exec(body)) !== null) {
@@ -1190,190 +718,234 @@ function isReadInBody(
 }
 
 // ---------------------------------------------------------------------------
-// {include} of a [widget] passage (SP302)
+// Arguments against a configured parameter schema (SP108-SP111)
 // ---------------------------------------------------------------------------
 
-/** Names Spindle's expression preamble binds; a bare one is not a passage name. */
-const EXPRESSION_BUILTINS = new Set([
-  'currentPassage', 'previousPassage', 'visited', 'hasVisited', 'hasVisitedAny',
-  'hasVisitedAll', 'rendered', 'hasRendered', 'hasRenderedAny', 'hasRenderedAll',
-  'random', 'randomInt',
+/** Every macro Spindle itself defines, branches included: the tooling API judges their arguments. */
+const SPINDLE_MACROS: ReadonlySet<string> = new Set([
+  ...builtinMacros.flatMap((macro) => [macro.name, ...macro.subMacros]).map((name) => name.toLowerCase()),
+  ...BRANCH_MACROS,
 ]);
 
 /**
- * Statically resolve the passage name an `{include}` renders, following
- * Spindle's Include macro: the arguments (minus an `inline` keyword) are
- * evaluated as an expression, and when evaluation throws the raw text with
- * surrounding quotes stripped is used instead. Returns null for dynamic
- * targets (variables, calls) that cannot be resolved without running the
- * story.
+ * Spindle declares the parameters of the macros it defines, and reports
+ * arguments that do not have their form (`argument-error`, SP109). A macro
+ * that only the project's configuration describes has `parameters` in the
+ * registry's format instead, and the language server checks its arguments
+ * against those.
  */
-export function resolveIncludeTarget(rawArgs: string, options: LinkRuntimeOptions = {}): string | null {
-  const expr = includeNameExpression(rawArgs, options);
-  if (expr === '') return null;
+function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  const diagnostics: SpindleDiagnostic[] = [];
+  const passageNames = Array.from(workspace.passages.getAllPassages(), (candidate) => candidate.name);
 
-  // A single string literal evaluates to its contents.
-  const literal = /^(["'`])((?:\\.|(?!\1)[^\\])*)\1$/s.exec(expr);
-  if (literal) {
-    if (literal[1] === '`' && literal[2].includes('${')) return null;
-    return decodeStringLiteralBody(literal[2], literal[1] as '"' | "'" | '`');
+  for (const token of passage.isMarkup ? passage.tokens : []) {
+    if (token.type !== 'macro' || token.isClose) continue;
+    const info = workspace.macros.getMacro(token.name);
+    if (!info?.parameters || info.skipArgs || SPINDLE_MACROS.has(token.name.toLowerCase())) continue;
+
+    // A malformed parameter schema only disables the checks of its own macro.
+    let params: Parameters;
+    try {
+      params = new Parameters(info.parameters);
+    } catch {
+      continue;
+    }
+    const range = passage.range(token.start, token.end);
+    const args = lexArguments(token.rawArgs);
+
+    // SP108: no parameters, but arguments
+    if (params.isEmpty()) {
+      if (args.length > 0) {
+        diagnostics.push(makeDiag(range, DiagnosticCode.ExpectedNoArguments, `Expected no arguments for {${token.name}}, got ${args.length}`));
+      }
+      continue;
+    }
+
+    const result = params.validate(args, { passages: passageNames });
+    if (result.variantIndex === null) continue;
+    for (const error of result.errors) {
+      const code = error.message.startsWith('Too many arguments') ? DiagnosticCode.TooManyArguments : DiagnosticCode.ParameterTypeError;
+      diagnostics.push(makeDiag(range, code, `{${token.name}}: ${error.message}`));
+    }
+    for (const warning of result.warnings) {
+      diagnostics.push(makeDiag(range, DiagnosticCode.ParameterWarning, `{${token.name}}: ${warning.message}`));
+    }
+  }
+  return diagnostics;
+}
+
+// ---------------------------------------------------------------------------
+// Widgets (SP301, SP302, SP303)
+// ---------------------------------------------------------------------------
+
+/** SP301 (argument count of an invocation) and SP302 ({include} of a passage that defines widgets). */
+function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
+  if (!passage.isMarkup) return [];
+  const diagnostics: SpindleDiagnostic[] = [];
+  const macros = [...macroTokens(passage)];
+
+  for (const token of macros) {
+    if (token.isClose) continue;
+    // A macro of the same name is no widget invocation
+    if (workspace.macros.getMacro(token.name)) continue;
+    const widget = story.widgets.get(token.name.toLowerCase());
+    if (!widget) continue;
+    // The runtime splits the arguments of an invocation with splitArgs
+    const got = token.rawArgs ? splitArgs(token.rawArgs).length : 0;
+    const expected = widget.definition.params.length;
+    if (got !== expected) {
+      diagnostics.push(makeDiag(
+        passage.range(token.start, token.end),
+        DiagnosticCode.WidgetArgCountMismatch,
+        `Widget {${token.name}} expects ${expected} argument(s), got ${got}`,
+      ));
+    }
   }
 
-  // Anything that reads state or calls code is dynamic.
-  if (/[$@%"'`(]/.test(expr) || temporaryRefRegex().test(expr)) return null;
-  if (EXPRESSION_BUILTINS.has(expr)) return null;
+  // SP302: Spindle registers the {widget} definitions of a [widget] passage at
+  // startup; when the passage is included, each {widget} macro renders
+  // nothing, so none of the widgets' output appears. (A passage that defines
+  // no widgets renders its content like any other and is not reported.) Only a
+  // passage name written out is a target: a bare `{include Other}` is an
+  // expression.
+  for (const piece of passage.pieces) {
+    if (piece.kind !== 'passage' || piece.macro !== 'include') continue;
+    const target = workspace.passages.getPassage(piece.name);
+    if (!target?.tags?.includes('widget')) continue;
+    const defined = story.widgetList.filter((widget) => widget.passage.passage === target).map((widget) => widget.definition.name);
+    if (defined.length === 0) continue;
+    const include = macros.find((token) => !token.isClose && token.name.toLowerCase() === 'include' && token.start <= piece.offset && piece.offset < token.end);
+    if (!include) continue;
 
-  // A bare name such as `{include ActResist}` throws a ReferenceError (or a
-  // SyntaxError for names with spaces), so Spindle falls back to the text.
-  return expr;
-}
-
-/**
- * Names of the `{widget}` definitions in a passage's content, matched the way
- * Spindle's startup scan finds them (quoted or bare names).
- */
-function widgetDefinitionNames(content: string): string[] {
-  const names: string[] = [];
-  const re = /\{widget\s+(["']?)([^\s"'}]+)\1/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) names.push(m[2]);
-  return names;
-}
-
-function passageContent(passage: Passage, workspace: WorkspaceModel): string {
-  const text = workspace.documents.getText(passage.uri) ?? '';
-  return text.split('\n').slice(passage.range.start.line + 1, passage.range.end.line + 1).join('\n');
-}
-
-/**
- * SP302: `{include}` whose target is a `widget`-tagged passage that defines
- * widgets. Spindle registers those `{widget}` definitions at startup; when
- * the passage is included, each `{widget}` macro renders nothing, so none of
- * the widgets' output appears. (A `widget`-tagged passage without
- * definitions renders its content like any other passage and is not
- * reported.)
- */
-function validateWidgetIncludes(
-  text: string,
-  macros: MacroNode[],
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  let lineStarts: number[] | null = null;
-
-  for (const macro of macros) {
-    if (!macro.open || !macro.rawArgs || macro.name.toLowerCase() !== 'include') continue;
-
-    lineStarts ??= buildLineStarts(text);
-    const target = resolveIncludeTarget(sourceArgs(macro, text, lineStarts).args, workspace.capabilities);
-    if (target === null) continue;
-
-    const passage = workspace.passages.getPassage(target);
-    if (!passage?.tags?.includes('widget')) continue;
-
-    const widgets = widgetDefinitionNames(passageContent(passage, workspace));
-    if (widgets.length === 0) continue;
-
-    const list = widgets.map(w => `{${w}}`).join(', ');
+    const names = defined.map((name) => `{${name}}`).join(', ');
     diagnostics.push(makeDiag(
-      macro.range,
+      passage.range(include.start, include.end),
       DiagnosticCode.IncludeWidgetPassage,
-      `{include}: passage "${target}" is tagged [widget] and defines ${list}. ` +
-        `Including it does not invoke ${widgets.length === 1 ? 'it' : 'them'}: {widget} definitions render nothing. ` +
-        `Invoke the widget instead, e.g. {${widgets[0]}}.`,
+      `{include}: passage "${piece.name}" is tagged [widget] and defines ${names}. ` +
+        `Including it does not invoke ${defined.length === 1 ? 'it' : 'them'}: {widget} definitions render nothing. ` +
+        `Invoke the widget instead, e.g. {${defined[0]}}.`,
     ));
   }
+  return diagnostics;
 }
 
-// ---------------------------------------------------------------------------
-// Unused widgets (SP303)
-// ---------------------------------------------------------------------------
-
 /**
- * SP303: a widget defined in this document that no document in the workspace
+ * SP303: a widget defined in this document that no passage of the workspace
  * invokes as `{name}`. Matching is case-insensitive, like Spindle's widget
  * lookup. Invocations from JavaScript-generated markup cannot be seen, hence
  * hint severity.
  */
-function validateUnusedWidgets(
-  uri: string,
-  workspace: WorkspaceModel,
-  diagnostics: Diagnostic[],
-): void {
-  for (const widget of workspace.widgets.getAllWidgets()) {
-    if (widget.uri !== uri) continue;
-    if (workspace.widgets.isInvoked(widget.name)) continue;
+function unusedWidgetDiagnostics(doc: DocumentMarkup, story: StoryReport): SpindleDiagnostic[] {
+  const diagnostics: SpindleDiagnostic[] = [];
+  for (const { definition, passage } of story.widgetList) {
+    if (passage.doc !== doc || story.widgets.get(definition.name.toLowerCase())?.definition !== definition) continue;
+    if (story.invoked.has(definition.name.toLowerCase())) continue;
     diagnostics.push(makeDiag(
-      widget.range,
+      passage.range(definition.start, definition.end),
       DiagnosticCode.UnusedWidget,
-      `Widget "${widget.name}" is defined but never invoked in the workspace`,
+      `Widget "${definition.name}" is defined but never invoked in the workspace`,
     ));
   }
+  return diagnostics;
+}
+
+// ---------------------------------------------------------------------------
+// Links the runtime reads differently (SP304, SP305)
+// ---------------------------------------------------------------------------
+
+/** How a click on a link navigates, for a message. */
+function describeNavigation(passage: string | null): string {
+  if (passage === null) return 'navigates nowhere';
+  if (passage === '') return 'navigates nowhere (the passage name it reads is empty)';
+  return `navigates to ${JSON.stringify(passage)}`;
+}
+
+function linkDiagnostics(doc: DocumentMarkup): SpindleDiagnostic[] {
+  const diagnostics: SpindleDiagnostic[] = [];
+
+  // SP304: the link macro, which renders every bracket link, reads its quoted
+  // arguments as JavaScript string literals; a target with a line break is none,
+  // and a click on the link fails (see core/parsing/link-runtime.ts).
+  for (const link of findLinkRuntimeMismatches(doc.text)) {
+    diagnostics.push(makeDiag(
+      link.range,
+      DiagnosticCode.LinkRuntimeMismatch,
+      'Spindle reads this link differently from how it is written: the link macro reads ' +
+        `the label as ${JSON.stringify(link.runtime.display)} and a click ${describeNavigation(link.runtime.passage)}, ` +
+        `not to ${JSON.stringify(link.target)}.`,
+    ));
+  }
+
+  // SP305: the link macro prints the label and navigates to the passage exactly
+  // as written. It interpolates the link's `.class#id` selectors and the markup
+  // of its label, but not the passage name: `[[Go->T{$n}]]` goes to a passage
+  // named `T{$n}`.
+  for (const found of findLiteralLinkInterpolations(doc.text)) {
+    diagnostics.push(makeDiag(
+      found.range,
+      DiagnosticCode.LiteralLinkInterpolation,
+      `Spindle does not interpolate ${found.block} in the passage name of a link: the passage name a click navigates to ` +
+        'contains it as written, braces included. The label, the class/id selectors and HTML attributes of a link ' +
+        'are interpolated; to build a passage name from a variable use an expression, as in `{link "Go" "T" + $n}`, ' +
+        'or write the name as plain text.',
+    ));
+  }
+  return diagnostics;
 }
 
 // ---------------------------------------------------------------------------
 // Line-length validation (SP500)
 // ---------------------------------------------------------------------------
 
-function validateLineLength(
-  text: string,
-  passages: Passage[],
-  maxLength: number,
-  diagnostics: Diagnostic[],
-): void {
+function lineLengthDiagnostics(doc: DocumentMarkup, maxLength: number): SpindleDiagnostic[] {
   // Skip script/stylesheet passages — those have their own formatting rules
   const excludedLines = new Set<number>();
-  for (const passage of passages.filter(isScriptOrStylesheetPassage)) {
-    for (let i = passage.range.start.line; i <= passage.range.end.line; i++) {
-      excludedLines.add(i);
-    }
+  for (const { passage } of doc.passages.filter(({ passage }) => isScriptOrStylesheetPassage(passage))) {
+    for (let i = passage.range.start.line; i <= passage.range.end.line; i++) excludedLines.add(i);
   }
 
-  const lines = text.split('\n');
+  const diagnostics: SpindleDiagnostic[] = [];
+  const lines = doc.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     if (excludedLines.has(i)) continue;
     const line = lines[i];
     // Skip passage headers
-    if (/^\uFEFF?::\s+/.test(line)) continue;
+    if (/^﻿?::\s+/.test(line)) continue;
     // Skip HTML-heavy lines (tags with attributes)
     if (/^\s*<[a-zA-Z]/.test(line)) continue;
 
     if (line.length > maxLength) {
       diagnostics.push(makeDiag(
-        {
-          start: { line: i, character: maxLength },
-          end: { line: i, character: line.length },
-        },
+        { start: { line: i, character: maxLength }, end: { line: i, character: line.length } },
         DiagnosticCode.LineTooLong,
         `Line exceeds ${maxLength} characters (${line.length})`,
       ));
     }
   }
+  return diagnostics;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeDiag(
-  range: import('../core/types.js').Range,
-  code: DiagnosticCodeValue,
-  message: string,
-): Diagnostic {
-  return {
+function makeDiag(range: Range, code: DiagnosticCodeValue, message: string, data?: DiagnosticData): SpindleDiagnostic {
+  const diagnostic: SpindleDiagnostic = {
     range,
     message,
     severity: getSeverity(code),
     code,
     source: 'spindle',
   };
+  if (data) diagnostic.data = data;
+  return diagnostic;
 }
 
 // ---------------------------------------------------------------------------
 // Plugin wrapper (LSP integration)
 // ---------------------------------------------------------------------------
 
-function toLspDiagnostic(d: Diagnostic): import('vscode-languageserver').Diagnostic {
+function toLspDiagnostic(d: SpindleDiagnostic): import('vscode-languageserver').Diagnostic {
   const severityMap = {
     error: 1,
     warning: 2,
@@ -1390,6 +962,7 @@ function toLspDiagnostic(d: Diagnostic): import('vscode-languageserver').Diagnos
     code: d.code,
     source: d.source,
     message: d.message,
+    data: d.data,
   };
 }
 
@@ -1398,7 +971,7 @@ export const diagnosticsPlugin: SpindlePlugin = {
   capabilities: {},
   initialize(ctx: PluginContext) {
     // Per-code enable/disable map, e.g. { SP100: false }
-    const isEnabled = (d: Diagnostic) => ctx.config.diagnostics?.[d.code] !== false;
+    const isEnabled = (d: SpindleDiagnostic) => ctx.config.diagnostics?.[d.code] !== false;
 
     const publishFor = (uri: string) => {
       const diags = computeDiagnostics(uri, ctx.workspace);

@@ -2,15 +2,14 @@ import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseDocument, isMap, isScalar, stringify as stringifyYaml } from 'yaml';
-import type { Diagnostic, Position, Range } from '../core/types.js';
+import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { DiagnosticCode } from '../core/diagnostic-codes.js';
+import { DiagnosticCode, type SpindleDiagnostic } from '../core/diagnostic-codes.js';
 import { findConfigFile } from '../core/workspace/config-loader.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
-import { conditionalExpression, printExpression } from '../core/parsing/attribute-blocks.js';
-import { buildLineStarts } from '../core/parsing/macro-parser.js';
+import { buildLineStarts, positionToOffset } from '../core/text.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,20 +34,21 @@ export interface CodeActionOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute quick-fix code actions for the given diagnostics.
+ * Compute quick-fix code actions for the given diagnostics. What a fix needs
+ * to know travels in the diagnostic's `data` (see `DiagnosticData`).
  *
  * Supported fixes:
- *  - SP100 (undefined macro) -> "Add 'macroName' to <project config>"
+ *  - SP100 (unknown macro) -> "Change to '{suggestion}'", "Add 'macroName' to <project config>"
+ *  - SP101, SP102 (unclosed block or element) -> "Insert {/name}" at the end of the passage
+ *  - SP113 (`{goto Kitchen}`) -> "Quote the passage name"
  *  - SP200 (undeclared variable) -> "Declare '$varName' in StoryVariables"
  *  - SP202 (no StoryVariables) -> "Create StoryVariables passage"
  *  - SP203 (undeclared transient) -> "Declare '%varName' in StoryTransients"
- *  - SP204 (null variable value) -> "Replace null with 0"
- *  - SP103 ({if C}A{else}B{/if} in an HTML attribute) -> "Rewrite as {C ? 'A' : 'B'}"
- *  - SP103 ({print E} in an HTML attribute) -> "Rewrite as {E}"
+ *  - SP300 (broken link) -> "Change to '{suggestion}'", "Create passage 'Name'"
  */
 export function computeCodeActions(
   uri: string,
-  diagnostics: Diagnostic[],
+  diagnostics: SpindleDiagnostic[],
   workspace: WorkspaceModel,
   options: CodeActionOptions = {},
 ): CodeAction[] {
@@ -56,36 +56,30 @@ export function computeCodeActions(
 
   for (const diag of diagnostics) {
     switch (diag.code) {
-      case DiagnosticCode.UndefinedMacro: {
-        const action = fixUndefinedMacro(uri, diag, workspace, options);
-        if (action) actions.push(action);
+      case DiagnosticCode.UndefinedMacro:
+        actions.push(...fixUndefinedMacro(uri, diag, workspace, options));
         break;
-      }
-      case DiagnosticCode.UndeclaredVariable: {
-        const action = fixUndeclaredVariable(diag, workspace);
-        if (action) actions.push(action);
+      case DiagnosticCode.MalformedContainer:
+      case DiagnosticCode.MalformedElement:
+        actions.push(...fixUnclosedBlock(uri, diag));
         break;
-      }
+      case DiagnosticCode.UnquotedPassageName:
+        actions.push(...fixUnquotedPassageName(uri, diag));
+        break;
+      case DiagnosticCode.UndeclaredVariable:
+        actions.push(...fixUndeclaredVariable(diag, workspace));
+        break;
       case DiagnosticCode.NoStoryVariables: {
         const action = fixNoStoryVariables(workspace);
         if (action) actions.push(action);
         break;
       }
-      case DiagnosticCode.UndeclaredTransient: {
-        const action = fixUndeclaredTransient(diag, workspace);
-        if (action) actions.push(action);
+      case DiagnosticCode.UndeclaredTransient:
+        actions.push(...fixUndeclaredTransient(diag, workspace));
         break;
-      }
-      case DiagnosticCode.NullVariableValue: {
-        const action = fixNullVariableValue(uri, diag);
-        if (action) actions.push(action);
+      case DiagnosticCode.BrokenPassageLink:
+        actions.push(...fixBrokenLink(uri, diag, workspace));
         break;
-      }
-      case DiagnosticCode.UnevaluatedAttributeBlock: {
-        const action = fixAttributeMacro(uri, diag, workspace);
-        if (action) actions.push(action);
-        break;
-      }
       // No quick fix for other diagnostic codes
     }
   }
@@ -106,15 +100,29 @@ type TextEdit = { range: Range; newText: string };
 
 function fixUndefinedMacro(
   uri: string,
-  diag: Diagnostic,
+  diag: SpindleDiagnostic,
+  workspace: WorkspaceModel,
+  options: CodeActionOptions,
+): CodeAction[] {
+  const data = diag.data;
+  if (data?.kind !== 'unknown-macro') return [];
+  const actions: CodeAction[] = data.suggestions.map(suggestion => ({
+    title: `Change to '{${suggestion}}'`,
+    kind: 'quickfix',
+    diagnosticCodes: [DiagnosticCode.UndefinedMacro],
+    edits: [{ uri, range: data.nameRange, newText: suggestion }],
+  }));
+  const config = addMacroToConfig(uri, data.name, workspace, options);
+  if (config) actions.push(config);
+  return actions;
+}
+
+function addMacroToConfig(
+  uri: string,
+  macroName: string,
   workspace: WorkspaceModel,
   options: CodeActionOptions,
 ): CodeAction | null {
-  // Extract macro name from message: "Unrecognized macro: {macroName}"
-  const match = diag.message.match(/\{(\w[\w-]*)\}/);
-  if (!match) return null;
-
-  const macroName = match[1];
   const root = resolveConfigRoot(uri, options.workspaceRoot);
   if (!root) return null;
 
@@ -361,35 +369,29 @@ function declarationInsertEdit(
 }
 
 // ---------------------------------------------------------------------------
-// Quick fix: SP200 — Declare variable in StoryVariables
+// Quick fix: SP200, SP203 — Declare a variable in StoryVariables or StoryTransients
 // ---------------------------------------------------------------------------
 
-function fixUndeclaredVariable(
-  diag: Diagnostic,
-  workspace: WorkspaceModel,
-): CodeAction | null {
-  // Extract variable name from message: "Variable '$varName' is not declared in StoryVariables"
-  const match = diag.message.match(/'\$(\w+)'/);
-  if (!match) return null;
+function declareVariable(diag: SpindleDiagnostic, workspace: WorkspaceModel, sigil: '$' | '%'): CodeAction[] {
+  if (diag.data?.kind !== 'undeclared-variable' || diag.data.sigil !== sigil) return [];
+  const { name } = diag.data;
 
-  const varName = match[1];
+  const passage = sigil === '$' ? workspace.passages.getStoryVariables() : workspace.passages.getStoryTransients();
+  if (!passage) return [];
+  const text = workspace.documents.getText(passage.uri);
+  if (text === undefined) return [];
 
-  const storyVars = workspace.passages.getStoryVariables();
-  if (!storyVars) return null;
-
-  const storyVarsUri = storyVars.uri;
-  const text = workspace.documents.getText(storyVarsUri);
-  if (text === undefined) return null;
-
-  const edit = declarationInsertEdit(text, storyVars.headerEnd.end.line, `$${varName} = 0\n`, lineEndingFor(workspace, storyVarsUri));
-
-  return {
-    title: `Declare '$${varName}' in StoryVariables`,
+  const edit = declarationInsertEdit(text, passage.headerEnd.end.line, `${sigil}${name} = 0\n`, lineEndingFor(workspace, passage.uri));
+  return [{
+    title: `Declare '${sigil}${name}' in ${sigil === '$' ? 'StoryVariables' : 'StoryTransients'}`,
     kind: 'quickfix',
-    diagnosticCodes: [DiagnosticCode.UndeclaredVariable],
-    edits: [{ uri: storyVarsUri, ...edit }],
-  };
+    diagnosticCodes: [sigil === '$' ? DiagnosticCode.UndeclaredVariable : DiagnosticCode.UndeclaredTransient],
+    edits: [{ uri: passage.uri, ...edit }],
+  }];
 }
+
+const fixUndeclaredVariable = (diag: SpindleDiagnostic, workspace: WorkspaceModel) => declareVariable(diag, workspace, '$');
+const fixUndeclaredTransient = (diag: SpindleDiagnostic, workspace: WorkspaceModel) => declareVariable(diag, workspace, '%');
 
 // ---------------------------------------------------------------------------
 // Quick fix: SP202 — Create StoryVariables passage
@@ -416,77 +418,85 @@ function fixNoStoryVariables(
 }
 
 // ---------------------------------------------------------------------------
-// Quick fix: SP203 — Declare transient variable in StoryTransients
+// Quick fix: SP101, SP102 — Close an unclosed block or element
 // ---------------------------------------------------------------------------
 
-function fixUndeclaredTransient(
-  diag: Diagnostic,
-  workspace: WorkspaceModel,
-): CodeAction | null {
-  const match = diag.message.match(/'%(\w+)'/);
-  if (!match) return null;
-
-  const varName = match[1];
-
-  const storyTransients = workspace.passages.getStoryTransients();
-  if (!storyTransients) return null;
-
-  const storyTransientsUri = storyTransients.uri;
-  const text = workspace.documents.getText(storyTransientsUri);
-  if (text === undefined) return null;
-
-  const edit = declarationInsertEdit(text, storyTransients.headerEnd.end.line, `%${varName} = 0\n`, lineEndingFor(workspace, storyTransientsUri));
-
-  return {
-    title: `Declare '%${varName}' in StoryTransients`,
+/** Insert the missing closing tag where the passage ends. */
+function fixUnclosedBlock(uri: string, diag: SpindleDiagnostic): CodeAction[] {
+  if (diag.data?.kind !== 'unclosed-block') return [];
+  const { closer, at } = diag.data;
+  return [{
+    title: `Insert ${closer}`,
     kind: 'quickfix',
-    diagnosticCodes: [DiagnosticCode.UndeclaredTransient],
-    edits: [{ uri: storyTransientsUri, ...edit }],
-  };
+    diagnosticCodes: [diag.code],
+    edits: [{ uri, range: { start: at, end: at }, newText: closer }],
+  }];
 }
 
 // ---------------------------------------------------------------------------
-// Quick fix: SP204 — Replace null with valid default
+// Quick fix: SP113 — Quote a passage name
 // ---------------------------------------------------------------------------
 
-function fixNullVariableValue(uri: string, diag: Diagnostic): CodeAction | null {
-  // The diagnostic range covers the "null" token
-  return {
-    title: 'Replace null with 0',
+/** `{goto Kitchen}` is an expression, and throws a ReferenceError: the name is a quoted string. */
+function fixUnquotedPassageName(uri: string, diag: SpindleDiagnostic): CodeAction[] {
+  if (diag.data?.kind !== 'unquoted-passage-name') return [];
+  return [{
+    title: `Quote the passage name: ${JSON.stringify(diag.data.name)}`,
     kind: 'quickfix',
-    diagnosticCodes: [DiagnosticCode.NullVariableValue],
-    edits: [{
-      uri,
-      range: diag.range,
-      newText: '0',
-    }],
-  };
+    diagnosticCodes: [DiagnosticCode.UnquotedPassageName],
+    edits: [{ uri, range: diag.range, newText: JSON.stringify(diag.data.name) }],
+  }];
 }
 
 // ---------------------------------------------------------------------------
-// Quick fix: SP103 — Rewrite {if} or {print} in an attribute as an expression
+// Quick fix: SP300 — Change a broken link to a close passage, or create the passage
 // ---------------------------------------------------------------------------
 
-/**
- * Spindle evaluates `{C ? 'A' : 'B'}` and `{E}` in an attribute value where
- * it outputs `{if C}A{else}B{/if}` and `{print E}` as text.
- * conditionalExpression() and printExpression() decide when the rewrite is
- * safe; the diagnostic range covers the whole construct.
- */
-function fixAttributeMacro(uri: string, diag: Diagnostic, workspace: WorkspaceModel): CodeAction | null {
+function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: WorkspaceModel): CodeAction[] {
+  if (diag.data?.kind !== 'unknown-passage') return [];
+  const { name, suggestions } = diag.data;
   const text = workspace.documents.getText(uri);
-  if (text === undefined) return null;
+  if (text === undefined) return [];
+  const actions: CodeAction[] = [];
+
+  // The name is written as a quoted string, or as it is (a bracket link, the body of {dialog})
   const lineStarts = buildLineStarts(text);
-  const offset = (p: Position) => (lineStarts[p.line] ?? text.length) + p.character;
-  const source = text.slice(offset(diag.range.start), offset(diag.range.end));
-  const expression = conditionalExpression(source) ?? printExpression(source);
-  if (!expression) return null;
-  return {
-    title: `Rewrite as ${expression}`,
-    kind: 'quickfix',
-    diagnosticCodes: [DiagnosticCode.UnevaluatedAttributeBlock],
-    edits: [{ uri, range: diag.range, newText: expression }],
-  };
+  const written = text.slice(positionToOffset(diag.range.start, lineStarts), positionToOffset(diag.range.end, lineStarts));
+  const quote = written[0] === '"' || written[0] === "'" ? written[0] : undefined;
+  for (const suggestion of suggestions) {
+    const spelled = quote ? spellQuoted(suggestion, quote) : spellBare(suggestion);
+    if (spelled === undefined) continue;
+    actions.push({
+      title: `Change to '${suggestion}'`,
+      kind: 'quickfix',
+      diagnosticCodes: [DiagnosticCode.BrokenPassageLink],
+      edits: [{ uri, range: diag.range, newText: spelled }],
+    });
+  }
+
+  // A new passage after the last one of the document
+  const header = `:: ${name.replace(/[\\[\]{}]/g, '\\$&')}`;
+  if (name.trim() === name && name !== '' && !/[\r\n]/.test(name)) {
+    const edit = insertLinesAt(text, text.split('\n').length, `\n${header}\n`, lineEndingFor(workspace, uri));
+    actions.push({
+      title: `Create passage '${name}'`,
+      kind: 'quickfix',
+      diagnosticCodes: [DiagnosticCode.BrokenPassageLink],
+      edits: [{ uri, ...edit }],
+    });
+  }
+  return actions;
+}
+
+/** `name` as a string literal with `quote`, or undefined if it cannot be written on a line. */
+function spellQuoted(name: string, quote: string): string | undefined {
+  if (/[\r\n]/.test(name)) return undefined;
+  return quote + name.replace(/[\\"']/g, (ch) => (ch === '\\' || ch === quote ? `\\${ch}` : ch)) + quote;
+}
+
+/** `name` as the target of a bracket link, or undefined if the link syntax would read it differently. */
+function spellBare(name: string): string | undefined {
+  return /[\r\n|\]]|->|<-/.test(name) ? undefined : name;
 }
 
 // ---------------------------------------------------------------------------
@@ -510,20 +520,22 @@ export const codeActionsPlugin: SpindlePlugin = {
   initialize(ctx: PluginContext) {
     ctx.connection.onCodeAction((params) => {
       // Convert LSP diagnostics back to our Diagnostic type
-      const diagnostics: Diagnostic[] = params.context.diagnostics
+      const diagnostics: SpindleDiagnostic[] = params.context.diagnostics
         .filter(d => d.source === 'spindle')
         .map(d => ({
           range: {
             start: { line: d.range.start.line, character: d.range.start.character },
             end: { line: d.range.end.line, character: d.range.end.character },
           },
-          message: d.message,
+          // LSP 3.18 lets a message be markup; our diagnostics are always plain text
+          message: typeof d.message === 'string' ? d.message : d.message.value,
           severity: d.severity === 1 ? 'error' as const
             : d.severity === 2 ? 'warning' as const
             : d.severity === 3 ? 'info' as const
             : 'hint' as const,
           code: String(d.code ?? ''),
           source: d.source ?? 'spindle',
+          data: d.data as SpindleDiagnostic['data'],
         }));
 
       const actions = computeCodeActions(

@@ -217,7 +217,8 @@ export function propMacroHeadOracle(files: Files) {
       const s = d.offsetAt({ line: t.line, character: t.startChar });
       const e = s + t.length;
       if (passages.some(p => s >= p.headerStart && s < p.bodyStart)) continue; // header line
-      const hit = tokens.find(x => s >= x.start && e <= x.end);
+      // the innermost token: markup inside a label or an attribute value lies inside the token that holds it
+      const hit = tokens.filter(x => s >= x.start && e <= x.end).sort((a, b) => (a.end - a.start) - (b.end - b.start))[0];
       const owner = passages.find(p => s >= p.bodyStart && s <= p.bodyEnd);
       if (owner && !owner.markup) {
         // StoryVariables / StoryTransients declarations (`$name = ...` at a line start) are highlighted
@@ -263,11 +264,11 @@ export function propMacroHeadOracle(files: Files) {
 // --- 5. rename: apply across documents, rebuild, reparse with the runtime ---
 
 const RENAMES = {
-  // Contract #67: each name is spelled for its consumer. Bare, `1 + 2`, `5`, `a-b` and `true` evaluate as
-  // {goto}/{include} expressions; `inline` is the {include} flag (0.45.1 removes the first one even inside
-  // quotes, 0.51.1 only a standalone word outside quotes). `_x1` is `temporary["x1"]` and `URL` a global, `temporary`
-  // an evaluator parameter: evaluated through the installed expression evaluator they are values, not names;
-  // `Chapter 2` (a SyntaxError, so its own text) is the control that stays bare.
+  // Contract #67: each name is spelled for its consumer. Spindle 0.59 reads the `passage` argument of {goto},
+  // {include} and {link} as a quoted name (a JavaScript string literal, `passageTarget`) or else as an expression:
+  // a bare `New Name` or `_x1` is an expression (a SyntaxError, `temporary["x1"]`, ...), so every name that is
+  // written out must be quoted, and the oracle finds no reference behind a bare one. `inline` is the {include}
+  // flag (`splitIncludeFlag`: a standalone first or last word outside quotes, so a bare one is the flag).
   passage: ['_x1', 'URL', 'temporary', 'Image', 'Chapter 2', 'Renamed Passage', 'It\'s "quoted" [x] \\ y', '1 + 2', '5', 'a-b', 'true', 'inline', 'New inline name', 'inline x', 'x inline'],
   // `5` (digit-leading) and `_x` are valid Spindle names; `a$b` has an internal `$` and must be rejected atomically (#83)
   variable: ['renamedVar', '5', '_x', 'a$b'],
@@ -355,16 +356,8 @@ export function propRename(files: Files) {
         const nameDependent = proseTransient ? /SP30[034]|SP40[01]|SP103|SP203/ : /SP30[034]|SP40[01]|SP103/;
         const before = codeMultiset(model).filter(s => !nameDependent.test(s));
         const now = codeMultiset(next).filter(s => !nameDependent.test(s));
-        // Contract #44: literal text (strings, comments) is not renamed. Spindle < 0.50.1 still reads `$old`
-        // there when the story starts, so exactly those documents gain one SP200 for the now-undeclared name.
+        // Contract #44: literal text (strings, comments) is not renamed, and Spindle checks only the code a passage runs
         const expected = [...before];
-        if (kind === 'variable' && span[0] === '$' && !model.capabilities.executableRefsOnly) {
-          for (const uri2 of model.documents.getUris()) {
-            const name2 = uri2.replace('file:///', '');
-            const leftover = splitPassages(after[name2]).some(q => q.markup && new RegExp(`\\$${p.prep!.placeholder}(?![\\w$])`).test(after[name2].slice(q.bodyStart, q.bodyEnd)));
-            if (leftover) expected.push(`${uri2}|SP200`);
-          }
-        }
         expect(now, `rename ${key} -> ${JSON.stringify(newName)} changed diagnostics`).toEqual(expected.sort());
         // runtime payload: old name replaced by the new one, nothing else
         for (const uri2 of model.documents.getUris()) {

@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
-import { computeDiagnostics, resolveIncludeTarget } from '../../src/plugins/diagnostics.js';
-import { parseMacros } from '../../src/core/parsing/macro-parser.js';
+import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { MacroRegistry } from '../../src/core/workspace/macro-registry.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
@@ -151,14 +150,15 @@ describe('computeDiagnostics', () => {
     expect(sp301.length).toBeGreaterThan(0);
   });
 
-  it('recognizes widgets defined with quoted or bare names and $/_/@ params', () => {
+  it('recognizes widgets defined with quoted or bare names, and counts only their @ params', () => {
     const widgetFile = [
       ':: Widgets [widget]',
       "{widget 'hello' @name}Hello{/widget}",
       '{widget bye $who}Bye{/widget}',
       '{widget "temp" _name}Temp{/widget}',
     ].join('\n');
-    const storyFile = ':: Start\n{hello "Sam"}\n{bye "Sam"}\n{temp "Sam"}\n{temp}';
+    // The runtime reads the parameters of a widget from the `@` names (parseWidgetDef): `$who` and `_name` are none
+    const storyFile = ':: Start\n{hello "Sam"}\n{bye}\n{temp}\n{bye "Sam"}';
     const workspace = createWorkspaceFrom(
       { name: 'widgets.tw', content: widgetFile },
       { name: 'story.tw', content: storyFile },
@@ -285,35 +285,28 @@ plain text only
     expect(sp203).toHaveLength(0);
   });
 
-  it('produces SP204 for null value in StoryVariables', () => {
-    const text = `:: StoryVariables\n$health = 100\n$bad = null\n\n:: Start\nHello`;
+  // Spindle 0.59 accepts a null default (type null: it may hold anything later), so SP204 is gone
+  it('accepts a null value in StoryVariables', () => {
+    const text = `:: StoryVariables\n$health = 100\n$bad = null\n$nested = { x: null }\n\n:: Start\nHello`;
     const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
     const diags = computeDiagnostics('file:///test.tw', workspace);
-    const sp204 = diags.filter(d => d.code === 'SP204');
-    expect(sp204).toHaveLength(1);
-    expect(sp204[0].message).toContain('$bad');
-    expect(sp204[0].message).toContain('null');
-    expect(sp204[0].severity).toBe('error');
+    expect(diags.filter(d => d.code === 'SP204' || d.code === 'SP207')).toEqual([]);
   });
 
-  it('produces SP204 for null value in StoryTransients', () => {
+  it('accepts a null value in StoryTransients', () => {
     const text = `:: StoryTransients\n%ok = 0\n%bad = null\n\n:: Start\nHello`;
     const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
     const diags = computeDiagnostics('file:///test.tw', workspace);
-    const sp204 = diags.filter(d => d.code === 'SP204');
-    expect(sp204).toHaveLength(1);
-    expect(sp204[0].message).toContain('%bad');
-    expect(sp204[0].severity).toBe('error');
+    expect(diags.filter(d => d.code === 'SP204' || d.code === 'SP207')).toEqual([]);
   });
 
-  it('does not produce SP200 for variable declared as null (SP204 instead)', () => {
+  it('does not produce SP200 for variable declared as null', () => {
     const text = `:: StoryVariables\n$bad = null\n\n:: Start\n{set $bad = 1}`;
     const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
     const diags = computeDiagnostics('file:///test.tw', workspace);
     const sp200 = diags.filter(d => d.code === 'SP200');
     expect(sp200).toHaveLength(0);
-    const sp204 = diags.filter(d => d.code === 'SP204');
-    expect(sp204).toHaveLength(1);
+    expect(diags.filter(d => d.code === 'SP204')).toHaveLength(0);
   });
 
   it('does not produce SP204 for valid default values', () => {
@@ -345,33 +338,28 @@ plain text only
     expect(sp300).toHaveLength(0);
   });
 
-  it('produces SP108 when macro expects no arguments but receives some', () => {
-    // {else} takes no arguments
-    const text = `:: TestPassage\n{if $x}ok{else "extra"}{/if}`;
+  it('produces SP108 when a configured macro expects no arguments but receives some', () => {
+    const workspace = createWorkspaceFrom({ name: 'test.tw', content: ':: TestPassage\n{ban "extra"}\n{ban}' });
+    workspace.macros.loadSupplements({ ban: { name: 'ban', parameters: [] } });
+    const sp108 = computeDiagnostics('file:///test.tw', workspace).filter(d => d.code === 'SP108');
+    expect(sp108.map(d => d.range.start.line)).toEqual([1]);
+  });
+
+  it('leaves the arguments of the macros Spindle defines to the tooling API', () => {
+    // {else} takes no arguments in the LSP's own schema, but the runtime ignores them
+    const text = ':: StoryVariables\n$x = 1\n\n:: TestPassage\n{if $x}ok{else "extra"}{/if}';
     const workspace = createWorkspaceFrom({ name: 'test.tw', content: text });
-    const diags = computeDiagnostics('file:///test.tw', workspace);
-    const sp108 = diags.filter(d => d.code === 'SP108');
-    expect(sp108.length).toBeGreaterThan(0);
+    const argumentCodes = ['SP108', 'SP109', 'SP110', 'SP111'];
+    expect(computeDiagnostics('file:///test.tw', workspace).filter(d => argumentCodes.includes(d.code))).toEqual([]);
   });
 });
 
 describe('error handling', () => {
   it('handles malformed input gracefully', () => {
-    expect(() => parseMacros('{{{unclosed')).not.toThrow();
-  });
-
-  it('parseMacros handles deeply nested braces', () => {
-    expect(() => parseMacros('{{{{{{{{{{foo}}}}}}}}}}')).not.toThrow();
-  });
-
-  it('parseMacros handles empty string', () => {
-    const result = parseMacros('');
-    expect(result).toHaveLength(0);
-  });
-
-  it('parseMacros handles string with only whitespace', () => {
-    const result = parseMacros('   \n\n\t  ');
-    expect(result).toHaveLength(0);
+    for (const body of ['{{{unclosed', '{{{{{{{{{{foo}}}}}}}}}}', '   \n\n\t  ', '[[', '<', '{/', '{$', '<div class="']) {
+      const workspace = createWorkspaceFrom({ name: 'bad.tw', content: `:: Start\n${body}` });
+      expect(() => computeDiagnostics('file:///bad.tw', workspace), body).not.toThrow();
+    }
   });
 
   it('handles empty document', () => {
@@ -696,10 +684,21 @@ describe('SP302: {include} of a [widget] passage', () => {
     expect(diags[0].message).toContain('{greet}, {bye}');
   });
 
-  it('flags a bare-name include, which Spindle resolves by fallback', () => {
-    const diags = sp302(":: Start\n{include ActResist}\n{include 'ActResist' inline}");
+  it('flags a single-quoted include with the inline flag after or before the name', () => {
+    const diags = sp302(":: Start\n{include 'ActResist' inline}\n{include inline 'ActResist'}");
     expect(diags).toHaveLength(2);
     expect(diags[0].message).toContain('{ActResist}');
+  });
+
+  it('does not flag a bare word: with no quotes it is an expression, not a passage name', () => {
+    // `{include ActResist}` throws a ReferenceError (Spindle reports unquoted-passage-name); there is no text fallback
+    const workspace = createWorkspaceFrom(
+      { name: 'widgets.tw', content: widgets },
+      { name: 'story.tw', content: ':: Start\n{include ActResist}\n{include ActResist inline}' },
+    );
+    const diags = computeDiagnostics('file:///story.tw', workspace);
+    expect(diags.filter(d => d.code === 'SP302')).toEqual([]);
+    expect(diags.filter(d => d.code === 'SP113')).toHaveLength(2);
   });
 
   it('flags widget passages whose definitions use a bare name', () => {
@@ -724,30 +723,6 @@ describe('SP302: {include} of a [widget] passage', () => {
       '{include `${$prefix}Resist`}',
     ].join('\n'));
     expect(diags).toHaveLength(0);
-  });
-});
-
-describe('resolveIncludeTarget', () => {
-  it('resolves string literals and bare names', () => {
-    expect(resolveIncludeTarget('"Passage Name"')).toBe('Passage Name');
-    expect(resolveIncludeTarget("'Passage'")).toBe('Passage');
-    expect(resolveIncludeTarget('`Passage`')).toBe('Passage');
-    expect(resolveIncludeTarget('"Say \\"hi\\""')).toBe('Say "hi"');
-    expect(resolveIncludeTarget('ActResist')).toBe('ActResist');
-    expect(resolveIncludeTarget('My Passage')).toBe('My Passage');
-    expect(resolveIncludeTarget('"Passage" inline')).toBe('Passage');
-  });
-
-  it('returns null for dynamic targets', () => {
-    expect(resolveIncludeTarget('$name')).toBeNull();
-    expect(resolveIncludeTarget('_name')).toBeNull();
-    expect(resolveIncludeTarget('@name')).toBeNull();
-    expect(resolveIncludeTarget('%name')).toBeNull();
-    expect(resolveIncludeTarget('"Act" + $suffix')).toBeNull();
-    expect(resolveIncludeTarget('`${$prefix}Act`')).toBeNull();
-    expect(resolveIncludeTarget('pick()')).toBeNull();
-    expect(resolveIncludeTarget('visited')).toBeNull();
-    expect(resolveIncludeTarget('')).toBeNull();
   });
 });
 
@@ -823,14 +798,13 @@ describe('SP200/SP203/SP206 in StoryInit, string interpolations and receivers (#
   }
 
   it('reports every undeclared $variable Spindle rejects at startup', () => {
+    // Spindle validates the variables the code reads: prose and the text of a string are not code
     const sp200 = diagnostics().filter(d => d.code === 'SP200');
     expect(sp200.map(d => d.message)).toEqual([
-      "Variable '$missingInit' is not declared in StoryVariables",
-      "Variable '$missingTemplate' is not declared in StoryVariables",
-      "Variable '$missingReceiver' is not declared in StoryVariables",
-      "Variable '$missingCode' is not declared in StoryVariables",
-      "Variable '$missingProse' is not declared in StoryVariables",
-      "Variable '$missingLiteral' is not declared in StoryVariables",
+      'Undeclared variable: $missingInit',
+      'Undeclared variable: $missingTemplate',
+      'Undeclared variable: $missingReceiver',
+      'Undeclared variable: $missingCode',
     ]);
     expect(sp200.every(d => d.severity === 'error')).toBe(true);
   });
@@ -838,8 +812,8 @@ describe('SP200/SP203/SP206 in StoryInit, string interpolations and receivers (#
   it('reports undeclared transients in StoryInit and template interpolations', () => {
     const sp203 = diagnostics().filter(d => d.code === 'SP203');
     expect(sp203.map(d => d.message)).toEqual([
-      "Transient variable '%initT' is not declared in StoryTransients",
-      "Transient variable '%tplT' is not declared in StoryTransients",
+      'Undeclared transient: %initT',
+      'Undeclared transient: %tplT',
     ]);
   });
 
@@ -896,31 +870,29 @@ describe('SP201: field access on a primitive StoryVariables default', () => {
   }
 
   it('reports the field Spindle rejects at startup as an error (issue example)', () => {
-    const sp201 = diagnose('{print $name.length}').filter(d => d.code === 'SP201');
+    // `length` is a member of a string's wrapper, which Spindle allows; `nope` is not
+    expect(diagnose('{print $name.length}').filter(d => d.code === 'SP201')).toEqual([]);
+    const sp201 = diagnose('{print $name.nope}').filter(d => d.code === 'SP201');
     expect(sp201).toHaveLength(1);
     expect(sp201[0].severity).toBe('error');
-    expect(sp201[0].message).toBe(
-      'Cannot access field "length" on $name (type: string). ' +
-        'Spindle checks field access against the StoryVariables defaults and will not start the story.',
-    );
+    expect(sp201[0].message).toBe('Cannot access field "nope" on $name (type: string)');
+    // The whole reference, as the tooling API reports it
     expect(sp201[0].range).toEqual({
-      start: { line: 6, character: 13 },
-      end: { line: 6, character: 19 },
+      start: { line: 6, character: 7 },
+      end: { line: 6, character: 17 },
     });
   });
 
   it('reports nested fields with the path Spindle names', () => {
     const sp201 = diagnose('{$p.hp.max}').filter(d => d.code === 'SP201');
-    expect(sp201.map(d => d.message)).toEqual([
-      expect.stringMatching(/^Cannot access field "max" on \$p\.hp \(type: number\)\./),
-    ]);
+    expect(sp201.map(d => d.message)).toEqual(['Cannot access field "max" on $p.hp (type: number)']);
   });
 
   it('reports nothing for valid paths, undeclared roots or untyped defaults', () => {
     const diags = diagnose('{$p.hp} {$p.extra.x} {$list.length} {$ghost.length} {$calc.x}', '$p = { hp: 1 }\n$list = []\n$calc = 2 * 3');
     expect(diags.filter(d => d.code === 'SP201')).toEqual([]);
     expect(diags.filter(d => d.code === 'SP200').map(d => d.message)).toEqual([
-      "Variable '$ghost' is not declared in StoryVariables",
+      'Undeclared variable: $ghost.length',
     ]);
   });
 

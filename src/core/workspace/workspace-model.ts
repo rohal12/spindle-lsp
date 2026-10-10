@@ -1,12 +1,13 @@
 import { EventEmitter } from 'node:events';
+import { builtinMacros, discoverMacros, passagePieces } from '@rohal12/spindle/tooling';
+import type { DiscoveredMacro } from '@rohal12/spindle/tooling';
 import { DocumentStore } from './document-store.js';
 import { PassageIndex } from './passage-index.js';
 import { MacroRegistry } from './macro-registry.js';
-import { VariableTracker, BUILTIN_STORE_VAR_MACROS } from './variable-tracker.js';
+import { VariableTracker } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
-import { parseDocumentMacros, type MacroHeadPairing } from '../parsing/macro-parser.js';
-import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../parsing/macro-discovery.js';
-import type { DiscoveredMacro } from '../parsing/macro-discovery.js';
+import { MarkupIndex } from '../markup/markup-index.js';
+import type { PassageMarkup } from '../markup/passage-markup.js';
 import { isMacroSource } from './macro-sources.js';
 import {
   UNDECLARED_STORY_FORMAT,
@@ -14,9 +15,10 @@ import {
   storyDataFormats,
   storyDataFormatVersion,
 } from './story-format.js';
-import { DEFAULT_CAPABILITIES, readInstalledSpindleVersion, resolveSpindleCapabilities } from './spindle-capabilities.js';
-import type { SpindleCapabilities } from './spindle-capabilities.js';
+import { readInstalledSpindleVersion, resolveSpindleTarget } from './spindle-version.js';
+import type { SpindleTarget } from './spindle-version.js';
 import type { StoryFormat } from './story-format.js';
+import type { Passage } from '../types.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
 
 export interface WorkspaceModelConfig {
@@ -26,6 +28,15 @@ export interface WorkspaceModelConfig {
    * @rohal12/spindle installed there (or in an ancestor's node_modules).
    */
   workspaceRoot?: string;
+}
+
+/**
+ * The macros defined in the `{do}` code of a StoryInit passage's `content`
+ * (the code the tooling API finds in it).
+ */
+function storyInitMacros(content: string): DiscoveredMacro[] {
+  return passagePieces(content, builtinMacros)
+    .flatMap((piece) => piece.kind === 'code' && piece.goal === 'statements' ? discoverMacros(piece.code) : []);
 }
 
 /**
@@ -45,6 +56,8 @@ export class WorkspaceModel extends EventEmitter {
   readonly macros: MacroRegistry;
   readonly variables: VariableTracker;
   readonly widgets: WidgetRegistry;
+  /** Every document's markup, read through Spindle's tooling API. */
+  readonly markup: MarkupIndex;
 
   /** True after initialize() has completed (full workspace scan done). */
   initialized = false;
@@ -54,14 +67,16 @@ export class WorkspaceModel extends EventEmitter {
 
   /**
    * The Spindle the project targets: the version installed under the
-   * workspace root, else StoryData's `format-version`, else the behavior of
-   * Spindle 0.45.1 (see {@link resolveSpindleCapabilities}).
+   * workspace root, else StoryData's `format-version`. Only a version below
+   * {@link MINIMUM_SPINDLE_VERSION} matters (it is reported, not emulated).
    */
-  capabilities: SpindleCapabilities = DEFAULT_CAPABILITIES;
+  target: SpindleTarget;
 
   private readonly workspaceRoot: string | undefined;
   /** The version installed under the workspace root, read at startup and on refresh(). */
   private installedVersion: string | undefined;
+  /** The `format-version` StoryData declares. */
+  private declaredVersion: string | undefined;
 
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly DEBOUNCE_MS = 200;
@@ -76,17 +91,25 @@ export class WorkspaceModel extends EventEmitter {
     this.documents = new DocumentStore();
     this.passages = new PassageIndex();
     this.macros = new MacroRegistry();
+    this.macros.onChange = () => this.markup?.invalidate();
     this.variables = new VariableTracker();
     this.widgets = new WidgetRegistry();
+    this.markup = new MarkupIndex({
+      text: (uri) => this.documents.getText(uri),
+      passages: (uri) => this.passages.getPassagesInDocument(uri),
+      context: () => ({
+        macros: this.macros.toolingMacros(),
+        isBlock: (name) => this.isContainer(name),
+      }),
+    });
 
     this.workspaceRoot = config?.workspaceRoot;
     this.installedVersion = this.workspaceRoot ? readInstalledSpindleVersion(this.workspaceRoot) : undefined;
-    this.capabilities = resolveSpindleCapabilities(this.installedVersion);
-    this.variables.setCapabilities(this.capabilities);
+    this.target = resolveSpindleTarget(this.installedVersion);
 
     // Load builtins + supplements eagerly so macros are available
     // even before initialize() is called (LSP didOpen may arrive first)
-    this.macros.loadBuiltins(config?.workspaceRoot);
+    this.macros.loadBuiltins();
     this.macros.loadSupplements(supplements as Record<string, any>);
 
     // Bind event handlers
@@ -156,16 +179,6 @@ export class WorkspaceModel extends EventEmitter {
    */
   hasPassages(uri: string): boolean {
     return this.passages.getPassagesInDocument(uri).length > 0;
-  }
-
-  /** Per-passage closer pairing for the macro heads of document `uri`. */
-  macroHeadPairing(uri: string): MacroHeadPairing {
-    return {
-      isBlock: (name) => this.isContainer(name),
-      passages: this.passages.getPassagesInDocument(uri),
-      rawDoBodies: this.capabilities.rawDoBodies,
-      stringAwareBraces: this.capabilities.stringAwareBraces,
-    };
   }
 
   /**
@@ -272,7 +285,7 @@ export class WorkspaceModel extends EventEmitter {
       if (!text) continue;
 
       if (isMacroSource(uri)) {
-        found.push(...discoverMacrosFromSource(text));
+        found.push(...discoverMacros(text));
         continue;
       }
 
@@ -286,9 +299,7 @@ export class WorkspaceModel extends EventEmitter {
         const content = lines
           .slice(passage.headerEnd.end.line + 1, passage.range.end.line + 1)
           .join('\n');
-        found.push(...(isScript
-          ? discoverMacrosFromSource(content)
-          : discoverMacrosFromStoryInit(content)));
+        found.push(...(isScript ? discoverMacros(content) : storyInitMacros(content)));
       }
     }
 
@@ -298,14 +309,18 @@ export class WorkspaceModel extends EventEmitter {
   /**
    * Cascade: rescan variables and widgets based on current passages.
    * Called after any passage index update.
+   *
+   * The markup of every document is read again (the macros may have changed),
+   * the widgets are defined from it, and then the variable usages and widget
+   * invocations are read from the same markup, which pairs its tags with the
+   * widgets just defined.
    */
   private cascade(): void {
-    // The target version decides how variables are scanned and validated
-    this.capabilities = resolveSpindleCapabilities(
-      this.installedVersion,
-      storyDataFormatVersion(this.passages.getAllPassages(), (uri) => this.documents.getText(uri)),
-    );
-    this.variables.setCapabilities(this.capabilities);
+    this.markup.invalidate();
+
+    // The target version only decides whether to warn
+    this.declaredVersion = storyDataFormatVersion(this.passages.getAllPassages(), (uri) => this.documents.getText(uri));
+    this.target = resolveSpindleTarget(this.installedVersion, this.declaredVersion);
 
     // Rescan StoryVariables
     const storyVars = this.passages.getStoryVariables();
@@ -350,25 +365,27 @@ export class WorkspaceModel extends EventEmitter {
       this.variables.clearStoryTransients();
     }
 
-    // Rescan variable usages and macro invocations across all story documents
-    const storeVarMacros = new Set(BUILTIN_STORE_VAR_MACROS);
-    for (const m of this.macros.getAllMacros()) {
-      if (m.storeVar) storeVarMacros.add(m.name.toLowerCase());
-    }
-    this.widgets.clearInvocations();
-    for (const uri of this.documents.getUris()) {
-      const text = this.documents.getText(uri);
-      // Empty documents are scanned too, dropping their previous usages
-      if (text !== undefined && !isMacroSource(uri)) {
-        const macros = parseDocumentMacros(text, this.passages.getPassagesInDocument(uri), undefined, this.capabilities);
-        this.variables.scanDocument(uri, text, macros, storeVarMacros);
-        this.widgets.recordInvocations(uri, macros);
-      }
-    }
+    // The markup of the story documents (JS/TS macro sources hold no passages)
+    const documents = this.documents.getUris().flatMap((uri) => {
+      const markup = isMacroSource(uri) ? undefined : this.markup.get(uri);
+      return markup ? [markup] : [];
+    });
 
-    // Rescan widgets
-    const allPassages = this.passages.getAllPassages();
-    this.widgets.scan(allPassages, (uri) => this.documents.getText(uri));
+    // Rescan widgets: the markup pairs its tags with them once they are known
+    const markups = new Map<Passage, PassageMarkup>();
+    for (const doc of documents) for (const passage of doc.passages) markups.set(passage.passage, passage);
+    this.widgets.scan(
+      this.passages.getAllPassages().flatMap((passage) => markups.get(passage) ?? []),
+      this.macros.toolingMacros(),
+    );
+
+    // Rescan variable usages and widget invocations across all story documents
+    // (empty documents are scanned too, dropping their previous usages)
+    this.widgets.clearInvocations();
+    for (const doc of documents) {
+      this.variables.scanDocument(doc.uri, doc.text, doc);
+      this.widgets.recordInvocations(doc.uri, doc.passages);
+    }
   }
 
   /** Debounce modelReady emission. */

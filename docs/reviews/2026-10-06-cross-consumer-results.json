@@ -1,6 +1,6 @@
 {
  "generated": "2026-10-06",
- "spindleVersion": "0.45.1",
+ "spindleVersion": "0.59.27",
  "summary": {
   "total": 5209,
   "pass": 5196,
@@ -52088,7 +52088,7 @@
    "state": "project format/version",
    "consumer": "all",
    "status": "not-applicable",
-   "note": "The oracle is the installed Spindle (0.45.1). Other versions are exercised by running this same corpus against the packed releases (scripts/peer-matrix.sh layout; 0.43.0 and 0.51.3 results in docs/reviews/2026-10-06-cross-consumer.md) and by test/unit/spindle-capabilities.test.ts, whose flags decide every version-dependent expectation here."
+   "note": "The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.59.20 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release."
   },
   {
    "id": "N/inlay-folding-symbols-actions",

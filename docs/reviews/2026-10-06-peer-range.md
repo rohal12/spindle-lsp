@@ -1,5 +1,8 @@
 # Peer-range verification — 2026-10-06
 
+> **Historical.** spindle-lsp now requires Spindle 0.59.20 or later and has no
+> per-release behavior; see [2026-10-10-tooling-migration.md](2026-10-10-tooling-migration.md).
+
 Follows [2026-10-06-convergence-fixes.md](2026-10-06-convergence-fixes.md), whose
 known gaps listed the `@rohal12/spindle` peer range (`>=0.34.0`) as unverified.
 Branch `fix/gap-i-peer`, Node 22.18.0. Control: 0.45.1 reproduces the baseline

@@ -135,7 +135,7 @@ describe('CLI check command', () => {
     }
   });
 
-  it('reports undeclared variables in StoryInit, interpolations, receivers and strings (#62)', async () => {
+  it('reports undeclared variables in StoryInit, interpolations and receivers, not prose or string literals (#62)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-undeclared-'));
     try {
       const file = join(dir, 'story.twee');
@@ -157,17 +157,16 @@ describe('CLI check command', () => {
       const diags: Array<{ code: string; message: string }> = JSON.parse(output).files[0].diagnostics;
       const names = diags
         .filter(d => d.code === 'SP200')
-        .map(d => /'\$(\w+)'/.exec(d.message)?.[1]);
-      expect(names).toEqual([
-        'missingInit', 'missingTemplate', 'missingReceiver',
-        'missingCode', 'missingProse', 'missingLiteral',
-      ]);
+        .map(d => /\$(\w+)$/.exec(d.message)?.[1]);
+      // Spindle validates the variables the code reads: `$missingProse` is
+      // text and `$missingLiteral` is inside a string literal
+      expect(names).toEqual(['missingInit', 'missingTemplate', 'missingReceiver', 'missingCode']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('warns about macros and non-sigil expressions in HTML attributes (#63)', async () => {
+  it('reads macros and expressions in HTML attributes as markup (#63)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'spindle-cli-attributes-'));
     try {
       const file = join(dir, 'story.twee');
@@ -183,15 +182,10 @@ describe('CLI check command', () => {
         '',
       ].join('\n'));
       const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', file]));
+      // The value of an attribute holds markup: Spindle evaluates the {if}, and the `{!$n ? …}` expression too,
+      // so there is nothing to warn about (the SP103 of earlier releases is gone)
       expect(exitCode).toBe(0);
-      const diags: Array<{ code: string; severity: string; message: string; range: { start: { line: number; character: number }; end: { line: number; character: number } } }> =
-        JSON.parse(output).files[0].diagnostics;
-      expect(diags.map(d => [d.code, d.severity, d.range.start.line, d.range.start.character, d.range.end.character])).toEqual([
-        ['SP103', 'warning', 4, 13, 69],
-        ['SP103', 'warning', 6, 13, 39],
-      ]);
-      expect(diags[0].message).toMatch(/^Macros are not evaluated inside HTML attributes/);
-      expect(diags[1].message).toMatch(/only when \$, _, @ or % follows the brace/);
+      expect(JSON.parse(output).files).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -234,8 +228,8 @@ describe('CLI check custom macro sources (#47)', () => {
         .filter((d: { code: string }) => d.code === 'SP100')
         .map((d: { message: string }) => d.message);
       expect(sp100).toEqual([
-        'Unrecognized macro: {vendored}',
-        'Unrecognized macro: {bundled}',
+        'Unknown macro {vendored}.',
+        'Unknown macro {bundled}.',
       ]);
     } finally {
       process.chdir(originalCwd);
@@ -288,7 +282,7 @@ describe('CLI check custom macro sources (#47)', () => {
         .map((d: { message: string }) => d.message);
     }
 
-    const expected = ['Unrecognized macro: {bye}', 'Unrecognized macro: {stray}'];
+    const expected = ['Unknown macro {bye}. Did you mean {type}?', 'Unknown macro {stray}.'];
 
     it('from the project\'s parent directory', async () => {
       expect(sp100(await checkFrom(join(home, 'projects'), 'game/story/a.tw'))).toEqual(expected);
@@ -352,7 +346,7 @@ describe('CLI check --config', () => {
       const { output } = await captureStdout(() =>
         runCheck(['--config', join(dir, 'custom.yaml'), '--format', 'json', join(dir, 'story.twee')]),
       );
-      expect(sp100For(output)).toEqual(['Unrecognized macro: {other}']);
+      expect(sp100For(output)).toEqual(['Unknown macro {other}.']);
     }));
 
   it('applies discovered macros, with config taking precedence', () =>
@@ -395,10 +389,10 @@ describe('CLI check --config', () => {
 });
 
 describe('CLI check on a story in another format', () => {
-  // A SugarCube story: <</if>> reads as a stray closing tag (SP102) in Spindle
+  // A SugarCube story: the </b> is a stray closing tag (SP102) in Spindle
   const storyData = (format: string) =>
     `:: StoryData\n{\n\t"ifid": "D674C58C-DEFA-4F70-B7A2-27742230C0FC",\n\t"format": "${format}"\n}\n`;
-  const act = ':: Start\n<<if $gold > 5>>Rich<</if>>\n{nope}\n[[Missing]]\n';
+  const act = ':: Start\n<<if $gold > 5>>Rich<</if>></b>\n{nope}\n[[Missing]]\n';
   let dir: string;
   const originalCwd = process.cwd();
 

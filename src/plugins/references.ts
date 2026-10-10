@@ -1,12 +1,9 @@
-import type { BraceReading } from '../core/parsing/code-scanner.js';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { findPassageRefAt, parseDocumentPassageRefs, type PassageRef } from '../core/parsing/link-parser.js';
-import { parseMacros, macroHeadNames, macroHeadNameAt } from '../core/parsing/macro-parser.js';
-import { isMarkupPassage, parsePassageHeader, type PassageRole } from '../core/parsing/passage-parser.js';
-import { executableCode } from '../core/workspace/variable-tracker.js';
-import { isMacroSource } from '../core/workspace/macro-sources.js';
+import { documentMacroHeads, macroHeadAt } from '../core/markup/macro-heads.js';
+import { documentRefsNamed, passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
+import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
 // Core references function (no LSP dependency)
@@ -56,18 +53,17 @@ export function findReferences(
   }
 
   // --- Widget ---
-  {
-    const head = macroHeadNameAt(text, position, workspace.macroHeadPairing(uri));
-    if (head) {
-      const widget = workspace.widgets.getWidget(head.name);
-      if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
-        return findWidgetReferences(head.name, workspace, includeDeclaration);
-      }
+  const doc = workspace.markup.get(uri);
+  const head = doc && macroHeadAt(doc, position);
+  if (head) {
+    const widget = workspace.widgets.getWidget(head.name);
+    if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
+      return findWidgetReferences(head.name, workspace, includeDeclaration);
     }
   }
 
-  // --- Passage reference in [[link]] or macro arguments ---
-  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
+  // --- Passage name written out: [[link]] or a quoted macro argument ---
+  const passageRef = doc && passageRefAt(doc, position);
   if (passageRef) {
     return findPassageReferences(passageRef.name, workspace, includeDeclaration);
   }
@@ -78,27 +74,6 @@ export function findReferences(
 // ---------------------------------------------------------------------------
 // The variable under the cursor
 // ---------------------------------------------------------------------------
-
-/**
- * The code Spindle evaluates in each line of a document (see
- * executableCode()): every character of prose, comments, string contents and
- * of passages that are not markup is a space. `_temp` and `@local` variables,
- * which have no tracker, only mean something where this has text.
- */
-export function executableCodeLines(
-  lines: string[],
-  passages: Array<PassageRole & { range: Range }>,
-  reading: BraceReading = {},
-): string[] {
-  const code = lines.map(l => ' '.repeat(l.length));
-  passages.forEach((passage, index) => {
-    if (!isMarkupPassage(passage)) return;
-    const first = passage.range.start.line + 1;
-    const last = index + 1 < passages.length ? passages[index + 1].range.start.line : lines.length;
-    executableCode(lines.slice(first, last).join('\n'), reading).split('\n').forEach((l, i) => { code[first + i] = l; });
-  });
-  return code;
-}
 
 export interface VariableAtCursor {
   sigil: '$' | '%';
@@ -179,10 +154,12 @@ export function findPassageReferences(
 }
 
 /**
- * The executable references (`[[links]]` and literal macro targets) to a
- * passage, with the spelling of each target, so that an edit can re-encode a
- * new name for it. Script/stylesheet bodies, macro-argument strings and HTML
- * attribute values are not references.
+ * The passage names written out that name `passageName`, with the spelling
+ * of each (so that an edit can re-encode a new name for it): `[[links]]`,
+ * quoted `goto`/`include`/`link`/`watch` arguments and `{dialog}` bodies,
+ * labels and attribute values that hold markup included. Script/stylesheet
+ * bodies, strings of other macros and expressions (a bare word, a template
+ * literal) are not references.
  */
 export function findPassageRefs(
   passageName: string,
@@ -190,14 +167,9 @@ export function findPassageRefs(
 ): Array<{ uri: string; ref: PassageRef }> {
   const found: Array<{ uri: string; ref: PassageRef }> = [];
   for (const docUri of workspace.documents.getUris()) {
-    if (isMacroSource(docUri) || !workspace.hasPassages(docUri)) continue;
-    const docText = workspace.documents.getText(docUri);
-    if (!docText) continue;
-
-    const passages = workspace.passages.getPassagesInDocument(docUri);
-    for (const ref of parseDocumentPassageRefs(docText, passages, workspace.capabilities)) {
-      if (ref.name === passageName) found.push({ uri: docUri, ref });
-    }
+    const doc = workspace.markup.get(docUri);
+    if (!doc) continue;
+    for (const ref of documentRefsNamed(doc, passageName)) found.push({ uri: docUri, ref });
   }
   return found;
 }
@@ -230,27 +202,6 @@ export function findVariableReferences(
   }
 
   return locations;
-}
-
-/**
- * Whether the `%name` at line/character is a transient reference. A name
- * starting with a digit is one only where the variable tracker records it
- * (in code, where Spindle evaluates it) or at its declaration: `%20` in
- * prose or an HTML attribute is URL encoding.
- */
-export function isTransientAt(
-  name: string,
-  uri: string,
-  line: number,
-  character: number,
-  workspace: WorkspaceModel,
-): boolean {
-  if (!/^\d/.test(name)) return true;
-  const at = (u: { uri?: string; range?: Range }) =>
-    u.uri === uri && u.range?.start.line === line && u.range.start.character === character;
-  const decl = workspace.variables.getDeclaredTransient().get(name);
-  if (decl && at({ uri: decl.declarationUri, range: decl.declarationRange })) return true;
-  return workspace.variables.getTransientUsages(name).some(at);
 }
 
 /**
@@ -294,18 +245,16 @@ export function findWidgetReferences(
     locations.push({ uri: widget.uri, range: widget.range });
   }
 
-  // Scan all documents for widget calls using the shared macro grammar
-  // (case-insensitive, like Spindle), plus {/widgetName} closing tags when the
-  // widget is a block widget.
+  // Every call of the widget the runtime runs (case-insensitive, like Spindle):
+  // the macros of the paired markup, those in labels and attribute values
+  // included, and its {/widgetName} closing tags when the widget is a block widget
   const lowerName = widgetName.toLowerCase();
   const isBlock = widget?.block ?? false;
 
   for (const docUri of workspace.documents.getUris()) {
-    if (isMacroSource(docUri) || !workspace.hasPassages(docUri)) continue;
-    const docText = workspace.documents.getText(docUri);
-    if (!docText) continue;
-
-    for (const head of macroHeadNames(docText, workspace.macroHeadPairing(docUri))) {
+    const doc = workspace.markup.get(docUri);
+    if (!doc) continue;
+    for (const head of documentMacroHeads(doc)) {
       if (head.closing && !isBlock) continue;
       if (head.name.toLowerCase() === lowerName) {
         locations.push({ uri: docUri, range: head.range });

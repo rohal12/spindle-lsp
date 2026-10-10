@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import {
   createMessageConnection, StreamMessageReader, StreamMessageWriter, type MessageConnection,
-} from 'vscode-languageserver/node.js';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { buildDist, type DistBuild } from './support/dist-build.js';
 

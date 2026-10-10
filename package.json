@@ -13,27 +13,30 @@
     "test:watch": "vitest",
     "review:convergence": "vitest run --config vitest.review.config.ts",
     "typecheck": "tsc --noEmit",
+    "duplication": "node scripts/duplication.ts jscpd && node scripts/duplication.ts cpd && node scripts/duplication.ts fallow",
     "lint": "tsc --noEmit && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
-    "glob": "^11.0.0",
-    "vscode-languageserver": "^9.0.1",
-    "vscode-languageserver-textdocument": "^1.0.12",
-    "yaml": "^2.7.0"
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "glob": "^13.0.6",
+    "vscode-languageserver": "^10.1.2",
+    "vscode-languageserver-textdocument": "^1.0.15",
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
-    "@rohal12/spindle": ">=0.43.0"
+    "@rohal12/spindle": ">=0.59.20"
   },
   "optionalDependencies": {
-    "prettier": "^3.0.0"
+    "prettier": "^3.9.9"
   },
   "devDependencies": {
-    "@rohal12/spindle": "^0.45.1",
-    "@types/node": "^22.0.0",
-    "esbuild": "^0.24.0",
-    "typescript": "^5.6.0",
-    "vitest": "^3.0.0"
+    "@rohal12/spindle": "0.59.27",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "fallow": "3.33.1",
+    "jscpd": "5.4.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
   },
   "publishConfig": {
     "access": "public"
@@ -49,5 +52,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rohal12/spindle-lsp.git"
+  },
+  "peerDependenciesMeta": {
+    "@rohal12/spindle": {
+      "optional": true
+    }
   }
 }

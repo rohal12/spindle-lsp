@@ -57,13 +57,11 @@ describe('{next} branches of {timed}', () => {
     expect(diagnose(':: Start\n{timed}\nA\n{next 1s}\nB\n{/timed}\n')).toEqual([]);
   });
 
-  it('rejects {timed} with more than one argument', () => {
-    expect(codes(diagnose(':: Start\n{timed 1s 2s}\nA\n{/timed}\n'))).toEqual(['SP111']);
-  });
-
-  it('rejects {next} with more than one argument', () => {
-    const diags = diagnose(':: Start\n{timed 1s}\nFirst\n{next 2s 3s}\nSecond\n{/timed}\n');
-    expect(codes(diags)).toEqual(['SP111']);
+  it('leaves the arguments of {timed} and {next} to Spindle, which reports none here', () => {
+    // The arguments of the macros Spindle defines are judged by the tooling API (`argument-error`);
+    // the LSP's own SP111 for "too many arguments" applies to configured macros only
+    expect(diagnose(':: Start\n{timed 1s 2s}\nA\n{/timed}\n')).toEqual([]);
+    expect(diagnose(':: Start\n{timed 1s}\nFirst\n{next 2s 3s}\nSecond\n{/timed}\n')).toEqual([]);
   });
 
   it('flags {next} outside {timed}', () => {
@@ -101,7 +99,7 @@ describe('branch macros sit directly inside their parent', () => {
   });
 
   it('flags {case} and {default} nested in another container within {switch}', () => {
-    const diags = diagnose(`${vars}:: Start\n{switch $x}\n{case 1}\none\n{do}\n{case 2}\n{default}\n{/do}\n{/switch}\n`);
+    const diags = diagnose(`${vars}:: Start\n{switch $x}\n{case 1}\none\n{for @i of [1]}\n{case 2}\n{default}\n{/for}\n{/switch}\n`);
     expect(codes(diags)).toEqual(['SP107', 'SP107']);
   });
 
@@ -148,7 +146,7 @@ describe('HTML elements on Spindle\'s AST stack', () => {
   it('flags {else} inside an element within {if}, naming the element', () => {
     const diags = diagnose(`${vars}:: Start\n{if $x}<span>a{else}b</span>{/if}\n`);
     expect(codes(diags)).toEqual(['SP107']);
-    expect(diags[0].message).toBe('Invalid: {else} can only be directly inside {if}, not inside <span>');
+    expect(diags[0].message).toBe('{else} must be directly inside {if}, not inside <span>');
     expect(diags[0].range.start).toEqual({ line: 3, character: 14 });
   });
 
@@ -205,10 +203,11 @@ describe('HTML elements on Spindle\'s AST stack', () => {
     expect(diagnose(':: Next\nx\n:: Start\n{if true}[[<b>Go|Next]]{else}b{/if}\n')).toEqual([]);
   });
 
-  it('ignores macros written inside a tag', () => {
-    // Spindle reads the attribute value as part of the tag, not as a macro,
-    // and outputs the {else} as text (SP103).
-    expect(codes(diagnose(`${vars}:: Start\n{if $x}<a title="{else}">a</a>{/if}\n`))).toEqual(['SP103']);
+  it('reads a macro written in an attribute value as a macro', () => {
+    // The value of an attribute holds markup: the {else} is a branch of no {if} directly around it
+    const diags = diagnose(`${vars}:: Start\n{if $x}<a title="{else}">a</a>{/if}\n`);
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toBe('In the title attribute of <a>: {else} must be directly inside {if}');
   });
 
   it('does not track elements across passages', () => {
@@ -222,17 +221,17 @@ describe('HTML elements on Spindle\'s AST stack', () => {
     expect(diagnose(story)).toEqual([]);
   });
 
-  it('stops tracking elements after a closing tag that does not match', () => {
-    // Spindle throws at </i> (SP102); what follows is never reached.
-    expect(codes(diagnose(`${vars}:: Start\n<b></i>{if $x}a<i>{else}</i>{/if}\n`))).toEqual(['SP102']);
-    expect(codes(diagnose(`${vars}:: Start\n</i><b>{if $x}<i>{else}</i>{/if}</b>\n`))).toEqual(['SP102']);
+  it('reads on after a closing tag that does not match', () => {
+    // pairMarkup recovers around </i> (SP102) and goes on: the {else} in the <i> is misplaced too
+    expect(codes(diagnose(`${vars}:: Start\n<b></i>{if $x}a<i>{else}</i>{/if}\n`))).toEqual(['SP102', 'SP107']);
+    expect(codes(diagnose(`${vars}:: Start\n</i><b>{if $x}<i>{else}</i>{/if}</b>\n`))).toEqual(['SP102', 'SP107']);
   });
 
-  it('stops tracking elements after a block closes over an open element', () => {
-    // {if}<span>{/if}</span> crosses: Spindle throws "Expected </span> but found {/if}".
+  it('reads on after a block closes over an open element', () => {
+    // {if}<span>{/if}</span> crosses: pairMarkup reports the {/if} found where </span> should close (SP101),
+    // then the </span> that closes nothing (SP102), and reads on: the {else} in the <i> is misplaced (SP107)
     const diags = diagnose(`${vars}:: Start\n{if $x}<span>{/if}</span>{if $x}<i>{else}</i>{/if}\n`);
-    // the rejected {/if} (SP102) leaves its {if} open (SP101); {else} after it is not judged
-    expect(codes(diags).sort()).toEqual(['SP101', 'SP102']);
+    expect(codes(diags)).toEqual(['SP101', 'SP102', 'SP107']);
   });
 
   it('reads an attribute value with a lone brace as the installed Spindle does', () => {
@@ -244,25 +243,25 @@ describe('HTML elements on Spindle\'s AST stack', () => {
     expect(codes(diags).some(code => ['SP101', 'SP102', 'SP104', 'SP107'].includes(code))).toBe(runtimeRejects(body));
   });
 
-  it('reads a tag with whitespace around = as text, in every release', () => {
-    // `<a href = "x">` is no tag, so `</a>` has no opener: buildAST throws
+  it('reads a tag with whitespace around = as a tag', () => {
+    // `<a href = "x">` is a tag (href = x) in Spindle 0.59, so `</a>` closes it; the misplaced {else} is the one error
     const body = '<a href = "x">{if $x}<i>{else}</i>{/if}</a>';
     expect(runtimeRejects(body)).toBe(true);
     const diags = diagnose(`${vars}:: Start\n${body}\n`);
-    expect(diags.map(d => d.message)).toContain('Malformed element: unexpected closing </a>');
+    expect(diags.map(d => d.message)).toEqual(['{else} must be directly inside {if}, not inside <i>']);
   });
 
-  it('reports nested macro containers beside a tag that is read as text', () => {
+  it('reports nested macro containers beside a tag with whitespace around =', () => {
     const diags = diagnose(`${vars}:: Start\n<a href = "x">{if $x}{for @i of [1]}{else}{/for}{/if}</a>\n`);
-    expect(codes(diags).sort()).toEqual(['SP102', 'SP107']);
-    expect(diags.find(d => d.code === 'SP107')!.message).toContain('not inside {for}');
+    expect(codes(diags)).toEqual(['SP107']);
+    expect(diags[0].message).toContain('not inside {for}');
   });
 
   it('flags a branch in an element that is never closed', () => {
     // Spindle throws at {else}, whose block is not on top of the stack;
-    // {/if} closing over the <p> is SP102.
+    // the {/if} found where </p> should close is a malformed container (SP101).
     const diags = diagnose(`${vars}:: Start\n{if $x}<p>a{else}b{/if}\n`);
-    expect(codes(diags).sort()).toEqual(['SP102', 'SP107']);
+    expect(codes(diags).sort()).toEqual(['SP101', 'SP107']);
     expect(diags.find(d => d.code === 'SP107')!.message).toContain('not inside <p>');
   });
 
@@ -338,7 +337,7 @@ describe('block widget invocations are containers', () => {
   it('flags a block widget invocation without its closing tag', () => {
     const diags = diagnose(`${widgets}:: Start\n{greet}\n{box}\nHello\n`);
     expect(codes(diags)).toEqual(['SP101']);
-    expect(diags[0].message).toBe('Malformed container: no matching {/box}');
+    expect(diags[0].message).toBe('Unclosed {box}: no {/box} closes it');
     expect(diags[0].range.start.line).toBe(10);
   });
 
@@ -346,7 +345,7 @@ describe('block widget invocations are containers', () => {
     const diags = diagnose(`${widgets}:: Start\n{greet}\n{box}Hello{/box}\n{/Box}\n`);
     expect(codes(diags)).toEqual(['SP101']);
     expect(diags[0].range.start.line).toBe(11);
-    expect(diags[0].message).toBe('Malformed container: no matching {Box}');
+    expect(diags[0].message).toBe('{/Box} closes nothing: no {Box} is open here');
   });
 
   it('does not pair a block widget across passages', () => {

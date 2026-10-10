@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { parseStoryVariables } from '../../node_modules/@rohal12/spindle/src/story-variables.js';
+import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 import { prepareRename, computeRename, RenameError, type RenameEdit } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
@@ -409,7 +409,7 @@ describe('rename from a passage reference', () => {
   const content = [
     ':: Start',
     '[[Next]] [[Go on|Next]] [[Go on->Next]] [[Next<-Go on]]',
-    `{goto "Next"} {include 'Next'} {link "Go on" "Next"} {goto Next}`,
+    `{goto "Next"} {include 'Next'} {link "Go on" "Next"} {dialog "d"}Next{/dialog}`,
     '',
     ':: Next',
     'Hello',
@@ -417,7 +417,7 @@ describe('rename from a passage reference', () => {
   const renamed = [
     ':: Start',
     '[[After]] [[Go on|After]] [[Go on->After]] [[After<-Go on]]',
-    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto "After"}`,
+    `{goto "After"} {include 'After'} {link "Go on" "After"} {dialog "d"}After{/dialog}`,
     '',
     ':: After',
     'Hello',
@@ -521,23 +521,26 @@ describe('N-rename: invalid new names fail the whole request and name the offend
 
   it('N-rename-offender: the message and fields locate the reference that cannot hold the name', () => {
     const ws = make();
-    // `a|b` fits {goto "..."} but not [[...]]; the first bracket link is on story.tw line 7
+    // `a|b` fits {goto "..."} and `[[x|a|b]]` (the first pipe splits), but not `[[a|b]]`:
+    // the offender is the first link that reads another name back, in other.tw
     const error = failure(() => computeRename(uri, at, 'a|b', ws));
-    expect(error.uri).toBe(uri);
-    expect(error.range!.start).toEqual({ line: 6, character: 4 });
+    expect(error.uri).toBe(other);
+    expect(error.range!.start).toEqual({ line: 1, character: 9 });
     expect(error.message).toContain('[[link]]');
-    expect(error.message).toContain(`${uri}:7:5`);
+    expect(error.message).toContain(`${other}:2:10`);
   });
 
   it('N-rename-offender-other-file: an offender in another file is named by that file', () => {
     const ws = createWorkspace(
       { name: 'story.tw', content: ':: StoryVariables\n:: Old\nhello\n:: Start\n{goto "Old"}' },
-      { name: 'other.tw', content: ':: Other\nbefore {link "go" "Old"}{/link}' },
+      { name: 'other.tw', content: ':: Other\nbefore {link "go" "Old"}{/link} [[go->Old]]' },
     );
-    const error = failure(() => computeRename(uri, { line: 1, character: 4 }, 'Bob"s', ws));
+    // Spindle 0.59 reads the {link} passage as a JavaScript string literal, so `Bob"s` fits it
+    // (`"Bob\"s"`); only the bracket link cannot hold a `|` (the macro link used to be the offender)
+    const error = failure(() => computeRename(uri, { line: 1, character: 4 }, 'a|b', ws));
     expect(error.uri).toBe(other);
-    expect(error.message).toContain('{link}');
-    expect(error.message).toContain(`${other}:2:20`);
+    expect(error.message).toContain('[[link]]');
+    expect(error.message).toContain(`${other}:2:39`);
   });
 
   it('N-rename-atomic: a failing rename returns no partial edits for any document', () => {
@@ -583,7 +586,9 @@ describe('N-rename: invalid new names fail the whole request and name the offend
       ];
       const ws = createWorkspace(...files);
       const cursor = { line: 1, character: 1 };
-      for (const name of ['5', '_', '_x', '007', 'a_1', `${sigil}5`]) {
+      // `%5` is the modulo operator in code (`transform('%5')` throws), so a transient cannot start with a digit
+      const names = ['5', '_', '_x', '007', 'a_1', `${sigil}5`].filter(name => sigil === '$' || !/^[$%]?\d/.test(name));
+      for (const name of names) {
         const bare = name.replace(/^[$%]/, '');
         const out = applyRename(ws, 'file:///decl.tw', cursor, name);
         const decl = out.get('file:///decl.tw')!;
@@ -592,7 +597,8 @@ describe('N-rename: invalid new names fail the whole request and name the offend
         // the runtime reads the rebuilt declaration as the new key
         expect([...parse(decl.split('\n')[1]!).keys()], name).toEqual([bare]);
       }
-      for (const name of ['a$b', `${sigil}a$b`, '$', '5$', 'a.b']) {
+      const rejected = ['a$b', `${sigil}a$b`, '$', '5$', 'a.b', ...(sigil === '%' ? ['5', '007', '%5'] : [])];
+      for (const name of rejected) {
         expect(() => computeRename('file:///decl.tw', cursor, name, ws), name).toThrow(RenameError);
       }
       // a rejected rename is atomic: the workspace text is untouched
@@ -642,7 +648,7 @@ describe('N-rename: invalid new names fail the whole request and name the offend
     const result = handler!({ textDocument: { uri }, position: at, newName: 'a|b' });
     expect(result).toBeInstanceOf(ResponseError);
     expect(result.code).toBe(ErrorCodes.InvalidParams);
-    expect(result.message).toContain(`${uri}:7:5`);
+    expect(result.message).toContain(`${other}:2:10`);
     const ok = handler!({ textDocument: { uri }, position: at, newName: 'New' });
     expect(Object.keys(ok.changes).sort()).toEqual([other, uri]);
   });

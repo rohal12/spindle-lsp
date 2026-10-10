@@ -3,13 +3,10 @@ import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import type { ParameterDoc } from '../core/types.js';
-import { lexArguments, type Arg } from '../core/parsing/argument-lexer.js';
+import { splitArgs } from '@rohal12/spindle/tooling';
+import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
 import { Parameters, type ParameterSlot } from '../core/parsing/parameter-validator.js';
-import { activeWidgetArgument } from '../core/parsing/widget-arguments.js';
-import { buildLineStarts, createCodeScanner, SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
-import type { BraceReading } from '../core/parsing/code-scanner.js';
-import { inAttributeValue } from '../core/parsing/html-scanner.js';
-import { isMarkupPassage } from '../core/parsing/passage-parser.js';
+import { markupAt } from './markup-cursor.js';
 
 // ---------------------------------------------------------------------------
 // Core signature help function (no LSP dependency)
@@ -23,25 +20,6 @@ export interface SignatureHelpResult {
   }>;
   activeSignature: number;
   activeParameter: number;
-}
-
-/** A macro head followed by its arguments: `{name ` with an optional CSS prefix. */
-const macroHeadRegex = new RegExp(String.raw`(?<!\\)\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\s+`, 'g');
-
-/**
- * Find the innermost macro whose arguments are still open at the end of
- * `textBefore`: the last macro head whose balanced closing brace is not in
- * the text. Braces inside the arguments (objects, strings) are skipped the
- * way Spindle's tokenizer skips them.
- */
-function findEnclosingMacro(textBefore: string, reading: BraceReading): { macroName: string; argsBefore: string } | null {
-  const scanner = createCodeScanner(textBefore, reading);
-  let enclosing: { macroName: string; argsBefore: string } | null = null;
-  for (const match of textBefore.matchAll(macroHeadRegex)) {
-    if (scanner.closeBrace(match.index + 1) !== -1) continue;
-    enclosing = { macroName: match[1], argsBefore: textBefore.slice(match.index + match[0].length) };
-  }
-  return enclosing;
 }
 
 function slotLabel(slot: ParameterSlot, name: string): string {
@@ -98,16 +76,19 @@ function describeSignatures(
 }
 
 /**
- * Index of the argument being typed. A token still being typed (the cursor
- * touches it) keeps its own index; the next index starts at whitespace or a
- * comma, or inside a token the lexer has not completed (an open string).
+ * The arguments of a call as `splitArgs` (the rule the runtime splits them
+ * by) reads them with one more value after the cursor: the last one is the
+ * argument being typed. A value still being typed (the cursor touches it)
+ * stays the active argument; a new one starts after whitespace or a comma
+ * where the runtime would split, and an open expression or string goes on.
  */
-function activeMacroArgument(argsBefore: string): number {
-  if (argsBefore.trim() === '') return 0;
-  const lexed = lexArguments(argsBefore);
-  const tail = argsBefore.slice(lexed.length > 0 ? lexed[lexed.length - 1].end : 0);
-  if (tail !== '') return lexed.length;
-  return Math.max(lexed.length - 1, 0);
+function argumentsBeingTyped(argsBefore: string): string[] {
+  return splitArgs(`${argsBefore}$next`);
+}
+
+/** What a completed argument is, for the schema slot that must accept it. */
+function lexArgument(text: string): Arg {
+  return lexArguments(text)[0] ?? { type: ArgType.Bareword, text, start: 0, end: text.length };
 }
 
 /** The slot an argument at `index` would occupy, with a trailing repeat covering the rest. */
@@ -149,25 +130,17 @@ export function getSignatureHelp(
   position: Position,
   workspace: WorkspaceModel,
 ): SignatureHelpResult | null {
-  const text = workspace.documents.getText(uri);
-  if (text === undefined) return null;
-
-  const lineStarts = buildLineStarts(text);
-  if (position.line >= lineStarts.length) return null;
-  // Only the cursor's passage can hold the macro being typed
-  const cursorPassage = workspace.passages.getPassageAt(uri, position.line);
+  const cursor = markupAt(workspace, uri, position);
   // script, stylesheet and data passages are not story markup: no macro is being typed there
-  if (cursorPassage && !isMarkupPassage(cursorPassage)) return null;
-  const passageLine = cursorPassage?.range.start.line ?? 0;
-  const lineEnd = position.line + 1 < lineStarts.length ? lineStarts[position.line + 1] - 1 : text.length;
-  const cursor = Math.min(lineStarts[position.line] + position.character, lineEnd);
-  // Spindle outputs a macro in an HTML attribute value as text (SP103): nothing is being called there
-  if (cursor > 0 && inAttributeValue(text, cursor - 1)) return null;
-  const textBefore = text.slice(lineStarts[passageLine], cursor);
+  if (!cursor?.passage.isMarkup) return null;
 
-  const enclosing = findEnclosingMacro(textBefore, workspace.capabilities);
+  // The innermost macro of a known name whose arguments the cursor is in (a
+  // tag of the passage, or of a label or attribute value; or one not yet closed)
+  const enclosing = cursor.enclosingMacro(name => !!workspace.macros.getMacro(name) || !!workspace.widgets.getWidget(name));
   if (!enclosing) return null;
-  const { macroName, argsBefore } = enclosing;
+  const { name: macroName, argsBefore } = enclosing;
+  const typing = argumentsBeingTyped(argsBefore);
+  const argument = typing.length - 1;
 
   // Check builtin macros
   const macroInfo = workspace.macros.getMacro(macroName);
@@ -179,8 +152,7 @@ export function getSignatureHelp(
       macroInfo.parameterDocs,
     );
     if (described.length > 0) {
-      const argument = activeMacroArgument(argsBefore);
-      const completed = lexArguments(argsBefore).slice(0, argument);
+      const completed = typing.slice(0, argument).map(lexArgument);
       const activeSignature = pickSignature(described, completed, argument);
       const signatures = described.map(d => d.signature);
       const { parameters } = signatures[activeSignature];
@@ -202,8 +174,7 @@ export function getSignatureHelp(
         parameters: paramLabels.map(p => ({ label: p })),
       }],
       activeSignature: 0,
-      // Widget arguments are split the way Spindle's WidgetInvocation does
-      activeParameter: activeWidgetArgument(argsBefore),
+      activeParameter: argument,
     };
   }
 

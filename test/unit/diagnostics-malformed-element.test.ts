@@ -3,7 +3,6 @@ import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import type { Diagnostic } from '../../src/core/types.js';
 import { runtimeRejects } from '../helpers/runtime-ast.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 
 function diagnose(content: string): Diagnostic[] {
   const workspace = new WorkspaceModel();
@@ -24,8 +23,8 @@ function at(diag: Diagnostic): [number, number, number] {
   return [diag.range.start.line, diag.range.start.character, diag.range.end.character];
 }
 
-// Spindle's buildAST (markup/ast.ts) throws on these, and the passage shows
-// "Error parsing passage" instead of its content.
+// Spindle's pairing (pairMarkup, which the runtime builds its AST from) reports these, and the passage
+// shows "Error parsing passage" instead of its content. The tooling API reports every one of them.
 describe('SP102: HTML element structure Spindle cannot render', () => {
   const vars = ':: StoryVariables\n$x = 1\n';
 
@@ -33,15 +32,15 @@ describe('SP102: HTML element structure Spindle cannot render', () => {
     const diags = diagnose(':: Start\nHello <b>world\n');
     expect(codes(diags)).toEqual(['SP102']);
     expect(diags[0].severity).toBe('error');
-    expect(diags[0].message).toBe('Malformed element: unclosed <b>');
+    expect(diags[0].message).toBe('Unclosed <b>: no </b> closes it');
     expect(at(diags[0])).toEqual([1, 6, 9]);
   });
 
   it('flags every element left open at the end of the passage', () => {
     const diags = diagnose(':: Start\n<div class="a">\n<p>text\n');
     expect(diags.map(d => d.message)).toEqual([
-      'Malformed element: unclosed <div>',
-      'Malformed element: unclosed <p>',
+      'Unclosed <div>: no </div> closes it',
+      'Unclosed <p>: no </p> closes it',
     ]);
     expect(diags.map(at)).toEqual([[1, 0, 15], [2, 0, 3]]);
   });
@@ -49,65 +48,69 @@ describe('SP102: HTML element structure Spindle cannot render', () => {
   it('flags a closing tag with nothing open', () => {
     const diags = diagnose(':: Start\ntext</i>\n');
     expect(codes(diags)).toEqual(['SP102']);
-    expect(diags[0].message).toBe('Malformed element: unexpected closing </i>');
+    expect(diags[0].message).toBe('</i> closes nothing: no <i> is open here');
     expect(at(diags[0])).toEqual([1, 4, 8]);
   });
 
   it('flags a closing tag that does not match the open element', () => {
     const diags = diagnose(':: Start\n<b>bold <i>both</b></i>\n');
-    expect(codes(diags)).toEqual(['SP102']);
-    expect(diags[0].message).toBe('Malformed element: expected </i> but found </b>');
+    expect(codes(diags)).toEqual(['SP102', 'SP102']);
+    expect(diags[0].message).toBe('</b> found where </i> should close the <i> opened at line 1, column 9');
     expect(at(diags[0])).toEqual([1, 15, 19]);
+    // the <i> stays open, so its own closer closes nothing
+    expect(diags[1].message).toBe('</i> closes nothing: no <i> is open here');
   });
 
   it('flags a block closing while an element inside it is open', () => {
     const diags = diagnose(`${vars}:: Start\n{if $x}<span>a{/if}</span>\n`);
-    // Like crossed macros ({wrap}{if}{/wrap}{/if}), the rejected closer is
-    // blamed and the container it would close stays open (SP101)
-    expect(codes(diags).sort()).toEqual(['SP101', 'SP102']);
-    expect(sp102(diags)[0].message).toBe('Malformed element: expected </span> but found {/if}');
-    expect(at(sp102(diags)[0])).toEqual([3, 14, 19]);
-    expect(diags.find(d => d.code === 'SP101')!.message).toBe('Malformed container: no matching {/if}');
+    // the rejected {/if} is blamed (a malformed container, SP101), and the </span> that follows closes nothing
+    expect(codes(diags)).toEqual(['SP101', 'SP102']);
+    expect(diags[0].message).toBe('{/if} found where </span> should close the <span> opened at line 1, column 8');
+    expect(at(diags[0])).toEqual([3, 14, 19]);
+    expect(diags[1].message).toBe('</span> closes nothing: no <span> is open here');
   });
 
   it('flags an element closing while a block inside it is open', () => {
     const diags = diagnose(`${vars}:: Start\n<span>{if $x}a</span>{/if}\n`);
-    expect(codes(diags)).toEqual(['SP102']);
-    expect(diags[0].message).toBe('Malformed element: expected {/if} but found </span>');
+    expect(codes(diags)).toEqual(['SP102', 'SP101']);
+    expect(diags[0].message).toBe('</span> found where {/if} should close the {if} opened at line 1, column 7');
     expect(at(diags[0])).toEqual([3, 14, 21]);
   });
 
-  it('reports only the first error in a passage, where Spindle throws', () => {
+  it('reports every error in a passage, where Spindle fails at the first', () => {
     const diags = diagnose(':: Start\n</i> <b> </u>\n');
-    expect(diags.map(d => d.message)).toEqual(['Malformed element: unexpected closing </i>']);
+    expect(diags.map(d => d.message)).toEqual([
+      '</i> closes nothing: no <i> is open here',
+      '</u> found where </b> should close the <b> opened at line 1, column 6',
+    ]);
   });
 
   it('checks each passage on its own', () => {
     const diags = diagnose(':: One\n<div>\n:: Two\n</div>\n:: Three\n<p>fine</p>\n');
     expect(diags.map(d => [d.message, d.range.start.line])).toEqual([
-      ['Malformed element: unclosed <div>', 1],
-      ['Malformed element: unexpected closing </div>', 3],
+      ['Unclosed <div>: no </div> closes it', 1],
+      ['</div> closes nothing: no <div> is open here', 3],
     ]);
   });
 
   it('reports alongside a branch that Spindle rejects inside the element', () => {
     const diags = diagnose(`${vars}:: Start\n{if $x}<p>a{else}b{/if}\n`);
-    expect(codes(diags).sort()).toEqual(['SP102', 'SP107']);
-    expect(sp102(diags)[0].message).toBe('Malformed element: expected </p> but found {/if}');
+    expect(codes(diags).sort()).toEqual(['SP101', 'SP107']);
+    expect(diags.find(d => d.code === 'SP101')!.message).toBe('{/if} found where </p> should close the <p> opened at line 1, column 8');
   });
 
   it('reports an element error before an unpaired container, and one at a closing tag over it', () => {
     const before = diagnose(`${vars}:: Start\n</i>{if $x}\n`);
-    expect(codes(before).sort()).toEqual(['SP101', 'SP102']);
-    // The unclosed {if} stays on Spindle's stack, so </i> is the closer it rejects
+    expect(codes(before)).toEqual(['SP102', 'SP101']);
+    // The unclosed {if} stays open, so </i> is the closer found where {/if} should close
     const after = diagnose(`${vars}:: Start\n{if $x}</i>\n`);
-    expect(codes(after).sort()).toEqual(['SP101', 'SP102']);
-    expect(sp102(after)[0].message).toBe('Malformed element: expected {/if} but found </i>');
+    expect(codes(after)).toEqual(['SP102']);
+    expect(sp102(after)[0].message).toBe('</i> found where {/if} should close the {if} opened at line 1, column 1');
   });
 
-  it('sees tags inside HTML comments, as Spindle\'s tokenizer does', () => {
-    const diags = diagnose(':: Start\n<!-- <div> -->\n');
-    expect(diags.map(d => d.message)).toEqual(['Malformed element: unclosed <div>']);
+  it('does not read tags inside a closed HTML comment', () => {
+    // The comment is one text token: markdown drops it, and so does raw rendering
+    expect(diagnose(':: Start\n<!-- <div> -->\n')).toEqual([]);
   });
 
   it('accepts well-formed markup', () => {
@@ -123,9 +126,7 @@ describe('SP102: HTML element structure Spindle cannot render', () => {
     expect(diagnose(':: Start\na<br>b<hr/><img src="x.png"><div/><wbr>\n')).toEqual([]);
   });
 
-  it('does not flag void elements that Spindle 0.45.1 still expects to be closed', () => {
-    // 0.45.1 treats only br, col, hr, img and wbr as void; later versions know
-    // the rest and drop their closing tags.
+  it('does not flag the other void elements of HTML', () => {
     expect(diagnose(`${vars}:: Start\n<input type="text"> {if $x}<source src="a">{/if}\n`)).toEqual([]);
     expect(diagnose(':: Start\n<input></input>\n')).toEqual([]);
     expect(diagnose(':: Start\na</br>b\n')).toEqual([]);
@@ -136,57 +137,47 @@ describe('SP102: HTML element structure Spindle cannot render', () => {
     expect(diagnose(':: Next\nx\n:: Start\n[[<b>Go|Next]]\n')).toEqual([]);
   });
 
-  it('reads the places where Spindle releases differ as the target release does', () => {
-    const at = (body: string, version?: string) => diagnose(
-      `:: Start\n${body}\n`
-      + (version ? `:: StoryData\n{"format": "Spindle", "format-version": "${version}"}\n` : ''),
-    );
-    // 0.43.0-0.50.0 end the attribute value at a quote outside braces (here
-    // none: no tag, and `</a>` is unexpected); 0.50.1 skips the lone `{`
-    // (the tag is `<a>`, which `</a>` closes).
-    for (const version of [undefined, '0.45.1', '0.50.0']) {
-      expect(sp102(at('<a title="{">x</a>', version)).map(d => d.message), String(version))
-        .toEqual(['Malformed element: unexpected closing </a>']);
-    }
-    for (const version of ['0.50.1', '0.51.3']) {
-      expect(sp102(at('<a title="{">x</a>', version)), version).toEqual([]);
-    }
-    // Whitespace around = is text in every release: `<a href = "x">` is no tag.
-    expect(diagnose(':: Start\n<a href = "x">x\n')).toEqual([]);
-    expect(sp102(diagnose(':: Start\n<a href = "x">x</a>\n')).map(d => d.message))
-      .toEqual(['Malformed element: unexpected closing </a>']);
-    // 0.50.1 and later keep a {do} body as JavaScript; before, the tag in it is read.
-    expect(sp102(at('{do} el.innerHTML = "<b>hi"; {/do}', '0.51.3'))).toEqual([]);
-    expect(sp102(at('{do} el.innerHTML = "<b>hi"; {/do}')).map(d => d.message)).toEqual(['Malformed element: expected </b> but found {/do}']);
+  it('reads attribute values, tags with spaces around = and {do} bodies as Spindle does', () => {
+    // The value of an attribute ends at its closing quote: the lone `{` is no markup that runs on
+    expect(diagnose(':: Start\n<a title="{">x</a>\n')).toEqual([]);
+    // `<a href = "x">` is a tag (href = x), which `</a>` closes
+    expect(diagnose(':: Start\n<a href = "x">x</a>\n')).toEqual([]);
+    expect(sp102(diagnose(':: Start\n<a href = "x">x\n')).map(d => d.message)).toEqual(['Unclosed <a>: no </a> closes it']);
+    // A {do} body is JavaScript: the tag in it is none
+    expect(sp102(diagnose(':: Start\n{do} el.innerHTML = "<b>hi"; {/do}\n'))).toEqual([]);
   });
 
-  it('agrees with the installed runtime where releases differ', () => {
-    const workspaceRoot = process.cwd();
+  it('agrees with the runtime', () => {
     for (const body of ['<a title="{">x</a>', '<a title="{">x</i>', '<a href = "x">x', '<a href = "x">x</a>', '{do} el.innerHTML = "<b>hi"; {/do}']) {
-      const workspace = new WorkspaceModel({ workspaceRoot });
-      workspace.initialize(new Map([['file:///test.tw', `:: Start\n${body}\n`]]));
-      const found = computeDiagnostics('file:///test.tw', workspace).some(d => ['SP101', 'SP102', 'SP104'].includes(d.code));
-      expect(found, `${body} (${INSTALLED_CAPABILITIES.version})`).toBe(runtimeRejects(body));
+      const found = diagnose(`:: Start\n${body}\n`).some(d => ['SP101', 'SP102', 'SP104'].includes(d.code));
+      expect(found, body).toBe(runtimeRejects(body));
     }
   });
 
   it('reads on after a link that never closes, as Spindle does', () => {
-    // The tokenizer reads `[[unclosed ` as text and the <b> as a tag that
-    // buildAST never sees closed.
-    expect(diagnose(':: Start\n[[unclosed <b>\n').map(d => d.message)).toEqual(
-      [expect.stringMatching(/^Malformed element: unclosed <b>/)],
-    );
-    expect(diagnose(':: Start\n[[unclosed <b>x</b>\n')).toEqual([]);
+    // The tokenizer reads `[[` as text (SP105) and the <b> as a tag
+    const diags = diagnose(':: Start\n[[unclosed <b>\n');
+    expect(diags.map(d => [d.code, d.message])).toEqual([
+      ['SP105', 'Unclosed link: [[ without ]]'],
+      ['SP102', 'Unclosed <b>: no </b> closes it'],
+    ]);
+    expect(codes(diagnose(':: Start\n[[unclosed <b>x</b>\n'))).toEqual(['SP105']);
   });
 
-  it('does not report after a macro Spindle reads but the macro parser does not', () => {
-    // Spindle throws "Unexpected closing {/}" there, not at the <b>.
-    expect(sp102(diagnose(':: Start\n{/}<b>\n'))).toEqual([]);
+  it('reads on after a closing tag with no name', () => {
+    // Spindle fails at the `{/` ("A closing tag starts with a letter") and reads on from there
+    expect(diagnose(':: Start\n{/}<b>\n').map(d => [d.code, d.message])).toEqual([
+      ['SP104', 'A closing tag starts with a letter after {/'],
+      ['SP102', 'Unclosed <b>: no </b> closes it'],
+    ]);
   });
 
-  it('still reports an error before the reading becomes uncertain', () => {
+  it('reports each error of a passage', () => {
     const diags = diagnose(':: Start\n</i><a href = "x">x\n');
-    expect(diags.map(d => d.message)).toEqual(['Malformed element: unexpected closing </i>']);
+    expect(diags.map(d => d.message)).toEqual([
+      '</i> closes nothing: no <i> is open here',
+      'Unclosed <a>: no </a> closes it',
+    ]);
   });
 
   it('checks passages Spindle renders as markup', () => {

@@ -1,12 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { parseLinks } from '../../src/core/parsing/link-parser.js';
+import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
 
-describe('parseLinks', () => {
+const uri = 'file:///story.tw';
+
+/** The bracket links of a passage body: the passage name each one targets, and the range of that name. */
+function parseLinks(text: string, lineOffset: number = 0) {
+  const model = new WorkspaceModel();
+  model.initialize(new Map([[uri, `:: P\n${text}`]]));
+  // the header is line 0, so the body starts on line 1
+  return documentPassageRefs(model.markup.get(uri)!)
+    .filter(ref => ref.form === 'bracket')
+    .map(ref => ({
+      name: ref.name,
+      range: {
+        start: { line: ref.range.start.line - 1 + lineOffset, character: ref.range.start.character },
+        end: { line: ref.range.end.line - 1 + lineOffset, character: ref.range.end.character },
+      },
+    }));
+}
+
+describe('bracket links', () => {
   it('extracts [[PassageName]]', () => {
     const refs = parseLinks('[[PassageName]]');
     expect(refs).toHaveLength(1);
     expect(refs[0].name).toBe('PassageName');
-    expect(refs[0].source).toBe('link');
   });
 
   it('extracts [[Display|Target]]', () => {

@@ -1,56 +1,40 @@
 /**
  * Link text the runtime reads differently (SP304, #P-observed item 1).
  *
- * Oracle: the installed Spindle. A bracket link is a token, buildAST renders
- * it as `{link}` arguments and MacroLink.parseArgs (the installed
- * component's own function, test/helpers/link-macro-oracle.ts) reads them
- * back; the tests compare that with what spindle-lsp reports. Behavior that
- * depends on the release is exercised for both sides with projects that
- * declare their Spindle version (`project(version)`), the installed runtime
- * checks the matching side for real (scripts/peer-matrix.sh runs the others).
+ * Oracle: the installed Spindle, through its public tooling API. A bracket
+ * link is a token; the AST turns it into `{link "label" "target"}` (both
+ * quoted, `\` and `"` escaped); the macro reads its arguments as its
+ * parameters declare (`passagePieces`: the `text` is a quoted string holding
+ * markup, the `passage` a quoted name read as a JavaScript literal, else an
+ * expression, test/helpers/link-macro-oracle.ts). The tests compare that with
+ * what spindle-lsp reports. Spindle 0.59 no longer collects quoted parts with
+ * a regular expression, so a quote or backslash in a label or target is
+ * carried; what the quoting cannot carry is a line break in the target (a raw
+ * newline ends a JavaScript string literal, so the macro reads an expression
+ * and the click fails).
  */
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getDefinition } from '../../src/plugins/definition.js';
 import { findPassageReferences } from '../../src/plugins/references.js';
-import { computeRename, RenameError } from '../../src/plugins/rename.js';
-import {
-  findLinkMacroMismatches,
-  findLinkRuntimeMismatches,
-  parseDocumentPassageRefs,
-  resolveLinkMacroTarget,
-} from '../../src/core/parsing/link-parser.js';
+import { computeRename, encodePassageRefName, RenameError } from '../../src/plugins/rename.js';
+import { findLinkRuntimeMismatches } from '../../src/core/parsing/link-parser.js';
 import { readBracketLink } from '../../src/core/parsing/link-runtime.js';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
+import { tokenize } from '../helpers/tooling.js';
 import { runtimeBracketLink, runtimeLinkMacro } from '../helpers/link-macro-oracle.js';
-import { INSTALLED_CAPABILITIES, INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
 import { DiagnosticCode } from '../../src/core/diagnostic-codes.js';
 
-const installed = { linkQuoteEscapes: INSTALLED_CAPABILITIES.linkQuoteEscapes };
 const eols = [['LF', '\n'], ['CRLF', '\r\n']] as const;
 
-const roots: string[] = [];
-afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 const models: WorkspaceModel[] = [];
 afterEach(() => { for (const m of models.splice(0)) m.dispose(); });
 
-/** A project directory whose installed Spindle is `version`. */
-function project(version: string): string {
-  const root = mkdtempSync(join(tmpdir(), 'spindle-link-'));
-  roots.push(root);
-  const pkg = join(root, 'node_modules', '@rohal12', 'spindle');
-  mkdirSync(pkg, { recursive: true });
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@rohal12/spindle', version }));
-  return root;
-}
 const uri = 'file:///story.tw';
-function workspace(version: string | undefined, text: string, extra: Array<[string, string]> = []) {
-  const model = new WorkspaceModel(version ? { workspaceRoot: project(version) } : { workspaceRoot: process.cwd() });
+function workspace(text: string, extra: Array<[string, string]> = []) {
+  const model = new WorkspaceModel({ workspaceRoot: process.cwd() });
   model.initialize(new Map([...extra, [uri, text]]));
   models.push(model);
   return model;
@@ -58,6 +42,7 @@ function workspace(version: string | undefined, text: string, extra: Array<[stri
 const sp304 = (model: WorkspaceModel) => computeDiagnostics(uri, model).filter(d => d.code === DiagnosticCode.LinkRuntimeMismatch);
 const textAt = (text: string, range: { start: { line: number; character: number }; end: { line: number; character: number } }) =>
   TextDocument.create(uri, 'twee', 0, text).getText(range as never);
+const lf = (text: string) => text.replace(/\r\n/g, '\n');
 
 describe('P1 differential: the link macro reads a bracket link back as spindle-lsp predicts', () => {
   // Pieces of display/target text: quotes of both kinds, a backslash, line
@@ -82,37 +67,38 @@ describe('P1 differential: the link macro reads a bracket link back as spindle-l
         for (const text of [`[[${display}->${target}]]`, `[[${display}|${target}]]`, `[[${target}<-${display}]]`]) {
           const real = runtimeBracketLink(text);
           if (!real) continue;
-          const found = findLinkRuntimeMismatches(text, installed);
+          const found = findLinkRuntimeMismatches(text);
           const differs = real.display !== real.token.display || real.passage !== real.token.target;
           expect(found.length, JSON.stringify(text)).toBe(differs ? 1 : 0);
           if (differs) {
             // The reading it reports is the runtime's, and it names the tokenizer's text
-            expect(found[0].runtime, JSON.stringify(text)).toEqual({ display: real.display, passage: real.passage });
-            expect({ display: found[0].display, target: found[0].target }, JSON.stringify(text)).toEqual(real.token);
+            expect(found[0].runtime, JSON.stringify(text)).toEqual({ display: lf(real.display), passage: real.passage });
+            expect({ display: found[0].display, target: found[0].target }, JSON.stringify(text))
+              .toEqual({ display: lf(real.token.display), target: lf(real.token.target) });
             mismatched++;
           }
-          expect(readBracketLink(real.token.display, real.token.target, installed.linkQuoteEscapes), JSON.stringify(text))
+          // what the contract says: a line break in the target is the one thing the quoting cannot carry
+          expect(differs, JSON.stringify(text)).toBe(/\n/.test(real.token.target));
+          expect(readBracketLink(real.token.display, real.token.target), JSON.stringify(text))
             .toEqual({ display: real.display, passage: real.passage });
           checked++;
         }
       }
     }
     expect(checked).toBeGreaterThan(10000);
-    // before 0.51.1 many of them differ; from 0.51.1 none does
-    if (installed.linkQuoteEscapes) expect(mismatched).toBe(0);
-    else expect(mismatched).toBeGreaterThan(1000);
+    expect(mismatched).toBeGreaterThan(100);
   });
 
   it('P1-plain: [[Text]] links and a selector prefix read as the tokenizer does', () => {
     for (const text of ['[[He said "hi"]]', '[[Plain]]', '[[.cls#id He said "hi"->T]]', '[[a\nb]]']) {
       const real = runtimeBracketLink(text)!;
       const differs = real.display !== real.token.display || real.passage !== real.token.target;
-      expect(findLinkRuntimeMismatches(text, installed).length, text).toBe(differs ? 1 : 0);
+      expect(findLinkRuntimeMismatches(text).length, text).toBe(differs ? 1 : 0);
     }
   });
 
-  it('P1-macro: {link} string arguments, with and without escapes', () => {
-    const strings = ['a', 'a b', 'say \\"hi\\"', "it\\'s", 'a\\\\b', 'a\\nb', "it's", 'q"q'];
+  it('P1-macro: {link} string arguments read as JavaScript strings: nothing to report, and the name is the literal value', () => {
+    const strings = ['a', 'a b', 'say \\"hi\\"', "it\\'s", 'a\\\\b', 'a\\nb', "it's", 'q"q', '\\u0054'];
     let compared = 0;
     for (const quote of ['"', "'"]) {
       for (const label of strings) {
@@ -122,19 +108,21 @@ describe('P1 differential: the link macro reads a bracket link back as spindle-l
           const macro = tokenize(text).find(t => t.type === 'macro');
           if (!macro || macro.type !== 'macro' || macro.rawArgs !== args) continue;
           const real = runtimeLinkMacro(args);
-          const found = findLinkMacroMismatches(text, installed);
-          if (found.length === 0) {
-            // no mismatch reported: the runtime reads the JavaScript meaning of both strings
-            const js = (s: string) => new Function(`return ${quote}${s}${quote}`)() as string;
-            let expected: { display: string; passage: string | null } | undefined;
-            try {
-              expected = { display: js(label), passage: js(passage) };
-            } catch {
-              expected = undefined;
-            }
-            if (expected) expect(real, text).toEqual(expected);
+          let meaning: string | undefined;
+          try {
+            new Function(`return ${quote}${label}${quote}`)();
+            meaning = new Function(`return ${quote}${passage}${quote}`)() as string;
+          } catch {
+            // a string that is no JavaScript literal (or a label the macro cannot read): no name
+            meaning = undefined;
+          }
+          // the reference spindle-lsp navigates by is the runtime's, which is the JavaScript meaning
+          const refs = documentPassageRefs(workspace(`:: Start\n${text}`).markup.get(uri)!);
+          if (meaning !== undefined) {
+            expect(real.passage, text).toBe(meaning);
+            expect(refs.map(r => r.name), text).toEqual([meaning]);
           } else {
-            expect(found[0].runtime, text).toEqual(real);
+            expect(refs, text).toEqual([]);
           }
           compared++;
         }
@@ -148,141 +136,92 @@ describe('P1 SP304 diagnostics', () => {
   for (const [eolName, eol] of eols) {
     const wrap = (body: string) => `:: StoryVariables\n:: T\nx\n:: Start\n${body}`.replace(/\n/g, eol);
 
-    it(`P1-quote-label (${eolName}): [[He said "hi"->T]] before 0.51.1 reads the label as "He said " and navigates nowhere`, () => {
-      const text = wrap('[[He said "hi"->T]]');
-      const found = sp304(workspace('0.45.1', text));
+    it(`P1-line-break-target (${eolName}): a target that spans lines is read as an expression and navigates nowhere`, () => {
+      const text = wrap('[[Go->first line\nsecond line]]');
+      const found = sp304(workspace(text));
       expect(found).toHaveLength(1);
       expect(found[0].code).toBe('SP304');
       expect(found[0].severity).toBe('warning');
-      expect(textAt(text, found[0].range)).toBe('[[He said "hi"->T]]');
-      expect(found[0].message).toContain('0.45.1');
+      expect(textAt(text, found[0].range)).toBe(`[[Go->first line${eol}second line]]`);
       expect(found[0].message).toContain('navigates nowhere');
-      expect(found[0].message).toContain('"T"');
-      expect(found[0].message).toContain('0.51.1');
     });
 
-    it(`P1-goto-label (${eolName}): [[{goto "X"}->Target]] navigates to "}" before 0.51.1`, () => {
-      const text = wrap('[[{goto "X"}->Target]]');
-      const found = sp304(workspace('0.45.1', text));
+    it(`P1-multiline-whole (${eolName}): [[a line break]] without a label is its own target`, () => {
+      const text = wrap('[[first line\nsecond line]]');
+      const found = sp304(workspace(text));
       expect(found).toHaveLength(1);
-      expect(found[0].message).toContain('navigates to "}"');
-      expect(found[0].message).toContain('"Target"');
-      expect(textAt(text, found[0].range)).toBe('[[{goto "X"}->Target]]');
+      expect(textAt(text, found[0].range)).toBe(`[[first line${eol}second line]]`);
     });
 
-    it(`P1-target-quote (${eolName}): a quote in the target reads the text up to it`, () => {
-      const found = sp304(workspace('0.45.1', wrap('[[Go->a"b]]')));
-      expect(found).toHaveLength(1);
-      expect(found[0].message).toContain('navigates to "a"');
-    });
-
-    it(`P1-multiline (${eolName}): a label that spans lines navigates nowhere before 0.51.1`, () => {
-      const text = wrap('[[first line\nsecond line->T]]');
-      const found = sp304(workspace('0.45.1', text));
-      expect(found).toHaveLength(1);
-      expect(found[0].message).toContain('navigates nowhere');
-      expect(textAt(text, found[0].range)).toBe(`[[first line${eol}second line->T]]`.replace(/\r?\n/g, eol));
-    });
-
-    it(`P1-fixed (${eolName}): from 0.51.1 the same links read back and nothing is reported`, () => {
-      for (const body of ['[[He said "hi"->T]]', '[[{goto "X"}->Target]]', '[[a\nb->T]]', '{link "say \\"hi\\"" "T"}x{/link}']) {
-        expect(sp304(workspace('0.51.1', wrap(body))), body).toEqual([]);
-        expect(sp304(workspace('0.51.3', wrap(body))), body).toEqual([]);
+    it(`P1-carried (${eolName}): quotes, markup in the label and a label that spans lines read back, nothing is reported`, () => {
+      for (const body of ['[[He said "hi"->T]]', '[[{goto "X"}->Target]]', '[[a\nb->T]]', '[[Go->a"b]]', '{link "say \\"hi\\"" "T"}x{/link}']) {
+        expect(sp304(workspace(wrap(body))), body).toEqual([]);
       }
     });
 
     it(`C-P1-controls (${eolName}): quote-free links, apostrophes and backslashes are not reported`, () => {
-      for (const version of ['0.45.1', '0.51.3']) {
-        for (const body of ["[[Don't go->T]]", '[[a\\b->T]]', '[[T]]', '[[Go|T]]', '[[T<-Go]]', '{link "go" "T"}x{/link}', '{print "[[He said \\"hi\\"->T]]"}']) {
-          expect(sp304(workspace(version, wrap(body))), `${version} ${body}`).toEqual([]);
-        }
+      for (const body of ["[[Don't go->T]]", '[[a\\b->T]]', '[[T]]', '[[Go|T]]', '[[T<-Go]]', '{link "go" "T"}x{/link}', '{print "[[He said \\"hi\\"->T]]"}']) {
+        expect(sp304(workspace(wrap(body))), body).toEqual([]);
       }
     });
 
-    it(`P1-macro-escape (${eolName}): {link "say \\"hi\\"" "T"} is read without escapes before 0.51.1`, () => {
-      const text = wrap('{link "say \\"hi\\"" "T"}x{/link}');
-      const found = sp304(workspace('0.45.1', text));
-      expect(found).toHaveLength(1);
-      expect(found[0].message).toContain('{link}');
-      expect(found[0].message).toContain('navigates nowhere');
-      expect(textAt(text, found[0].range)).toBe('{link "say \\"hi\\"" "T"}');
-    });
-
-    it(`P1-macro-escape-n (${eolName}): \\n in a {link} string stays a backslash and an n in every version`, () => {
-      for (const version of ['0.45.1', '0.51.3']) {
-        const found = sp304(workspace(version, wrap('{link "a\\nb" "T"}x{/link}')));
-        expect(found, version).toHaveLength(1);
-        expect(found[0].message).toContain('"a\\\\nb"');
-      }
+    it(`P1-macro-escape-n (${eolName}): \\n in a {link} string is a line break in the name, as in any JavaScript string`, () => {
+      const model = workspace(wrap('{link "a\\nb" "T"}x{/link}'));
+      expect(sp304(model)).toEqual([]);
     });
   }
 
-  it('P1-default: without a detectable version the 0.45.1 behavior is used', () => {
-    const model = new WorkspaceModel();
-    model.initialize(new Map([[uri, ':: StoryVariables\n:: T\nx\n:: Start\n[[He said "hi"->T]]']]));
-    models.push(model);
-    expect(sp304(model)).toHaveLength(1);
-  });
-
-  it('P1-installed: the installed Spindle decides for the default workspace', () => {
-    const model = workspace(undefined, ':: StoryVariables\n:: T\nx\n:: Start\n[[He said "hi"->T]]');
-    expect(sp304(model)).toHaveLength(INSTALLED_CAPABILITIES.linkQuoteEscapes ? 0 : 1);
-    expect(INSTALLED_SPINDLE_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
-  });
-
   it('P1-masked: script and attribute text holding link syntax is not a link', () => {
-    const model = workspace('0.45.1', ':: StoryVariables\n:: T\nx\n:: code [script]\nconst a = "[[He said \\"hi\\"->T]]";\n:: Start\n<a title=\'[[say "x"->T]]\'>x</a>');
+    const model = workspace(':: StoryVariables\n:: T\nx\n:: code [script]\nconst a = "[[He said \\"hi\\"->T]]";\n:: Start\n<a title=\'[[say "x"->T]]\'>x</a>');
     expect(sp304(model)).toEqual([]);
   });
 });
 
-describe('P1 consumers: navigation follows the written target; the diagnostic names the runtime one', () => {
+describe('P1 consumers: navigation follows the written target', () => {
   const text = ':: StoryVariables\n:: T\nx\n:: Start\n[[He said "hi"->T]] {link "go" "T"}x{/link}';
 
-  it('P1-refs: references, definition and document passage refs name T (the source), in every version', () => {
-    for (const version of ['0.45.1', '0.51.3']) {
-      const model = workspace(version, text);
-      expect(findPassageReferences('T', model, false)).toHaveLength(2);
-      const column = text.split('\n')[4].indexOf('T]]');
-      expect(getDefinition(uri, { line: 4, character: column }, model)?.uri).toBe(uri);
-      expect(parseDocumentPassageRefs(text, [], { linkQuoteEscapes: version === '0.51.3' }).map(r => r.name)).toEqual(['T', 'T']);
-    }
+  it('P1-refs: references, definition and passage refs name T', () => {
+    const model = workspace(text);
+    expect(findPassageReferences('T', model, false)).toHaveLength(2);
+    const column = text.split('\n')[4].indexOf('T]]');
+    expect(getDefinition(uri, { line: 4, character: column }, model)?.uri).toBe(uri);
+    expect(documentPassageRefs(model.markup.get(uri)!).map(r => r.name)).toEqual(['T', 'T']);
   });
 
-  it('P1-link-macro-target: the {link} target is the runtime one, decoded from 0.51.1', () => {
+  it('P1-link-macro-target: the {link} target is the runtime one: the JavaScript value of the string', () => {
     const args = '"go" "a\\"b"';
-    expect(resolveLinkMacroTarget(args, { linkQuoteEscapes: false })).toMatchObject({ name: 'a\\', form: 'link-string' });
-    expect(resolveLinkMacroTarget(args, { linkQuoteEscapes: true })).toMatchObject({ name: 'a"b', start: 6, end: 10 });
+    const [ref] = documentPassageRefs(workspace(`:: Start\n{link ${args}}x{/link}`).markup.get(uri)!);
+    expect(ref).toMatchObject({ name: 'a"b', form: 'quoted', macro: 'link' });
+    expect([ref.range.start.character, ref.range.end.character]).toEqual([12, 16]);
     // and what the installed runtime navigates to
-    const real = runtimeLinkMacro(args);
-    expect(resolveLinkMacroTarget(args, installed)?.name).toBe(real.passage);
-    expect(resolveLinkMacroTarget('"go" "{$x}"', installed)?.name).toBe('{$x}');
+    expect(ref.name).toBe(runtimeLinkMacro(args).passage);
+    // a block is part of the name: the macro does not interpolate it
+    const [braces] = documentPassageRefs(workspace(':: Start\n{link "go" "{$x}"}x{/link}').markup.get(uri)!);
+    expect(braces.name).toBe('{$x}');
     expect(runtimeLinkMacro('"go" "{$x}"').passage).toBe('{$x}');
   });
 
-  it('P1-rename-bracket: a name with a double quote cannot be written in a [[link]] before 0.51.1', () => {
-    // (a line break cannot be a passage name: the header check rejects it first)
+  it('P1-rename-bracket: a quote can be written in a [[link]]; a line break cannot', () => {
+    // (a line break cannot be a passage name: the header check rejects it first, so ask the encoder)
     const story = ':: StoryVariables\n:: Old\nx\n:: Start\n[[Old]]';
-    const before = workspace('0.45.1', story);
-    expect(() => computeRename(uri, { line: 1, character: 5 }, 'Bob"s', before)).toThrow(/double quote/);
-    expect(() => computeRename(uri, { line: 1, character: 5 }, "Bob's", before)).not.toThrow();
-    // from 0.51.1 the link macro reads the name back
-    const after = workspace('0.51.3', story);
-    const edits = computeRename(uri, { line: 1, character: 5 }, 'Bob"s', after);
+    const model = workspace(story);
+    const edits = computeRename(uri, { line: 1, character: 5 }, 'Bob"s', model);
     const output = TextDocument.applyEdits(TextDocument.create(uri, 'twee', 0, story), edits.get(uri) ?? []);
     expect(output).toBe(':: StoryVariables\n:: Bob"s\nx\n:: Start\n[[Bob"s]]');
-    if (INSTALLED_CAPABILITIES.linkQuoteEscapes) expect(runtimeBracketLink('[[Bob"s]]')?.passage).toBe('Bob"s');
+    expect(runtimeBracketLink('[[Bob"s]]')?.passage).toBe('Bob"s');
+    const [ref] = documentPassageRefs(model.markup.get(uri)!);
+    expect(ref.form).toBe('bracket');
+    expect(() => encodePassageRefName(ref, 'two\nlines')).toThrow(RenameError);
+    expect(() => encodePassageRefName(ref, 'two\nlines')).toThrow(/\[\[link\]\]/);
   });
 
-  it('P1-rename-link-macro: from 0.51.1 the {link} string is escaped, before it the name is rejected', () => {
+  it('P1-rename-link-macro: the {link} string is escaped, and the runtime reads the new spelling back as the new name', () => {
     const story = ':: StoryVariables\n:: Old\nx\n:: Start\n{link "go" "Old"}x{/link}';
-    const before = workspace('0.45.1', story);
-    expect(() => computeRename(uri, { line: 1, character: 5 }, 'a"b', before)).toThrow(RenameError);
-    const after = workspace('0.51.3', story);
-    const edits = computeRename(uri, { line: 1, character: 5 }, 'a"b\\c', after);
+    const model = workspace(story);
+    const edits = computeRename(uri, { line: 1, character: 5 }, 'a"b\\c', model);
     const output = TextDocument.applyEdits(TextDocument.create(uri, 'twee', 0, story), edits.get(uri) ?? []);
     expect(output).toContain('{link "go" "a\\"b\\\\c"}');
-    // the 0.51.3 runtime reads the new spelling back as the new name
-    expect(resolveLinkMacroTarget('"go" "a\\"b\\\\c"', { linkQuoteEscapes: true })?.name).toBe('a"b\\c');
+    expect(runtimeLinkMacro('"go" "a\\"b\\\\c"').passage).toBe('a"b\\c');
+    expect(documentPassageRefs(workspace(output).markup.get(uri)!).map(r => r.name)).toEqual(['a"b\\c']);
   });
 });

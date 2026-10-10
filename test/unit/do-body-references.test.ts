@@ -1,15 +1,13 @@
 /**
- * Passage references and `{do}` bodies (issue #70). From Spindle 0.50.1 the
- * tokenizer keeps a `{do}` body as JavaScript text, so a link- or
- * macro-shaped string in it is no reference: references, definition,
- * prepare/rename, document links and code lenses must not read it, and a
- * rename must leave the literal alone. Before 0.50.1 the body is tokenized
- * like any text and the same string is a real link. The pinned runtime
- * tokenizer is the oracle for the installed side (`INSTALLED_CAPABILITIES`).
+ * Passage references and `{do}` bodies (issue #70). The tokenizer keeps a
+ * `{do}` body as JavaScript text, so a link- or macro-shaped string in it is
+ * no reference: references, definition, prepare/rename, document links and
+ * code lenses must not read it, and a rename must leave the literal alone.
+ * The installed runtime's tokenizer (the tooling API) is the oracle.
  */
 import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { tokenize } from '../../node_modules/@rohal12/spindle/src/markup/tokenizer.js';
+import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getDefinition } from '../../src/plugins/definition.js';
@@ -17,12 +15,11 @@ import { findPassageReferences, findReferences } from '../../src/plugins/referen
 import { computeRename, prepareRename } from '../../src/plugins/rename.js';
 import { computeDocumentLinks } from '../../src/plugins/document-link.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
-import { INSTALLED_CAPABILITIES } from '../helpers/spindle-version.js';
 
 const uri = 'file:///story.tw';
 
-function story(version: string, body: string): string {
-  return `:: StoryData\n{"format":"Spindle","format-version":"${version}"}\n:: StoryVariables\n:: Old\nhi\n:: Start\n${body}\n`;
+function story(body: string): string {
+  return `:: StoryData\n{"format":"Spindle","format-version":"0.59.20"}\n:: StoryVariables\n:: Old\nhi\n:: Start\n${body}\n`;
 }
 function model(text: string): WorkspaceModel {
   const m = new WorkspaceModel();
@@ -54,16 +51,15 @@ const shapes: Array<[string, (t: string) => string]> = [
   ['inline do', t => `{do}const note = "[[${t}]]";{/do}`],
 ];
 
-describe('raw {do} bodies are not passage references (0.51.3)', () => {
+describe('raw {do} bodies are not passage references', () => {
   for (const [name, make] of shapes) {
-    const text = story('0.51.3', make('Old'));
+    const text = story(make('Old'));
 
     it(`${name}: no consumer reads a reference`, () => {
       const m = model(text);
-      expect(m.capabilities.rawDoBodies).toBe(true);
       expect(findPassageReferences('Old', m, false)).toEqual([]);
       expect(computeDocumentLinks(uri, m)).toEqual([]);
-      const missing = computeDiagnostics(uri, model(story('0.51.3', make('Nowhere'))));
+      const missing = computeDiagnostics(uri, model(story(make('Nowhere'))));
       expect(missing.filter(d => d.code === 'SP300')).toEqual([]);
       const p = at(text, 'Old', 1);
       expect(getDefinition(uri, p, m)).toBeNull();
@@ -80,16 +76,15 @@ describe('raw {do} bodies are not passage references (0.51.3)', () => {
     });
   }
 
-  it('the installed tokenizer agrees: a link token only where it is not raw, always for a link outside', () => {
-    // peer matrix (0.50.1+): no link token for the string
-    const inside = tokenize(startBody(story('0.51.3', '{do}\nconst note = "[[Old]]";\n{/do}')));
-    expect(inside.some(t => t.type === 'link')).toBe(!INSTALLED_CAPABILITIES.rawDoBodies);
-    const outside = tokenize(startBody(story('0.51.3', '{do}x{/do}\n[[Old]]')));
+  it('the installed tokenizer agrees: no link token inside the body, one for a link outside', () => {
+    const inside = tokenize(startBody(story('{do}\nconst note = "[[Old]]";\n{/do}')));
+    expect(inside.some(t => t.type === 'link')).toBe(false);
+    const outside = tokenize(startBody(story('{do}x{/do}\n[[Old]]')));
     expect(outside.some(t => t.type === 'link')).toBe(true);
   });
 
   it('a real link outside the {do} body is still a reference, and is renamed with the header', () => {
-    const text = story('0.51.3', '{do}\nconst note = "[[Old]]";\n{/do}\n[[Old]] {goto "Old"}');
+    const text = story('{do}\nconst note = "[[Old]]";\n{/do}\n[[Old]] {goto "Old"}');
     const m = model(text);
     expect(findPassageReferences('Old', m, false).map(r => r.range.start.line)).toEqual([9, 9]);
     expect(computeDocumentLinks(uri, m)).toHaveLength(1);
@@ -100,31 +95,11 @@ describe('raw {do} bodies are not passage references (0.51.3)', () => {
   });
 
   it('a link after the closing {/do}, and in a {do} with no {/do}, is markup', () => {
-    const after = model(story('0.51.3', '{do}x{/do} [[Old]]'));
+    const after = model(story('{do}x{/do} [[Old]]'));
     expect(findPassageReferences('Old', after, false)).toHaveLength(1);
     expect(computeDocumentLinks(uri, after)).toHaveLength(1);
-    const open = model(story('0.51.3', '{do}\n[[Old]]'));
+    const open = model(story('{do}\n[[Old]]'));
     expect(findPassageReferences('Old', open, false)).toHaveLength(1);
     expect(computeDocumentLinks(uri, open)).toHaveLength(1);
-  });
-});
-
-describe('{do} bodies before 0.50.1 are tokenized like any text (control)', () => {
-  const text = story('0.45.1', '{do}\nconst note = "[[Old]]";\n{/do}');
-
-  it('every consumer reads the link the runtime tokenizes', () => {
-    const m = model(text);
-    expect(m.capabilities.rawDoBodies).toBe(false);
-    expect(findPassageReferences('Old', m, false)).toHaveLength(1);
-    expect(computeDocumentLinks(uri, m)).toHaveLength(1);
-    const p = at(text, 'Old', 1);
-    expect(getDefinition(uri, p, m)).not.toBeNull();
-    expect(prepareRename(uri, p, m)).not.toBeNull();
-    expect(lens(m)).toContain('1 reference');
-  });
-
-  it('the installed runtime decides which side its tokenizer is on', () => {
-    const tokens = tokenize('{do}\nconst note = "[[Old]]";\n{/do}');
-    expect(tokens.some(t => t.type === 'link')).toBe(!INSTALLED_CAPABILITIES.rawDoBodies);
   });
 });
