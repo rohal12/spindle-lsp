@@ -461,3 +461,19 @@ Dead code removed (checked with `npx fallow dead-code` and grep over `src` and `
 - Kept although `fallow` reports them: `MarkupCursor.enclosingMacro`,
   `headBeingTyped`, `linkTarget` (called by signature help and completions) and the
   `triggerChar` parameter of `getCompletions` (the review harness passes it).
+
+## Variable references: the `all` option (Spindle 0.59.27)
+
+- `collectVariableReferences` (`executable-refs.ts`) is now one call,
+  `variableReferences(content, macros, { all: true })`, which also returns the
+  receiver of `{unset $x}` / `{computed $x = ...}` and the `{$name}` of link, display
+  and expression selectors. Deleted: `selectorReferences`, `receiverReference`,
+  `macroNamed` and its table, `SCOPE_SIGILS`, and the `lexJs` / token scan behind them
+  (about 85 lines). Nothing needs the checked subset on its own: diagnostics use
+  `validateVariableReferences`, so there is no `validated` distinction.
+- No cell or test changed; rename, references and code lens of such references stay
+  covered by the existing rename / references / link-interpolation / variable-tracker
+  tests and the matrix (5209/5209).
+- `markup-symbols.ts` keeps its `lexJs` pass over code pieces: hover and semantic
+  tokens also name the `_` and `@` locals, which `variableReferences` never returns
+  (they are not variables), so it cannot be replaced by it.
