@@ -122,6 +122,13 @@ export function computeRename(
           `Cannot rename to ${JSON.stringify(newName)}: a variable name must be word characters only (letters, digits and _; no \`$\`, \`%\`, \`.\` or spaces).`,
         ).at(uri, symbol.range);
       }
+      // In code `%5` is the modulo operator, not a transient (`transform('%5')`
+      // throws), so a transient cannot be named by digits first.
+      if (symbol.sigil === '%' && /^\d/.test(bareName)) {
+        throw new RenameError(
+          `Cannot rename to ${JSON.stringify(newName)}: a transient name cannot start with a digit, \`%5\` is the modulo operator in code.`,
+        ).at(uri, symbol.range);
+      }
       const refs = symbol.sigil === '%'
         ? findTransientReferences(symbol.name, workspace, true)
         : findVariableReferences(symbol.name, workspace, true);

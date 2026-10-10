@@ -78,12 +78,13 @@ Different runtime consumers have different contracts:
   label, which is markup, and navigates to its target as written; `{button}`,
   `{dialog}` and `{meter}` interpolate their label; HTML attribute values are
   markup too; a string in any other macro's arguments is not. `passagePieces`
-  reports each such piece with its offsets. Render the markup with a real
-  release (`scripts/runtime-render.mjs`) before encoding a rule about it.
+  reports each such piece with its offsets. When a rule is not stated by the
+  API, boot a compiled story with `@rohal12/spindle/headless` (`bootStory`,
+  in a DOM) before encoding it, and file the gap on rohal12/spindle.
 - Executable symbol usages drive navigation and rename.
-- Spindle's startup variable validation can inspect raw passage text, including
-  strings/prose that are not executable references. Preserve that behavior in
-  diagnostics; do not reuse an executable-only reference list for it.
+- Spindle's startup variable validation (`validateVariableReferences`) checks
+  only the code a passage runs, never prose, strings or comments; diagnostics
+  call it rather than keep a second implementation.
 - `goto`/`include`/`link` read their `passage` argument alike (`passageTarget`):
   a quoted string is the name, anything else is an expression evaluated when
   the macro runs, with no text fallback. Encoding must follow that rule.
