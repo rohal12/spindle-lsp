@@ -275,7 +275,7 @@ describe('S80: variable identifiers never overlap other semantic tokens (#80)', 
   });
 
   it('S80-template-crlf-utf16: CRLF and astral characters keep UTF-16 columns and in-line ranges', () => {
-    const text = ':: Start\r\n{print `\u{1F600} ${$a\r\n  is $c} \u{1F600} and`}\r\n$d';
+    const text = ':: Start\r\n{print `\u{1F600} ${$a\r\n  is $c} \u{1F600} and`}\r\n{$d}';
     expectNoOverlap(text);
     expectNoKeywords(text);
     const lines = text.split('\r\n');

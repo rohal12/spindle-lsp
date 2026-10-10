@@ -121,9 +121,9 @@ describe('getHoverInfo', () => {
   it('returns field info for story variable with fields', () => {
     const ws = createWorkspace({
       name: 'test.tw',
-      content: ':: StoryVariables\n$player = { health: 100, mana: 50 }\n\n:: Start\n$player.health',
+      content: ':: StoryVariables\n$player = { health: 100, mana: 50 }\n\n:: Start\n{$player.health}',
     });
-    const result = getHoverInfo('file:///test.tw', { line: 4, character: 2 }, ws);
+    const result = getHoverInfo('file:///test.tw', { line: 4, character: 3 }, ws);
     expect(result).not.toBeNull();
     expect(result!.contents).toContain('Story variable');
     expect(result!.contents).toContain('health');
@@ -144,9 +144,9 @@ describe('getHoverInfo', () => {
   it('returns field info for transient variable with fields', () => {
     const ws = createWorkspace({
       name: 'test.tw',
-      content: ':: StoryTransients\n%state = { phase: 1, active: true }\n\n:: Start\n%state.phase',
+      content: ':: StoryTransients\n%state = { phase: 1, active: true }\n\n:: Start\n{%state.phase}',
     });
-    const result = getHoverInfo('file:///test.tw', { line: 4, character: 2 }, ws);
+    const result = getHoverInfo('file:///test.tw', { line: 4, character: 3 }, ws);
     expect(result).not.toBeNull();
     expect(result!.contents).toContain('Transient variable');
     expect(result!.contents).toContain('phase');

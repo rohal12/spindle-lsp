@@ -94,27 +94,26 @@ describe('L1: macro-looking bracket-link labels', () => {
       expect(found).not.toContain('SP200');
     });
 
-    it(`L1-variables: only what the link interpolates is a usage (${eolName})`, () => {
+    it(`L1-variables: the label holds markup, so the macros in it read variables (${eolName})`, () => {
       const model = workspace(text);
       const x = findVariableReferences('x', model, false);
-      // The selector's `{$x}` in the third link is the only one: the link
-      // macro interpolates its class and id, and prints a label as written
-      // (`{if $x}` is label text, and so would be `{$x}` there)
-      expect(x.map(r => r.range.start.line)).toEqual([6]);
-      expect(model.variables.getTransientUsages('t')).toEqual([]);
+      // The `{if $x}` of the second label is a macro of its own (a label holds
+      // markup in Spindle 0.59) and so is the selector's `{$x}` of the third
+      expect(x.map(r => r.range.start.line)).toEqual([5, 6]);
+      expect(model.variables.getTransientUsages('t').map(r => r.range.start.line)).toEqual([7]);
     });
 
-    it(`L1-rename: renaming a variable edits the interpolation and nothing else in the labels (${eolName})`, () => {
+    it(`L1-rename: renaming a variable edits the macros in the labels and the selectors (${eolName})`, () => {
       const model = workspace(text);
       const edits = computeRename(uri, at(text, '{$x}', 2), 'y', model);
       const output = apply(text, edits.get(uri));
       expect(output).toContain('[[.k{$y} Hi->Target]]');
-      expect(output).toContain('[[{if $x}label{/if}|Target]]');
+      expect(output).toContain('[[{if $y}label{/if}|Target]]');
       expect(output).toContain(`${eol}$y = 1`);
-      // Reparse: the tokens differ only in the renamed interpolation
+      // Reparse: the tokens differ only in the renamed variable
       const before = tokenize(text.replace(/\r\n/g, '\n'));
       const after = tokenize(output.replace(/\r\n/g, '\n'));
-      expect(after.map(t => (t.type === 'link' ? [t.display, t.target, t.className?.replace('$y', '$x')] : t.type)))
+      expect(after.map(t => (t.type === 'link' ? [t.display.replace('$y', '$x'), t.target, t.className?.replace('$y', '$x')] : t.type)))
         .toEqual(before.map(t => (t.type === 'link' ? [t.display, t.target, t.className] : t.type)));
     });
 
