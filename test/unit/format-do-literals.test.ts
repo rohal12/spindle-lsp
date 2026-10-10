@@ -12,13 +12,11 @@ describe('K66-do: multiline JavaScript literals in {do} bodies', () => {
     expect(await formatDocument(text)).toBe(':: Start\n{do}\n  const value = `a\nb`;\n{/do}\n');
   });
 
-  it('is the same with stringAwareBraces and CRLF', async () => {
+  it('is the same with CRLF', async () => {
     const text = ':: Start\r\n{do}\r\nconst value = `a\r\n  b   \r\n`;\r\n{/do}\r\n';
-    for (const stringAwareBraces of [false, true]) {
-      const output = await formatDocument(text, { stringAwareBraces });
-      expect(output).toBe(':: Start\r\n{do}\r\n  const value = `a\r\n  b   \r\n`;\r\n{/do}\r\n');
-      expect(await formatDocument(output, { stringAwareBraces })).toBe(output);
-    }
+    const output = await formatDocument(text);
+    expect(output).toBe(':: Start\r\n{do}\r\n  const value = `a\r\n  b   \r\n`;\r\n{/do}\r\n');
+    expect(await formatDocument(output)).toBe(output);
   });
 
   it('keeps an inline do body, a continued string and a nested template', async () => {
@@ -38,13 +36,11 @@ describe('K66-do: multiline JavaScript literals in {do} bodies', () => {
   it('F66/regex-backtick-before-template: a regex literal holding a backtick does not open a template', async () => {
     const text = ':: Start\n{do}\nconst re = /`/;\nconst value = `a\nb`;\n{/do}\n';
     const expected = ':: Start\n{do}\n  const re = /`/;\n  const value = `a\nb`;\n{/do}\n';
-    for (const stringAwareBraces of [false, true]) {
-      const output = await formatDocument(text, { stringAwareBraces });
-      expect(output).toBe(expected);
-      expect(await formatDocument(output, { stringAwareBraces })).toBe(output);
-      const crlf = await formatDocument(text.replaceAll('\n', '\r\n'), { stringAwareBraces });
-      expect(crlf).toBe(expected.replaceAll('\n', '\r\n'));
-    }
+    const output = await formatDocument(text);
+    expect(output).toBe(expected);
+    expect(await formatDocument(output)).toBe(output);
+    const crlf = await formatDocument(text.replaceAll('\n', '\r\n'));
+    expect(crlf).toBe(expected.replaceAll('\n', '\r\n'));
   });
 
   it('recognizes regex literals by lexical context: quotes, character classes, escapes, flags, keywords', async () => {

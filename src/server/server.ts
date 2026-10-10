@@ -18,7 +18,7 @@ import { allPlugins } from '../plugins/index.js';
 import type { SpindleConfig, SpindlePlugin } from '../core/plugin/plugin-api.js';
 import type { StoryFormat } from '../core/workspace/story-format.js';
 import { loadConfigFromDisk } from '../core/workspace/config-loader.js';
-import { unsupportedVersionMessage } from '../core/workspace/spindle-version.js';
+import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace/spindle-version.js';
 import {
   MACRO_SOURCE_GLOB,
   findMacroSourceFiles,
@@ -98,7 +98,7 @@ export function startServer(args: string[]): void {
     // Create workspace model
     workspace = new WorkspaceModel(workspaceRoot ? { workspaceRoot } : undefined);
     console.error('[spindle-lsp] workspaceRoot:', workspaceRoot ?? 'undefined');
-    const target = workspace.capabilities;
+    const target: SpindleTarget = workspace.capabilities;
     console.error('[spindle-lsp] target Spindle:', target.version ? `${target.version} (${target.source})` : 'not detected');
     if (!target.supported) {
       const message = unsupportedVersionMessage(target);

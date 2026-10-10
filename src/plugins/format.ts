@@ -1,10 +1,16 @@
 import type { Range } from '../core/types.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import supplements from '../macro-supplements.json' with { type: 'json' };
-import { SELECTOR_PATTERN } from '../core/parsing/macro-parser.js';
+import { builtinMacros, tokenizeMarkupTolerant, type MacroToken } from '@rohal12/spindle/tooling';
 import { splitPassages, classifyPassage, segmentRegions } from './format/segment.js';
 import { formatJS, formatCSS, formatHTML as formatHTMLPrettier } from './format/prettier-bridge.js';
-import { replaceSpindleTokens, restoreSpindleTokens, replaceSvgBlocks, restoreSvgBlocks, scanSpindleTokens } from './format/placeholders.js';
+import {
+  multilineJsLiterals,
+  replaceSpindleTokens,
+  restoreSpindleTokens,
+  replaceSvgBlocks,
+  restoreSvgBlocks,
+  scanSpindleMarkup,
+} from './format/placeholders.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,11 +23,6 @@ export interface FormatOptions {
   isDedentingSubMacro?: (name: string) => boolean;
   /** If set, wrap prose lines exceeding this character count. */
   maxLineLength?: number;
-  /**
-   * The target Spindle's tokenizer skips strings when it counts braces
-   * (`SpindleCapabilities.stringAwareBraces`, >= 0.50.1). Default: it does not.
-   */
-  stringAwareBraces?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,47 +31,28 @@ export interface FormatOptions {
 
 const PASSAGE_HEADER_REGEX = /^(::)\s+/;
 
-/** Matches an opening macro tag, capturing optional CSS prefix and macro name. */
-const MACRO_OPEN_REGEX = new RegExp(String.raw`^\{(?:${SELECTOR_PATTERN} )?([A-Za-z][\w-]*)\b`);
-
-/** Matches a closing macro tag, capturing the macro name. */
-const MACRO_CLOSE_REGEX = /^\{\/([A-Za-z][\w-]*)\b/;
-
 /** Default dedenting sub-macros. */
 const DEFAULT_DEDENTING = new Set(['else', 'elseif', 'next', 'case', 'default']);
 
 // ---------------------------------------------------------------------------
-// Default block detection from supplements + document scan
+// Default block detection from the built-in macros + document scan
 // ---------------------------------------------------------------------------
 
-/** Container macro names from macro-supplements.json. */
-function getSupplementContainers(): Set<string> {
-  const containers = new Set<string>();
-  for (const [key, entry] of Object.entries(supplements)) {
-    if ((entry as { container?: boolean }).container) {
-      containers.add(key.toLowerCase());
-    }
-  }
-  return containers;
-}
+/** The built-in block macros, lowercased. */
+const BUILTIN_CONTAINERS = new Set(builtinMacros.filter(m => m.block).map(m => m.name.toLowerCase()));
 
-/** Scan a document for {/Name} closing tags and collect macro names. */
+/** The names of the macros the document closes with `{/name}`: block macros it defines itself. */
 function detectContainersFromText(text: string): Set<string> {
   const found = new Set<string>();
-  const re = /\{\/([A-Za-z][\w-]*)\s*\}/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    found.add(m[1].toLowerCase());
+  for (const t of tokenizeMarkupTolerant(text).tokens) {
+    if (t.type === 'macro' && t.isClose) found.add(t.name.toLowerCase());
   }
   return found;
 }
 
-/** Build an isBlock function from supplements + document auto-detection. */
+/** Build an isBlock function from the built-in block macros + document auto-detection. */
 function buildDefaultIsBlock(text: string): (name: string) => boolean {
-  const containers = getSupplementContainers();
-  for (const name of detectContainersFromText(text)) {
-    containers.add(name);
-  }
+  const containers = new Set([...BUILTIN_CONTAINERS, ...detectContainersFromText(text)]);
   return (name: string) => containers.has(name.toLowerCase());
 }
 
@@ -127,146 +109,29 @@ function newlineSentinel(text: string): string {
  * runtime tokenizes it) onto its line with `sentinel` for its newlines. The
  * line-based formatting steps then see one line and cannot re-indent, wrap,
  * trim, segment or re-flow the runtime payload inside it.
- */
-function protectMultilineTokens(body: string, sentinel: string, stringAwareBraces: boolean): string {
-  return protectTokenLines(protectDoLiterals(body, sentinel, stringAwareBraces), sentinel, stringAwareBraces);
-}
-
-/**
+ *
  * The body of a `{do}` macro is JavaScript, executed as written: a template
- * literal (or a string continued with a backslash) that spans lines is a value,
- * so its line breaks and the whitespace after them must survive formatting.
- * Join each such literal onto one line with `sentinel` for its newlines.
+ * literal (or a string continued with a backslash) that spans lines is a
+ * value, so its line breaks and the whitespace after them must survive
+ * formatting. Those literals are joined too.
  */
-function protectDoLiterals(body: string, sentinel: string, stringAwareBraces: boolean): string {
-  if (!body.includes('`') && !body.includes('\\\n')) return body;
-  let out = '';
-  let last = 0;
-  let open: number | null = null;
-  for (const m of scanSpindleTokens(body, { stringAwareBraces })) {
-    if (open === null) {
-      if (MACRO_OPEN_REGEX.exec(m.token)?.[1].toLowerCase() === 'do') open = m.end;
-      continue;
-    }
-    if (MACRO_CLOSE_REGEX.exec(m.token)?.[1].toLowerCase() !== 'do') continue;
-    for (const [a, b] of multilineJsLiterals(body.slice(open, m.start))) {
-      out += body.slice(last, open + a) + body.slice(open + a, open + b).replaceAll('\n', sentinel);
-      last = open + b;
-    }
-    open = null;
-  }
-  return out + body.slice(last);
-}
-
-/** Keywords after which a `/` starts a regex literal rather than dividing. */
-const REGEX_AFTER_KEYWORD = new Set([
-  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw',
-  'case', 'do', 'else', 'yield', 'await',
-]);
-
-/**
- * End index (exclusive) of the regex literal starting at `code[from] === '/'`,
- * or -1 when no closing `/` precedes the end of the line (a regex literal
- * cannot span lines, so the `/` is not one). A `/` inside a character class
- * `[...]` and escaped characters do not close it; flags are consumed.
- */
-function regexLiteralEnd(code: string, from: number): number {
-  let i = from + 1;
-  let inClass = false;
-  while (i < code.length && code[i] !== '\n') {
-    const ch = code[i];
-    if (ch === '\\') i += 2;
-    else if (ch === '[') { inClass = true; i++; }
-    else if (ch === ']') { inClass = false; i++; }
-    else if (ch === '/' && !inClass) {
-      i++;
-      while (i < code.length && /[A-Za-z0-9_$]/.test(code[i])) i++;
-      return i;
-    } else i++;
-  }
-  return -1;
-}
-
-/** Ranges of the string and template literals in `code` that contain a newline (outermost only). */
-function multilineJsLiterals(code: string): [number, number][] {
+function protectMultilineTokens(body: string, sentinel: string): string {
+  const { tokens, doBlocks } = scanSpindleMarkup(body);
   const spans: [number, number][] = [];
-  /** Scan from `start`; when `nested`, stop after the `}` closing a `${`. Returns the index reached. */
-  const scanCode = (start: number, nested: boolean): number => {
-    let i = start;
-    let depth = 0;
-    /** Whether a `/` here starts a regex literal (else it divides), from the previous significant token. */
-    let regexAllowed = true;
-    while (i < code.length) {
-      const ch = code[i];
-      if (ch === '/' && code[i + 1] === '/') {
-        while (i < code.length && code[i] !== '\n') i++;
-      } else if (ch === '/' && code[i + 1] === '*') {
-        const end = code.indexOf('*/', i + 2);
-        i = end === -1 ? code.length : end + 2;
-      } else if (ch === '/') {
-        const end = regexAllowed ? regexLiteralEnd(code, i) : -1;
-        if (end >= 0) {
-          i = end;
-          regexAllowed = false;
-        } else {
-          i++;
-          regexAllowed = true;
-        }
-      } else if (ch === '"' || ch === "'") {
-        const from = i++;
-        while (i < code.length && code[i] !== ch && code[i] !== '\n') i += code[i] === '\\' ? 2 : 1;
-        // Only a backslash-newline continuation can carry a newline into a string
-        i = Math.min(i, code.length);
-        if (code.slice(from, i).includes('\n')) spans.push([from, i + 1]);
-        i++;
-        regexAllowed = false;
-      } else if (ch === '`') {
-        const from = i++;
-        while (i < code.length && code[i] !== '`') {
-          if (code[i] === '\\') i += 2;
-          else if (code[i] === '$' && code[i + 1] === '{') i = scanCode(i + 2, true);
-          else i++;
-        }
-        i = Math.min(i + 1, code.length);
-        if (code.slice(from, i).includes('\n')) spans.push([from, i]);
-        regexAllowed = false;
-      } else if (ch === '{') {
-        depth++;
-        i++;
-        regexAllowed = true;
-      } else if (ch === '}') {
-        if (nested && depth === 0) return i + 1;
-        depth--;
-        i++;
-        regexAllowed = true;
-      } else if (/[A-Za-z0-9_$]/.test(ch)) {
-        const from = i;
-        while (i < code.length && /[A-Za-z0-9_$.]/.test(code[i])) i++;
-        const word = code.slice(from, i);
-        regexAllowed = REGEX_AFTER_KEYWORD.has(word);
-      } else if (ch === ')' || ch === ']') {
-        i++;
-        regexAllowed = false;
-      } else {
-        i++;
-        if (!/\s/.test(ch)) regexAllowed = true;
-      }
+  for (const m of tokens) {
+    if (m.token.includes('\n')) spans.push([m.start, m.end]);
+  }
+  for (const block of doBlocks) {
+    for (const [a, b] of multilineJsLiterals(body.slice(block.bodyStart, block.bodyEnd))) {
+      spans.push([block.bodyStart + a, block.bodyStart + b]);
     }
-    return i;
-  };
-  scanCode(0, false);
-  return spans
-    .sort((x, y) => x[0] - y[0] || y[1] - x[1])
-    .filter(([a, b], k, all) => !all.slice(0, k).some(([c, d]) => c <= a && b <= d));
-}
-
-function protectTokenLines(body: string, sentinel: string, stringAwareBraces: boolean): string {
+  }
+  spans.sort((x, y) => x[0] - y[0]);
   let out = '';
   let last = 0;
-  for (const m of scanSpindleTokens(body, { stringAwareBraces })) {
-    if (!m.token.includes('\n')) continue;
-    out += body.slice(last, m.start) + m.token.replaceAll('\n', sentinel);
-    last = m.end;
+  for (const [a, b] of spans) {
+    out += body.slice(last, a) + body.slice(a, b).replaceAll('\n', sentinel);
+    last = b;
   }
   return out + body.slice(last);
 }
@@ -276,7 +141,6 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
   const isDedenting = options?.isDedentingSubMacro
     ?? ((name: string) => DEFAULT_DEDENTING.has(name.toLowerCase()));
 
-  const stringAware = options?.stringAwareBraces === true;
   const passages = splitPassages(text);
   const sentinel = newlineSentinel(text);
   const resultLines: string[] = [];
@@ -321,11 +185,11 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
 
     // Normal passage: segment into regions. Multiline tokens are joined onto
     // one line first, so their inner lines are never taken for markup.
-    const regions = segmentRegions(protectMultilineTokens(passage.body, sentinel, stringAware));
+    const regions = segmentRegions(protectMultilineTokens(passage.body, sentinel));
 
     for (const region of regions) {
-      if (region.type === 'script' || region.type === 'svg') {
-        // Their text is verbatim or JS: undo the joining
+      if (region.type !== 'spindle') {
+        // Their text is verbatim, JS or HTML (protected by placeholders): undo the joining
         region.lines = region.lines.map(l => l.replaceAll(sentinel, '\n'));
       }
 
@@ -361,9 +225,10 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
         // HTML block — placeholder substitution + Prettier
         const htmlText = region.lines.join('\n');
         const { text: svgPlaceholdered, tokens: svgTokens } = replaceSvgBlocks(htmlText);
-        const { text: placeholdered, tokens } = replaceSpindleTokens(svgPlaceholdered, { stringAwareBraces: stringAware });
+        const { text: placeholdered, tokens } = replaceSpindleTokens(svgPlaceholdered);
         const formatted = await formatHTMLPrettier(placeholdered);
-        const restoredSpindle = restoreSpindleTokens(formatted.trim(), tokens);
+        // A token's line breaks are its payload: keep them out of the line steps below
+        const restoredSpindle = restoreSpindleTokens(formatted.trim(), tokens.map(t => t.replaceAll('\n', sentinel)));
         const restored = restoreSvgBlocks(restoredSpindle, svgTokens);
         for (const fLine of restored.split('\n')) {
           resultLines.push(fLine);
@@ -433,6 +298,7 @@ function indentMacros(
   isBlock: (name: string) => boolean,
   isDedenting: (name: string) => boolean,
 ): string[] {
+  const macrosOnLine = macroTokensByLine(lines);
   // Pass 1: assign each line to the body (Markdown document) it belongs to.
   const bodies: MacroBody[] = [{ openLine: -1, minCol: Infinity, keepRelative: false }];
   const stack: number[] = [0];
@@ -460,9 +326,13 @@ function indentMacros(
     }
     const col = indentColumn(lines[i]);
 
+    // The macro the line starts with, and the closers that follow it
+    const lead = lines[i].length - lines[i].trimStart().length;
+    const [first, ...rest] = macrosOnLine[i];
+    const startsWithMacro = first !== undefined && first.start === lead;
+
     // Dedenting sub-macro: closes the previous branch, opens the next one
-    const dedentMatch = trimmed.match(MACRO_OPEN_REGEX);
-    if (dedentMatch && isDedenting(dedentMatch[1])) {
+    if (startsWithMacro && !first.isClose && isDedenting(first.name)) {
       const closed = closeBody();
       if (closed === undefined) addLine(col, trimmed);
       else info.push({ body: stack[stack.length - 1], closes: closed, col, text: trimmed });
@@ -471,22 +341,19 @@ function indentMacros(
     }
 
     // Closing tag
-    const closed = MACRO_CLOSE_REGEX.test(trimmed) ? closeBody() : undefined;
+    const closed = startsWithMacro && first.isClose ? closeBody() : undefined;
     if (closed === undefined) addLine(col, trimmed);
     else info.push({ body: stack[stack.length - 1], closes: closed, col, text: trimmed });
 
     // Opening container tag
-    const openMatch = trimmed.match(MACRO_OPEN_REGEX);
-    if (openMatch && isBlock(openMatch[1])) {
+    if (startsWithMacro && !first.isClose && isBlock(first.name)) {
       openBody(i);
     }
 
-    // Closing tags that appear later on the same line (not at position 0,
+    // Closing tags that appear later on the same line (not at the start,
     // which is already handled by the close-at-start check above).
-    const closeGlobal = /\{\/[A-Za-z][\w-]*\s*\}/g;
-    let cm: RegExpExecArray | null;
-    while ((cm = closeGlobal.exec(trimmed)) !== null) {
-      if (cm.index > 0) closeBody();
+    for (const macro of startsWithMacro ? rest : macrosOnLine[i]) {
+      if (macro.isClose && macro.start > lead) closeBody();
     }
   }
 
@@ -516,6 +383,28 @@ function indentMacros(
   }
 
   return result;
+}
+
+/**
+ * The macro tags on each of `lines`, as Spindle tokenizes the lines together
+ * (`start` is the offset in the line). A tag spans one line here: the
+ * multiline ones were joined onto their line.
+ */
+function macroTokensByLine(lines: string[]): MacroToken[][] {
+  const byLine: MacroToken[][] = lines.map(() => []);
+  const starts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    starts.push(offset);
+    offset += line.length + 1;
+  }
+  let line = 0;
+  for (const token of tokenizeMarkupTolerant(lines.join('\n')).tokens) {
+    if (token.type !== 'macro') continue;
+    while (line + 1 < lines.length && starts[line + 1] <= token.start) line++;
+    byLine[line].push({ ...token, start: token.start - starts[line], end: token.end - starts[line] });
+  }
+  return byLine;
 }
 
 /** Column of the first non-whitespace character, expanding tabs to 4-column stops. */
@@ -587,37 +476,37 @@ function wrapLines(lines: string[], maxLen: number): string[] {
 }
 
 /**
- * Wrap a single trimmed line at word boundaries, respecting macro tokens.
+ * Wrap a single trimmed line at word boundaries, never inside a macro, an
+ * interpolation or a link (as Spindle tokenizes the line).
  * Returns an array of lines with the given indent prefix applied.
  */
 function wordWrap(text: string, maxLen: number, indent: string): string[] {
   const lines: string[] = [];
-  let remaining = text;
+  /** Whether the character is inside a token whose text must stay as written. */
+  const inToken = new Array<boolean>(text.length).fill(false);
+  for (const token of tokenizeMarkupTolerant(text).tokens) {
+    if (token.type === 'text' || token.type === 'html') continue;
+    inToken.fill(true, token.start, token.end);
+  }
+  const room = maxLen - indent.length;
+  let pos = 0;
 
-  while (remaining.length > 0) {
-    const currentMax = lines.length === 0 ? maxLen - indent.length : maxLen - indent.length;
-    if (remaining.length <= currentMax) {
-      lines.push(indent + remaining);
+  while (pos < text.length) {
+    if (text.length - pos <= room) {
+      lines.push(indent + text.slice(pos));
       break;
     }
 
-    // Find the last space at or before currentMax that isn't inside a macro tag
+    // Find the last space at or before the limit that isn't inside a token
     let breakIdx = -1;
-    let inMacro = 0;
-    for (let i = 0; i < remaining.length && i <= currentMax; i++) {
-      if (remaining[i] === '{') inMacro++;
-      else if (remaining[i] === '}') inMacro = Math.max(0, inMacro - 1);
-      else if (remaining[i] === ' ' && inMacro === 0 && i > 0) {
-        breakIdx = i;
-      }
+    for (let i = pos + 1; i < text.length && i - pos <= room; i++) {
+      if (text[i] === ' ' && !inToken[i]) breakIdx = i;
     }
 
-    // If no break point found before maxLen, look for the next space after
+    // If no break point found before the limit, look for the next space after
     if (breakIdx === -1) {
-      for (let i = currentMax + 1; i < remaining.length; i++) {
-        if (remaining[i] === '{') inMacro++;
-        else if (remaining[i] === '}') inMacro = Math.max(0, inMacro - 1);
-        else if (remaining[i] === ' ' && inMacro === 0) {
+      for (let i = pos + room + 1; i < text.length; i++) {
+        if (text[i] === ' ' && !inToken[i]) {
           breakIdx = i;
           break;
         }
@@ -626,12 +515,12 @@ function wordWrap(text: string, maxLen: number, indent: string): string[] {
 
     // No break point at all — emit the whole thing
     if (breakIdx === -1) {
-      lines.push(indent + remaining);
+      lines.push(indent + text.slice(pos));
       break;
     }
 
-    lines.push(indent + remaining.substring(0, breakIdx));
-    remaining = remaining.substring(breakIdx + 1);
+    lines.push(indent + text.slice(pos, breakIdx));
+    pos = breakIdx + 1;
   }
 
   return lines;
@@ -683,8 +572,6 @@ export const formatPlugin: SpindlePlugin = {
       // Block widgets (whose body renders {@children}) are containers too
       isBlock: (name) => ctx.workspace.isContainer(name),
       isDedentingSubMacro: (name) => DEFAULT_DEDENTING.has(name.toLowerCase()),
-      // Read per request: the target version is re-detected as files change
-      get stringAwareBraces() { return ctx.workspace.capabilities.stringAwareBraces; },
     };
 
     ctx.connection.onDocumentFormatting(async (params) => {

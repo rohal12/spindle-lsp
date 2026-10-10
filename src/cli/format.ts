@@ -4,7 +4,8 @@ import { glob } from 'glob';
 
 import { formatDocument } from '../plugins/format.js';
 import { commonDirectory } from '../core/workspace/macro-sources.js';
-import { findSpindleCapabilities, findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
+import { findSpindleTarget, findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
+import { unsupportedVersionMessage } from '../core/workspace/spindle-version.js';
 import type { FormatOptions as FormatDocOptions } from '../plugins/format.js';
 
 // ---------------------------------------------------------------------------
@@ -95,9 +96,12 @@ export async function runFormat(args: string[]): Promise<number> {
     return 0;
   }
 
-  const formatOpts: FormatDocOptions = {
-    stringAwareBraces: (await findSpindleCapabilities(texts.values(), commonDirectory(uniqueFiles))).stringAwareBraces,
-  };
+  // Spindle reads the markup by the rules of its release: say so when the
+  // project's is older than the one this formatter follows
+  const target = await findSpindleTarget(texts.values(), commonDirectory(uniqueFiles));
+  if (!target.supported) console.error(`Warning: ${unsupportedVersionMessage(target)}`);
+
+  const formatOpts: FormatDocOptions = {};
   if (options.maxLineLength !== null) {
     formatOpts.maxLineLength = options.maxLineLength;
   }
