@@ -146,12 +146,12 @@ describe('L1: macro-looking bracket-link labels', () => {
   }
 
   it('L1-passages: a link or macro never spans a passage header', () => {
-    // Spindle renders each passage alone: `[[open` and `{if $x` are text, and
-    // the `]]` and `}` in the next passage close nothing
+    // Spindle renders each passage alone: the `]]` and `}` in the next passage
+    // close nothing, so `[[open` and `{if $x` are never closed (SP105 twice)
     const model = workspace(':: StoryVariables\n$x = 1\n:: Start\n[[open\n{if $x\n:: Other\nx}} ]] {goto "X"} [[ok->Start]]\n:: X\nx\n');
     expect(findPassageReferences('X', model, false)).toHaveLength(1);
     expect(findPassageReferences('Start', model, false)).toHaveLength(1);
-    expect(computeDiagnostics(uri, model).map(d => d.code)).toEqual([]);
+    expect(computeDiagnostics(uri, model).map(d => d.code)).toEqual(['SP105', 'SP105']);
     expect(computeDocumentLinks(uri, model)).toHaveLength(1);
   });
 });
@@ -264,13 +264,14 @@ describe('L4: crossed containers', () => {
       expect(prepareRename(uri, at(text, '{/wrap}', 3), model)).toBeNull();
     });
 
-    it(`L4-diagnostics: SP101 names the closer Spindle rejects (${eolName})`, () => {
+    it(`L4-diagnostics: SP101 names the closer Spindle found where another should close (${eolName})`, () => {
       const text = lines(eol, ':: StoryVariables', '$x = 1', ':: Start', '{wrap}{if $x}{/wrap}{/if}', '');
       const model = workspace(text, block(['wrap']));
       const messages = computeDiagnostics(uri, model).filter(d => d.code === 'SP101').map(d => d.message);
-      expect(messages).toContain('Malformed container: expected {/if} but found {/wrap}');
-      expect(messages).toContain('Malformed container: no matching {/wrap}');
-      expect(messages).toHaveLength(2);
+      expect(messages).toEqual([
+        '{/wrap} found where {/if} should close the {if} opened at line 1, column 7',
+        '{/if} closes nothing: no {if} is open here',
+      ]);
     });
   }
 });

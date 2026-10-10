@@ -259,7 +259,7 @@ describe('variable names Spindle accepts (#62)', () => {
       const ws = createWorkspace({ name: 'test.tw', content: ':: StoryTransients\n%x = 0\n:: Start\nSee %x and %y. {print %x + %z}' });
       expect(findTransientReferences('x', ws, false)).toHaveLength(1);
       expect(computeDiagnostics(uri, ws).filter(d => d.code === 'SP203').map(d => d.message)).toEqual([
-        "Transient variable '%z' is not declared in StoryTransients",
+        'Undeclared transient: %z',
       ]);
     });
   });

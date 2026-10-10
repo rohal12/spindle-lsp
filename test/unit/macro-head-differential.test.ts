@@ -151,10 +151,10 @@ describe('macro heads: the consumers agree', () => {
       const text = lines(':: Start', '{a=b} {if($x)} {x{$y}} {a+b c}', '');
       const found = sp(workspace(text), 'SP100');
       expect(found.map(d => d.message)).toEqual([
-        'Unrecognized macro: {a=b}',
-        'Unrecognized macro: {if($x)}',
-        'Unrecognized macro: {x{$y}}',
-        'Unrecognized macro: {a+b}',
+        'Unknown macro {a=b}.',
+        'Unknown macro {if($x)}.',
+        'Unknown macro {x{$y}.',
+        'Unknown macro {a+b}.',
       ]);
       expect(found[0].range).toEqual({ start: { line: 1, character: 0 }, end: { line: 1, character: 5 } });
     });
@@ -163,9 +163,9 @@ describe('macro heads: the consumers agree', () => {
       const text = lines(':: Start', '{a=b}{/a=b}', '{/ x}', '{/set}');
       const found = sp(workspace(text), 'SP104');
       expect(found.map(d => d.message)).toEqual([
-        'Illegal closing tag: {a=b} is not a container',
-        'Illegal closing tag: {} is not a container',
-        'Illegal closing tag: {set} is not a container',
+        '{/a=b} closes nothing: no {a=b} is open here',
+        'A closing tag starts with a letter after {/',
+        '{/set} closes nothing: no {set} is open here',
       ]);
     });
 

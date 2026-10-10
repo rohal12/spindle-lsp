@@ -1,4 +1,10 @@
-import { parseStoryVariables, type FieldSchema, type VariableSchema } from '@rohal12/spindle/tooling';
+import {
+  builtinMacros,
+  parseStoryVariables,
+  validateVariableReferences,
+  type FieldSchema,
+  type VariableSchema,
+} from '@rohal12/spindle/tooling';
 
 export { parseStoryVariables };
 export type { FieldSchema, VariableSchema };
@@ -8,21 +14,21 @@ export function fieldNames(schema: FieldSchema | undefined): string[] {
   return schema?.fields ? [...schema.fields.keys()] : [];
 }
 
+/** A passage as `validatePassages` takes it. */
+interface OraclePassage {
+  name: string;
+  content: string;
+  tags?: string[];
+}
+
 /**
- * NEEDS UPSTREAM API. Spindle's startup validation of variable references
- * against the declarations (`validatePassages` in story-variables.ts: the
- * "Undeclared variable: $x" and "Cannot access field ..." errors) is not
- * exported by `@rohal12/spindle/tooling`, and the module cannot be imported
- * under vitest (it pulls in the Peggy grammar). `validateMarkup` /
- * `validateStoryMarkup` check markup, code syntax and passage names, not
- * variable references. Rebuilding the rule from `passagePieces` + `lexJs`
- * here would make the differential tests compare the LSP with a copy of
- * itself, so this fails loudly instead.
- *
- * Missing capability: `validateVariableReferences(passages, schema, macros)`
- * (or a `schema` option of `validateStoryMarkup`) returning the runtime's
- * undeclared-variable and field-access errors.
+ * Spindle's startup validation of the variable references of a story against
+ * its `StoryVariables` (the "Undeclared variable: $x" and "Cannot access
+ * field ..." errors, as the runtime words them after `Passage "name": `),
+ * through the public tooling API (`validateVariableReferences`, which is the
+ * check the runtime runs).
  */
-export function validatePassages(_passages: Map<string, unknown>, _schema: Map<string, unknown>, ..._rest: unknown[]): string[] {
-  throw new Error('needs upstream API: Spindle exports no startup variable validation (validatePassages) from @rohal12/spindle/tooling');
+export function validatePassages(passages: Map<string, OraclePassage>, schema: Map<string, VariableSchema>): string[] {
+  return validateVariableReferences(passages.values(), { variables: schema }, builtinMacros)
+    .map(diagnostic => `Passage "${diagnostic.passage}": ${diagnostic.message}`);
 }

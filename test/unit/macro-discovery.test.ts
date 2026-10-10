@@ -145,13 +145,13 @@ Story.defineMacro({
   it('registers macros defined in JavaScript documents', () => {
     const ws = new WorkspaceModel();
     ws.initialize(new Map([['file:///story.tw', ':: Start\n{fromjs}\n']]));
-    expect(sp100(ws, 'file:///story.tw')).toEqual(['Unrecognized macro: {fromjs}']);
+    expect(sp100(ws, 'file:///story.tw')).toEqual(['Unknown macro {fromjs}.']);
 
     ws.documents.open('file:///macros.js', 'Story.defineMacro({ name: "fromjs", render() { return null; } });');
     expect(sp100(ws, 'file:///story.tw')).toEqual([]);
 
     ws.documents.close('file:///macros.js');
-    expect(sp100(ws, 'file:///story.tw')).toEqual(['Unrecognized macro: {fromjs}']);
+    expect(sp100(ws, 'file:///story.tw')).toEqual(['Unknown macro {fromjs}.']);
     ws.dispose();
   });
 
@@ -179,7 +179,7 @@ Story.defineMacro({
     ws.documents.update('file:///story.tw', storyInit('goodbye'));
     expect(ws.macros.getMacro('hello')).toBeUndefined();
     expect(ws.macros.getMacro('goodbye')).toBeDefined();
-    expect(sp100(ws, 'file:///story.tw')).toEqual(['Unrecognized macro: {hello}']);
+    expect(sp100(ws, 'file:///story.tw')).toEqual(['Unknown macro {hello}.']);
 
     ws.documents.update('file:///story.tw', storyInit('hello'));
     expect(sp100(ws, 'file:///story.tw')).toEqual([]);
@@ -195,7 +195,7 @@ Story.defineMacro({
     expect(sp100(ws, 'file:///start.tw')).toEqual([]);
 
     ws.documents.close('file:///init.tw');
-    expect(sp100(ws, 'file:///start.tw')).toEqual(['Unrecognized macro: {hello}']);
+    expect(sp100(ws, 'file:///start.tw')).toEqual(['Unknown macro {hello}.']);
     ws.dispose();
   });
 
