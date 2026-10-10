@@ -2,7 +2,7 @@ import type { BraceReading } from '../core/parsing/code-scanner.js';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { findPassageRefAt, parseDocumentPassageRefs, type PassageRef } from '../core/parsing/link-parser.js';
+import { documentRefsNamed, passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
 import { parseMacros, macroHeadNames, macroHeadNameAt } from '../core/parsing/macro-parser.js';
 import { isMarkupPassage, parsePassageHeader, type PassageRole } from '../core/parsing/passage-parser.js';
 import { executableCode } from '../core/workspace/variable-tracker.js';
@@ -66,8 +66,9 @@ export function findReferences(
     }
   }
 
-  // --- Passage reference in [[link]] or macro arguments ---
-  const passageRef = findPassageRefAt(text, position, workspace.passages.getPassagesInDocument(uri), workspace.capabilities);
+  // --- Passage name written out: [[link]] or a quoted macro argument ---
+  const doc = workspace.markup.get(uri);
+  const passageRef = doc && passageRefAt(doc, position);
   if (passageRef) {
     return findPassageReferences(passageRef.name, workspace, includeDeclaration);
   }
@@ -179,10 +180,12 @@ export function findPassageReferences(
 }
 
 /**
- * The executable references (`[[links]]` and literal macro targets) to a
- * passage, with the spelling of each target, so that an edit can re-encode a
- * new name for it. Script/stylesheet bodies, macro-argument strings and HTML
- * attribute values are not references.
+ * The passage names written out that name `passageName`, with the spelling
+ * of each (so that an edit can re-encode a new name for it): `[[links]]`,
+ * quoted `goto`/`include`/`link`/`watch` arguments and `{dialog}` bodies,
+ * labels and attribute values that hold markup included. Script/stylesheet
+ * bodies, strings of other macros and expressions (a bare word, a template
+ * literal) are not references.
  */
 export function findPassageRefs(
   passageName: string,
@@ -190,14 +193,9 @@ export function findPassageRefs(
 ): Array<{ uri: string; ref: PassageRef }> {
   const found: Array<{ uri: string; ref: PassageRef }> = [];
   for (const docUri of workspace.documents.getUris()) {
-    if (isMacroSource(docUri) || !workspace.hasPassages(docUri)) continue;
-    const docText = workspace.documents.getText(docUri);
-    if (!docText) continue;
-
-    const passages = workspace.passages.getPassagesInDocument(docUri);
-    for (const ref of parseDocumentPassageRefs(docText, passages, workspace.capabilities)) {
-      if (ref.name === passageName) found.push({ uri: docUri, ref });
-    }
+    const doc = workspace.markup.get(docUri);
+    if (!doc) continue;
+    for (const ref of documentRefsNamed(doc, passageName)) found.push({ uri: docUri, ref });
   }
   return found;
 }

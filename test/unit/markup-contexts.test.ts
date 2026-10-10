@@ -2,9 +2,10 @@
  * Convergence contracts for the markup contexts a macro-like text can sit in
  * (spindle-lsp-wt l-refs):
  *
- *  - L1: bracket-link labels that look like macros are link text for every
- *    consumer (passage references, variable usage, diagnostics, lenses,
- *    links, rename).
+ *  - L1: a bracket link is one token; the markup in its label (a macro, a
+ *    nested passage name) is read by every consumer (passage references,
+ *    variable usage, diagnostics, lenses, links, rename), the link's own
+ *    target stays the link's.
  *  - L2: passages Spindle does not tokenize as markup are masked by one
  *    helper that diagnostics, closer pairing, references and the rest share.
  *  - L4: crossed containers pair as Spindle's AST builder nests them.
@@ -71,12 +72,12 @@ describe('L1: macro-looking bracket-link labels', () => {
       // The tokenizer reads four links and no macro
       expect(tokenize(model.documents.getText(uri)!.split(/\r?\n/).slice(4, 8).join('\n')).map(t => t.type))
         .toEqual(['link', 'text', 'link', 'text', 'link', 'text', 'link']);
-      expect(findPassageReferences('X', model, false)).toEqual([]);
       expect(findPassageReferences('Target', model, false)).toHaveLength(4);
       expect(getDefinition(uri, at(text, '->Target', 3), model)).not.toBeNull();
-      // Inside the label, `{goto "X"}` points nowhere
-      expect(getDefinition(uri, at(text, '"X"', 1), model)).toBeNull();
-      expect(prepareRename(uri, at(text, '"X"', 1), model)).toBeNull();
+      // The label is markup the link renders: its `{goto "X"}` is a reference to X
+      expect(findPassageReferences('X', model, false)).toHaveLength(1);
+      expect(getDefinition(uri, at(text, '"X"', 1), model)?.range.start.line).toBe(10);
+      expect(prepareRename(uri, at(text, '"X"', 1), model)?.placeholder).toBe('X');
     });
 
     it(`L1-links-lenses-diagnostics: links, lenses and diagnostics agree (${eolName})`, () => {
@@ -87,7 +88,7 @@ describe('L1: macro-looking bracket-link labels', () => {
       const lens = (name: string) => computeCodeLenses(uri, model)
         .find(l => text.split(eol)[l.range.start.line] === `:: ${name}`)?.command?.title;
       expect(lens('Target')).toBe('4 references');
-      expect(lens('X')).toBe('0 references');
+      expect(lens('X')).toBe('1 reference');
       const found = codes(model);
       for (const code of ['SP100', 'SP101', 'SP104', 'SP300']) expect(found).not.toContain(code);
       // Spindle's startup validation still reads the raw `$x` in the label
@@ -118,7 +119,7 @@ describe('L1: macro-looking bracket-link labels', () => {
         .toEqual(before.map(t => (t.type === 'link' ? [t.display, t.target, t.className] : t.type)));
     });
 
-    it(`L1-rename-passage: renaming the target edits the target, not the labels (${eolName})`, () => {
+    it(`L1-rename-passage: renaming the target edits the target, not the passage named in a label (${eolName})`, () => {
       const model = workspace(text);
       const edits = computeRename(uri, at(text, ':: Target', 4), 'Dest', model);
       const output = apply(text, edits.get(uri));
@@ -128,7 +129,7 @@ describe('L1: macro-looking bracket-link labels', () => {
       const next = workspace(output);
       expect(codes(next)).not.toContain('SP300');
       expect(findPassageReferences('Dest', next, false)).toHaveLength(4);
-      expect(findPassageReferences('X', next, false)).toEqual([]);
+      expect(findPassageReferences('X', next, false)).toHaveLength(1);
     });
 
     it(`C-L1: a link nested in a macro and a macro after a link keep working (${eolName})`, () => {

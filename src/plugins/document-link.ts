@@ -1,9 +1,7 @@
 import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseLinks } from '../core/parsing/link-parser.js';
-import { maskRawDoBodies } from '../core/parsing/macro-parser.js';
-import { isMarkupPassage } from '../core/parsing/passage-parser.js';
+import { documentPassageRefs } from '../core/markup/passage-refs.js';
 
 // ---------------------------------------------------------------------------
 // Core document link function (no LSP dependency)
@@ -18,50 +16,27 @@ export interface DocumentLinkItem {
  * Compute document links for [[passage]] references.
  *
  * For each [[Target]] or [[Display|Target]] link:
- *  - Returns a DocumentLink with the range covering the full link syntax
+ *  - Returns a DocumentLink with the range covering the link's target
  *  - Sets `target` to the URI of the file containing the target passage,
  *    with a fragment pointing to the line number
  *
  * Links to unknown passages get `target: undefined`.
  */
 export function computeDocumentLinks(uri: string, workspace: WorkspaceModel): DocumentLinkItem[] {
-  const text = workspace.documents.getText(uri);
-  if (text === undefined) return [];
-
-  const passages = workspace.passages.getPassagesInDocument(uri);
-  if (passages.length === 0) return [];
+  const doc = workspace.markup.get(uri);
+  if (!doc) return [];
 
   const links: DocumentLinkItem[] = [];
-
-  // Parse links from each passage's content
-  for (const passage of passages) {
-    // Passages Spindle does not tokenize as markup (script, stylesheet,
-    // StoryData, ...) hold code or data, not links
-    if (!isMarkupPassage(passage)) continue;
-    const contentStartLine = passage.range.start.line + 1;
-    const contentEndLine = passage.range.end.line + 1;
-    const lines = text.split('\n');
-    const contentLines = lines.slice(contentStartLine, contentEndLine);
-    const joined = contentLines.join('\n');
-    // (from Spindle 0.50.1 a {do} body is JavaScript text, not markup)
-    const content = workspace.capabilities.rawDoBodies ? maskRawDoBodies(joined, workspace.capabilities) : joined;
-
-    const passageLinks = parseLinks(content, contentStartLine, workspace.capabilities);
-
-    for (const ref of passageLinks) {
-      const targetPassage = workspace.passages.getPassage(ref.name);
-      let target: string | undefined;
-      if (targetPassage) {
-        target = `${targetPassage.uri}#L${targetPassage.range.start.line + 1}`;
-      }
-
-      links.push({
-        range: ref.range,
-        target,
-      });
-    }
+  // Passages Spindle does not tokenize as markup (script, stylesheet,
+  // StoryData, ...) hold code or data, not links: they have no references
+  for (const ref of documentPassageRefs(doc)) {
+    if (ref.form !== 'bracket') continue;
+    const targetPassage = workspace.passages.getPassage(ref.name);
+    links.push({
+      range: ref.range,
+      target: targetPassage ? `${targetPassage.uri}#L${targetPassage.range.start.line + 1}` : undefined,
+    });
   }
-
   return links;
 }
 

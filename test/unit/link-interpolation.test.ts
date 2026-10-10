@@ -243,11 +243,10 @@ describe('Q-diagnostic: SP305 flags {$x} where the link macro prints the braces'
     expect(blocks).toEqual(['{$n}']);
   });
 
-  it('Q-diagnostic-gating: the same on every release, with either brace reading', () => {
-    for (const stringAwareBraces of [false, true]) {
-      const found = findLiteralLinkInterpolations('[[A {$a + "}"}->T]] {link "q {$q}" "T"}x{/link}', { stringAwareBraces });
-      expect(found.map(f => f.block)).toEqual(stringAwareBraces ? ['{$a + "}"}', '{$q}'] : ['{$a + "}', '{$q}']);
-    }
+  it('Q-diagnostic-gating: only a passage name holds blocks as written, and a brace in a string does not end a block', () => {
+    const found = findLiteralLinkInterpolations('[[A {$a}->T{$a + "}"}]] {link "q {$q}" "T{$q}"}x{/link}');
+    expect(found.map(f => f.block)).toEqual(['{$a + "}"}', '{$q}']);
+    expect(found.map(f => f.place)).toEqual(['link-target', 'link-macro-passage']);
   });
 
   it('Q-diagnostic-silent: other formats and non-markup passages', () => {
@@ -369,7 +368,7 @@ describe('Q-validation: SP200 follows the installed startup validation', () => {
   });
 
   it('Q-validation-diagnostics: SP200 and SP305 are independent findings on the same link', () => {
-    const model = workspace(':: StoryVariables\n$decl = 1\n:: Start\n[[Take {$nope}->T]]\n:: T\nx\n');
+    const model = workspace(':: StoryVariables\n$decl = 1\n:: Start\n[[Take->T{$nope}]]\n:: T\nx\n');
     const codes = computeDiagnostics(uri, model).map(d => d.code);
     expect(codes).toContain('SP305');
     expect(codes.includes('SP200')).toBe(!INSTALLED_CAPABILITIES.executableRefsOnly);

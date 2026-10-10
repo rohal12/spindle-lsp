@@ -409,7 +409,7 @@ describe('rename from a passage reference', () => {
   const content = [
     ':: Start',
     '[[Next]] [[Go on|Next]] [[Go on->Next]] [[Next<-Go on]]',
-    `{goto "Next"} {include 'Next'} {link "Go on" "Next"} {goto Next}`,
+    `{goto "Next"} {include 'Next'} {link "Go on" "Next"} {dialog "d"}Next{/dialog}`,
     '',
     ':: Next',
     'Hello',
@@ -417,7 +417,7 @@ describe('rename from a passage reference', () => {
   const renamed = [
     ':: Start',
     '[[After]] [[Go on|After]] [[Go on->After]] [[After<-Go on]]',
-    `{goto "After"} {include 'After'} {link "Go on" "After"} {goto "After"}`,
+    `{goto "After"} {include 'After'} {link "Go on" "After"} {dialog "d"}After{/dialog}`,
     '',
     ':: After',
     'Hello',
@@ -521,12 +521,13 @@ describe('N-rename: invalid new names fail the whole request and name the offend
 
   it('N-rename-offender: the message and fields locate the reference that cannot hold the name', () => {
     const ws = make();
-    // `a|b` fits {goto "..."} but not [[...]]; the first bracket link is on story.tw line 7
+    // `a|b` fits {goto "..."} and `[[x|a|b]]` (the first pipe splits), but not `[[a|b]]`:
+    // the offender is the first link that reads another name back, in other.tw
     const error = failure(() => computeRename(uri, at, 'a|b', ws));
-    expect(error.uri).toBe(uri);
-    expect(error.range!.start).toEqual({ line: 6, character: 4 });
+    expect(error.uri).toBe(other);
+    expect(error.range!.start).toEqual({ line: 1, character: 9 });
     expect(error.message).toContain('[[link]]');
-    expect(error.message).toContain(`${uri}:7:5`);
+    expect(error.message).toContain(`${other}:2:10`);
   });
 
   it('N-rename-offender-other-file: an offender in another file is named by that file', () => {
@@ -644,7 +645,7 @@ describe('N-rename: invalid new names fail the whole request and name the offend
     const result = handler!({ textDocument: { uri }, position: at, newName: 'a|b' });
     expect(result).toBeInstanceOf(ResponseError);
     expect(result.code).toBe(ErrorCodes.InvalidParams);
-    expect(result.message).toContain(`${uri}:7:5`);
+    expect(result.message).toContain(`${other}:2:10`);
     const ok = handler!({ textDocument: { uri }, position: at, newName: 'New' });
     expect(Object.keys(ok.changes).sort()).toEqual([other, uri]);
   });
