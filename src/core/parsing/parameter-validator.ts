@@ -447,35 +447,6 @@ function parseFormat(formatString: string): Format | null {
 }
 
 // ---------------------------------------------------------------------------
-// Format tree utilities
-// ---------------------------------------------------------------------------
-
-function formatArgCountRange(format: Format): { min: number; max: number } {
-  switch (format.kind) {
-    case FormatKind.Type:
-    case FormatKind.Literal:
-      return { min: 1, max: 1 };
-    case FormatKind.AndNext: {
-      const l = formatArgCountRange(format.left);
-      const r = formatArgCountRange(format.right);
-      return { min: l.min + r.min, max: l.max + r.max };
-    }
-    case FormatKind.MaybeNext: {
-      const l = format.left ? formatArgCountRange(format.left) : { min: 0, max: 0 };
-      const r = formatArgCountRange(format.right);
-      return { min: l.min, max: l.max + r.max };
-    }
-    case FormatKind.Or: {
-      const l = formatArgCountRange(format.left);
-      const r = formatArgCountRange(format.right);
-      return { min: Math.min(l.min, r.min), max: Math.max(l.max, r.max) };
-    }
-    case FormatKind.Repeat:
-      return { min: 0, max: Infinity };
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Positional description (for editor signature help)
 // ---------------------------------------------------------------------------
 
@@ -846,27 +817,6 @@ export class Parameters {
       errors: bestErrors,
       warnings: bestWarnings,
     };
-  }
-
-  /**
-   * Compute the min/max argument count across all variants.
-   */
-  argCountRange(): { min: number; max: number } {
-    let min = Infinity;
-    let max = 0;
-
-    for (const variant of this.variants) {
-      if (variant.format === null) {
-        min = 0;
-      } else {
-        const range = formatArgCountRange(variant.format);
-        min = Math.min(min, range.min);
-        max = Math.max(max, range.max);
-      }
-    }
-
-    if (min === Infinity) min = 0;
-    return { min, max };
   }
 
   /**

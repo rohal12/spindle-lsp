@@ -59,13 +59,6 @@ export function lexArguments(source: string): Arg[] {
   return args;
 }
 
-/**
- * Count the number of arguments in a raw argument string.
- */
-export function countArguments(source: string): number {
-  return lexArguments(source).length;
-}
-
 // ---------------------------------------------------------------------------
 // Token classification
 // ---------------------------------------------------------------------------

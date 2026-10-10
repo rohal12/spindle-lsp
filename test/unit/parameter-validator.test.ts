@@ -82,12 +82,6 @@ describe('Parameters', () => {
     expect(new Parameters(['text']).isEmpty()).toBe(false);
   });
 
-  it('argCountRange', () => {
-    const params = new Parameters(['text |+ text']);
-    const range = params.argCountRange();
-    expect(range.min).toBe(1);
-    expect(range.max).toBe(2);
-  });
 
   it('validates variable type', () => {
     const params = new Parameters(['var']);
@@ -165,26 +159,8 @@ describe('Parameters', () => {
     expect(r2.errors).toHaveLength(0);
   });
 
-  it('argCountRange for required chain', () => {
-    const params = new Parameters(['text &+ text']);
-    const range = params.argCountRange();
-    expect(range.min).toBe(2);
-    expect(range.max).toBe(2);
-  });
 
-  it('argCountRange for variadic', () => {
-    const params = new Parameters(['...text']);
-    const range = params.argCountRange();
-    expect(range.min).toBe(0);
-    expect(range.max).toBe(Infinity);
-  });
 
-  it('argCountRange with multiple variants', () => {
-    const params = new Parameters(['text', 'text &+ text']);
-    const range = params.argCountRange();
-    expect(range.min).toBe(1);
-    expect(range.max).toBe(2);
-  });
 
   it('validates passage type with stateInfo', () => {
     const params = new Parameters(['passage']);
