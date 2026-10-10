@@ -586,7 +586,9 @@ describe('N-rename: invalid new names fail the whole request and name the offend
       ];
       const ws = createWorkspace(...files);
       const cursor = { line: 1, character: 1 };
-      for (const name of ['5', '_', '_x', '007', 'a_1', `${sigil}5`]) {
+      // `%5` is the modulo operator in code (`transform('%5')` throws), so a transient cannot start with a digit
+      const names = ['5', '_', '_x', '007', 'a_1', `${sigil}5`].filter(name => sigil === '$' || !/^[$%]?\d/.test(name));
+      for (const name of names) {
         const bare = name.replace(/^[$%]/, '');
         const out = applyRename(ws, 'file:///decl.tw', cursor, name);
         const decl = out.get('file:///decl.tw')!;
@@ -595,7 +597,8 @@ describe('N-rename: invalid new names fail the whole request and name the offend
         // the runtime reads the rebuilt declaration as the new key
         expect([...parse(decl.split('\n')[1]!).keys()], name).toEqual([bare]);
       }
-      for (const name of ['a$b', `${sigil}a$b`, '$', '5$', 'a.b']) {
+      const rejected = ['a$b', `${sigil}a$b`, '$', '5$', 'a.b', ...(sigil === '%' ? ['5', '007', '%5'] : [])];
+      for (const name of rejected) {
         expect(() => computeRename('file:///decl.tw', cursor, name, ws), name).toThrow(RenameError);
       }
       // a rejected rename is atomic: the workspace text is untouched
