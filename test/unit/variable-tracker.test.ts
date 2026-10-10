@@ -175,9 +175,11 @@ describe('declared types', () => {
   // Matrix M8: a quoted key is a field like any other (parseDeclarations)
   it('lists the fields of an object default, quoted and numeric keys too', () => {
     const tracker = new VariableTracker();
-    tracker.parseStoryVariables('$o = { a: 1, "b c": { d: 1 }, \'e\': [], 2: 3, ...rest }\n$p = {}');
-    expect(tracker.getDeclared().get('o')!.fields).toEqual(['a', 'b c', 'e', '2']);
+    tracker.parseStoryVariables('$o = { a: 1, "b c": { d: 1 }, \'e\': [], 2: 3 }\n$p = {}\n$s = { a: 1, ...rest }');
+    expect(tracker.getDeclared().get('o')!.fields).toEqual(['2', 'a', 'b c', 'e']);
     expect(tracker.getDeclared().get('p')!.fields).toBeUndefined();
+    // a spread may replace any member, so the tooling API reports none of them (completion offers no names)
+    expect(tracker.getDeclared().get('s')!.fields).toBeUndefined();
   });
 });
 

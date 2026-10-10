@@ -86,21 +86,24 @@ describe('SP201 agrees with Spindle\'s validatePassages', () => {
     // Defaults whose value is only known by evaluating them: the LSP stays silent.
     expect([...missed]).toEqual([
       '`a${1}`',
-      '{...{a: 1}}',
+      '{...{a: 1}}', '{a: {b: 1}, ...{}}',
       '{get a() { return 1 }}', '{["a"]: 1}', '{a: 1 + 1, b: "x"}', '{a: [1].length, b: {c: 1}}', '{a: 10 / 2, b: 1}',
       '2 * 3', '"a" + "b"', 'Math.max(1, 2)', '[1].length', '({a: 1}).a',
       'String(1)', '!0', 'typeof 1',
     ]);
   });
 
-  // UPSTREAM: parseDeclarations gives `a: number` for `{a: 1, ...{a: {b: 1}}}`, whose spread replaces
-  // it with an object. Its own test, so that the differential above stays meaningful; it fails until
-  // the tooling API leaves out the members a later spread may replace (reported upstream).
+  // parseDeclarations once gave `a: number` for `{a: 1, ...{a: {b: 1}}}`, whose spread replaces it with
+  // an object (rohal12/spindle#466, fixed in 0.59.27). Its own test, so that the differential above
+  // stays meaningful.
   it('{a: 1, ...{a: {b: 1}}}: a member before a spread is not reliable, the spread may replace it', () => {
     const vars = '$v = {a: 1, ...{a: {b: 1}}}';
+    // The members of an object with a spread are unknown to the tooling API, so the LSP stays silent
+    // where the runtime (which evaluates the default) can find an error: never the other way round.
     for (const path of ['a.b', 'a.x', 'a.length', 'a.b.c']) {
       const passages: Array<[string, string]> = [['Start', `{print $v.${path}}`]];
-      expect({ path, lsp: lspErrors(vars, passages) }).toEqual({ path, lsp: runtimeErrors(vars, passages) });
+      const runtime = runtimeErrors(vars, passages);
+      for (const error of lspErrors(vars, passages)) expect({ path, error }).toEqual({ path, error: expect.toBeOneOf(runtime) });
     }
   });
 

@@ -91,10 +91,10 @@ describe('SP207 agrees with Spindle\'s parseStoryVariables', () => {
           flagged++;
           expect({ line, runtime }).toEqual({ line, runtime: expect.any(String) });
           if (lsp.startsWith(PASSAGE[sigil])) {
-            // SP207 quotes Spindle's message. For a value no variable can hold, the tooling
-            // API names the initializer where Spindle names the value it evaluates to.
-            const [type] = runtime.split(' for value ');
-            expect(lsp, line).toContain(runtime.includes(' for value ') ? type : runtime);
+            // SP207 quotes Spindle's message; only the reason of a value that does not compile is
+            // the tooling API's parser wording, not the runtime's.
+            const compile = runtime.indexOf('": ');
+            expect(lsp, line).toContain(runtime.includes('Failed to evaluate') ? runtime.slice(0, compile + 3) : runtime);
           }
         } else if (runtime !== undefined) {
           missed.push(line);
@@ -104,18 +104,18 @@ describe('SP207 agrees with Spindle\'s parseStoryVariables', () => {
       const swap = (s: string) => (sigil === '$' ? s : s.replace(/[$%]/g, c => (c === '$' ? '%' : '$')));
       // Rejected only when evaluated, or not certainly rejected by reading the text.
       expect(missed).toEqual([
-        'void 0', 'Symbol()', 'Math.max', 'Object', '1n + 1', 'foo', 'foo()', 'missing.field',
-        '/unterminated', '\u00a01',
+        'Symbol()', 'Math.max', 'Object', '1n + 1', 'foo', 'foo()', 'missing.field',
+        '\u00a01',
       ].map(v => swap(`$a = ${v}`)).concat([
         '$a\u00a0= 1', '$a = 1 \r 2', '\u00a0$a = 1', '$a = 1\u00a0',
       ].map(swap)));
     });
   }
 
-  // parseDeclarations (the tooling API) disagrees with parseStoryVariables on these three
-  // values. Each is its own test so that the differential above stays meaningful; they fail
-  // until Spindle's `parseDeclarations` reads them as the runtime does (reported upstream).
-  describe('values the tooling API reads differently from the runtime (UPSTREAM)', () => {
+  // parseDeclarations (the tooling API) disagreed with parseStoryVariables on these three
+  // values until Spindle 0.59.27 (rohal12/spindle#466). Each is its own test so that the
+  // differential above stays meaningful.
+  describe('values the tooling API once read differently from the runtime (spindle#466)', () => {
     it('{a: undefined, a: 1}: the later key replaces the unsupported value, so Spindle accepts it', () => {
       const line = '$a = {a: undefined, a: 1}';
       expect(runtimeError(line, '$')).toBeUndefined();

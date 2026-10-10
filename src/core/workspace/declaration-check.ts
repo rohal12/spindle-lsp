@@ -28,7 +28,8 @@ export interface DeclarationReading {
  *
  * `problems` are the lines Spindle rejects, with its wording: a line that is
  * no declaration, a name no variable can have, a value no variable can hold
- * (a function, `undefined`, a BigInt), and a value that does not compile.
+ * (a function, `undefined`, a BigInt) and a value that does not compile
+ * (`syntax`, found by the tooling API without running anything).
  * `null` is a valid default (type `null`) and a name declared twice is not
  * an error (the later wins), so neither is a problem.
  */
@@ -42,12 +43,10 @@ export function readDeclarations(content: string, sigil: DeclarationSigil): Decl
   const { declarations, errors } = parseDeclarations(text.replace(/\r/g, ' '), sigil);
 
   const problems: DeclarationProblem[] = [];
-  const rejected = new Set<number>();
   for (const error of errors) {
     if (error.code === 'duplicate-declaration') continue;
     const [start, end] = lineSpan(text, error.offset);
     if (isUnjudged(text.slice(start, end))) continue;
-    rejected.add(start);
     let message = `${passage}: ${error.message}`;
     if (error.code === 'invalid-declaration' && COMMENT_START.test(text.slice(error.offset, error.end))) {
       message += `. ${passage} has no comment syntax.`;
@@ -57,23 +56,6 @@ export function readDeclarations(content: string, sigil: DeclarationSigil): Decl
     problems.push({ message, start, end });
   }
 
-  for (const declaration of declarations) {
-    const [start, end] = lineSpan(text, declaration.nameStart);
-    if (rejected.has(start)) continue;
-    if (isUnjudged(text.slice(start, end))) continue;
-    const expr = text.slice(declaration.valueStart, declaration.valueEnd);
-    const error = compileError(expr);
-    if (error === undefined) continue;
-    const comment = compileError(expr + '\n') === undefined
-      ? ' A comment runs to the end of the line and hides the ")" Spindle closes the value with;' +
-        ` ${passage} has no comment syntax.`
-      : '';
-    problems.push({
-      message: `${passage}: Failed to evaluate "${sigil}${declaration.name} = ${expr}": ${error}.${comment}`,
-      start,
-      end,
-    });
-  }
   return { text, declarations, problems: problems.sort((a, b) => a.start - b.start) };
 }
 
@@ -95,24 +77,4 @@ function lineSpan(text: string, offset: number): [number, number] {
   const line = text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
   const start = lineStart + line.length - line.trimStart().length;
   return [start, lineStart + line.trimEnd().length];
-}
-
-/**
- * The SyntaxError message of the function Spindle builds for a value, or
- * undefined if it compiles. The function is created and never called, so
- * nothing the project wrote runs. (`parseDeclarations` reads no JavaScript
- * syntax of an initializer; `parseStoryVariables` fails on it when it
- * evaluates.)
- *
- * A regular expression error is not reported: browsers add regular
- * expression syntax (flags, groups) that an older Node may not know yet.
- */
-function compileError(expr: string): string | undefined {
-  try {
-    new Function('return (' + expr + ')');
-    return undefined;
-  } catch (err) {
-    if (!(err instanceof SyntaxError) || /regular expression/i.test(err.message)) return undefined;
-    return err.message;
-  }
 }
