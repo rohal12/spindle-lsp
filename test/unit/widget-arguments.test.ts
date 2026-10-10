@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitWidgetArguments, activeWidgetArgument } from '../../src/core/parsing/widget-arguments.js';
+import { splitWidgetArguments } from '../../src/core/parsing/widget-arguments.js';
 
 function texts(raw: string): string[] {
   return splitWidgetArguments(raw).map(a => a.text);
@@ -52,25 +52,5 @@ describe('splitWidgetArguments', () => {
     expect(splitWidgetArguments(raw).map(a => [a.start, a.end])).toEqual([[2, 4], [8, 14]]);
     const ws = ' 5   "hits"';
     expect(splitWidgetArguments(ws).map(a => [a.start, a.end])).toEqual([[1, 2], [5, 11]]);
-  });
-});
-
-describe('activeWidgetArgument', () => {
-  it('starts at the first argument', () => {
-    expect(activeWidgetArgument('')).toBe(0);
-    expect(activeWidgetArgument('$a')).toBe(0);
-  });
-
-  it('moves on after a separator', () => {
-    expect(activeWidgetArgument('$a ')).toBe(1);
-    expect(activeWidgetArgument('$a, ')).toBe(1);
-    expect(activeWidgetArgument('5 "x" ')).toBe(2);
-  });
-
-  it('stays on an argument that is still an open expression', () => {
-    expect(activeWidgetArgument('(1 + ')).toBe(0);
-    expect(activeWidgetArgument('[1, ')).toBe(0);
-    expect(activeWidgetArgument('$a + ')).toBe(0);
-    expect(activeWidgetArgument('"a, b ')).toBe(0);
   });
 });

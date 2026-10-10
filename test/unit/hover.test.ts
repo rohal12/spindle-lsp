@@ -121,9 +121,9 @@ describe('getHoverInfo', () => {
   it('returns field info for story variable with fields', () => {
     const ws = createWorkspace({
       name: 'test.tw',
-      content: ':: StoryVariables\n$player = { health: 100, mana: 50 }\n\n:: Start\n$player.health',
+      content: ':: StoryVariables\n$player = { health: 100, mana: 50 }\n\n:: Start\n{$player.health}',
     });
-    const result = getHoverInfo('file:///test.tw', { line: 4, character: 2 }, ws);
+    const result = getHoverInfo('file:///test.tw', { line: 4, character: 3 }, ws);
     expect(result).not.toBeNull();
     expect(result!.contents).toContain('Story variable');
     expect(result!.contents).toContain('health');
@@ -144,9 +144,9 @@ describe('getHoverInfo', () => {
   it('returns field info for transient variable with fields', () => {
     const ws = createWorkspace({
       name: 'test.tw',
-      content: ':: StoryTransients\n%state = { phase: 1, active: true }\n\n:: Start\n%state.phase',
+      content: ':: StoryTransients\n%state = { phase: 1, active: true }\n\n:: Start\n{%state.phase}',
     });
-    const result = getHoverInfo('file:///test.tw', { line: 4, character: 2 }, ws);
+    const result = getHoverInfo('file:///test.tw', { line: 4, character: 3 }, ws);
     expect(result).not.toBeNull();
     expect(result!.contents).toContain('Transient variable');
     expect(result!.contents).toContain('phase');
@@ -183,20 +183,50 @@ describe('getHoverInfo with CSS selector prefixes (#58)', () => {
   });
 });
 
-// Spindle outputs a macro inside an attribute value as text (SP103).
-describe('getHoverInfo inside HTML attribute values', () => {
+// An HTML attribute value holds markup of its own (Spindle 0.59): the macros, widgets and
+// variables in it are real, and text in a comment or in prose is not.
+describe('getHoverInfo inside HTML attribute values and labels', () => {
   const content = ':: StoryVariables\n$x = 1\n:: Widgets [widget]\n{widget "Badge"}b{/widget}\n'
     + ':: Start\n<span class="{if $x}a{/if} {Badge}">t</span>{if $x}b{/if}\n';
 
-  it('does not describe a macro or widget written inside an attribute value', () => {
+  it('describes a macro or widget written inside an attribute value', () => {
     const ws = createWorkspace({ name: 'test.tw', content });
-    expect(getHoverInfo('file:///test.tw', { line: 5, character: 15 }, ws)).toBeNull();
-    expect(getHoverInfo('file:///test.tw', { line: 5, character: 29 }, ws)).toBeNull();
+    expect(getHoverInfo('file:///test.tw', { line: 5, character: 15 }, ws)?.contents).toContain('**if**');
+    expect(getHoverInfo('file:///test.tw', { line: 5, character: 29 }, ws)?.contents).toContain('**Widget** `Badge`');
   });
 
-  it('still describes variables there, and macros outside the tag', () => {
+  it('describes variables there, and macros outside the tag', () => {
     const ws = createWorkspace({ name: 'test.tw', content });
     expect(getHoverInfo('file:///test.tw', { line: 5, character: 18 }, ws)?.contents).toContain('Story variable');
     expect(getHoverInfo('file:///test.tw', { line: 5, character: 45 }, ws)?.contents).toContain('**if**');
+  });
+
+  it('describes a macro and a variable in the label of a link or a button', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: Start\n[[Go {_k}->Start]] {button "Press {if $x}now{/if}"}x{/button}',
+    });
+    expect(getHoverInfo('file:///test.tw', { line: 1, character: 7 }, ws)?.contents).toContain('Temp variable');
+    expect(getHoverInfo('file:///test.tw', { line: 1, character: 36 }, ws)?.contents).toContain('**if**');
+  });
+});
+
+describe('getHoverInfo on text the runtime reads as text', () => {
+  it('describes nothing in an HTML comment, or in prose, whatever it looks like', () => {
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: ':: StoryVariables\n$x = 1\n:: Start\n<!-- {if $x}a{/if} {$x} -->\nprose $x and _t and @a\n{print "$x _t"}',
+    });
+    for (const [line, character] of [[3, 7], [3, 13], [3, 20], [4, 7], [4, 14], [4, 21], [5, 10], [5, 12]]) {
+      expect(getHoverInfo('file:///test.tw', { line, character }, ws), `${line}:${character}`).toBeNull();
+    }
+  });
+
+  it('describes the declaration of a variable, and a variable after a CRLF', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: StoryVariables\r\n$x = { a: 1 }\r\n:: Start\r\n{set _a = 1}\r\n{$x.a}' });
+    expect(getHoverInfo('file:///test.tw', { line: 1, character: 1 }, ws)?.contents).toContain('Story variable');
+    const hover = getHoverInfo('file:///test.tw', { line: 4, character: 4 }, ws);
+    expect(hover?.contents).toContain('`$x.a`');
+    expect(hover?.range).toEqual({ start: { line: 4, character: 1 }, end: { line: 4, character: 5 } });
   });
 });
