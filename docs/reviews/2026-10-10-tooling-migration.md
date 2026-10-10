@@ -461,3 +461,32 @@ Dead code removed (checked with `npx fallow dead-code` and grep over `src` and `
 - Kept although `fallow` reports them: `MarkupCursor.enclosingMacro`,
   `headBeingTyped`, `linkTarget` (called by signature help and completions) and the
   `triggerChar` parameter of `getCompletions` (the review harness passes it).
+
+## Cleanup: macro discovery (Spindle 0.59.27 `discoverMacros`)
+
+`src/core/parsing/macro-discovery.ts` (147 lines: `findCodeEnd`/`splitTopLevel`/
+`readQuoted` scanner, `discoverMacrosFromSource`, `discoverMacrosFromStoryInit`)
+is deleted. `refreshDiscoveredMacros` calls `discoverMacros` on JS/TS documents and
+script passages, and on each `code` piece of a StoryInit passage
+(`storyInitMacros`, `passagePieces` as before). `MacroRegistry.setDiscoveredMacros`
+takes the API's `DiscoveredMacro` (name span dropped) and no longer infers `block`
+from `subMacros`: the API does. The LSP keeps parents of sub-macros, config
+precedence, description/storeVar/merged/`parameterDefs` layering.
+`macro-discovery.test.ts` keeps its cases, now asserting through `WorkspaceModel`
+and `MacroRegistry` (the scanner-only "malformed config" case became "registers
+nothing").
+
+Where `discoverMacros` reads differently from the old scanner (the API wins; no
+matrix cell or test depended on these):
+
+| What | Old scanner | `discoverMacros` |
+| `defineMacro({...})` without `Story.` | ignored | found |
+| config passed as a `const`/`let`/`var` object literal | ignored | found |
+| a parameter with an unknown `holds` | only `holds` dropped | the macro declares no `parameters` |
+| `block` | undefined unless written; registry inferred it | always set (a macro with sub-macros is a block unless `block: false`) |
+
+Not added: go-to-definition of a custom macro. Every discovered macro carries
+`nameStart`/`nameEnd` (UTF-16 offsets into the source given to `discoverMacros`),
+so it is cheap for JS/TS files (offset = document offset) and for script passages
+(offset into the passage body, after the header line); StoryInit `{do}` pieces would
+need the piece offset added.

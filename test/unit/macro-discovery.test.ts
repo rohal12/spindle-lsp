@@ -1,37 +1,92 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { discoverMacrosFromSource, discoverMacrosFromStoryInit } from '../../src/core/parsing/macro-discovery.js';
+import { discoverMacros } from '@rohal12/spindle/tooling';
 import { MacroRegistry } from '../../src/core/workspace/macro-registry.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { findPassageReferences, findWidgetReferences } from '../../src/plugins/references.js';
 
-describe('discoverMacrosFromSource', () => {
-  it('extracts macros from TS source', () => {
-    const source = readFileSync(resolve(__dirname, '../fixtures/custom-macros.ts'), 'utf-8');
-    const macros = discoverMacrosFromSource(source);
-    expect(macros).toHaveLength(2);
-    expect(macros[0].name).toBe('agebox');
-    expect(macros[0].storeVar).toBe(true);
-    expect(macros[0].description).toBe('Age selection box');
-    expect(macros[1].name).toBe('chargenOption');
-    expect(macros[1].merged).toBe(true);
-    expect(macros[1].block).toBe(true);
-    expect(macros[1].subMacros).toEqual(['option']);
+/** The workspace of one JavaScript document, which only feeds macro discovery. */
+function workspaceWith(source: string): WorkspaceModel {
+  const ws = new WorkspaceModel();
+  ws.initialize(new Map([['file:///macros.js', source]]));
+  return ws;
+}
+
+/** The names of the macros a workspace of `files` knows besides those of an empty one. */
+function definedMacros(files: Map<string, string>): string[] {
+  const names = (map: Map<string, string>): string[] => {
+    const ws = new WorkspaceModel();
+    ws.initialize(map);
+    const found = ws.macros.getAllMacros().map(m => m.name);
+    ws.dispose();
+    return found;
+  };
+  const known = new Set(names(new Map()));
+  return names(files).filter(name => !known.has(name));
+}
+
+/** The registry of the macros that `source` defines, on top of the built-ins. */
+function registryWith(source: string): MacroRegistry {
+  const registry = new MacroRegistry();
+  registry.loadBuiltins();
+  registry.setDiscoveredMacros(discoverMacros(source));
+  return registry;
+}
+
+describe('macros defined in project JS/TS files', () => {
+  it('registers the macros of a TS file with their flags and description', () => {
+    const ws = workspaceWith(readFileSync(resolve(__dirname, '../fixtures/custom-macros.ts'), 'utf-8'));
+    expect(ws.macros.getMacro('agebox')).toMatchObject({
+      source: 'user', block: false, storeVar: true, description: 'Age selection box',
+    });
+    expect(ws.macros.getMacro('chargenOption')).toMatchObject({ block: true, merged: true, subMacros: ['option'] });
+    expect(ws.macros.getMacro('option')).toMatchObject({ block: false, parents: expect.arrayContaining(['chargenOption']) });
+    ws.dispose();
   });
 
-  it('returns empty for source without defineMacro', () => {
-    expect(discoverMacrosFromSource('const x = 1;')).toHaveLength(0);
+  it('registers nothing for source without a definition or with a name that is not a string', () => {
+    for (const source of ['const x = 1;', 'Story.defineMacro({ name: computed() });']) {
+      expect(definedMacros(new Map([['file:///macros.js', source]]))).toEqual([]);
+    }
   });
 
-  it('handles malformed config gracefully', () => {
-    const source = 'Story.defineMacro({ name: computed() });';
-    expect(() => discoverMacrosFromSource(source)).not.toThrow();
+  it('infers block from the sub-macros like defineMacro does', () => {
+    const ws = workspaceWith(`
+      Story.defineMacro({ name: 'dialog', subMacros: ['say'] });
+      Story.defineMacro({ name: 'plain', subMacros: ['x'], block: false });
+    `);
+    expect(ws.macros.getMacro('dialog')?.block).toBe(true);
+    expect(ws.macros.getMacro('plain')?.block).toBe(false);
+    ws.dispose();
+  });
+
+  it('reads the fields of the config, not those of a nested object or a comment', () => {
+    const registry = registryWith(`Story.defineMacro({
+  /* name: "wrong", block: true */
+  render() { const o = { name: "inner", storeVar: true }; return o; },
+  name: "outer",
+  subMacros: ['a', "b"],
+});`);
+    expect(registry.getMacro('outer')).toMatchObject({ block: true, subMacros: ['a', 'b'] });
+    expect(registry.getMacro('outer')?.storeVar).toBeUndefined();
+    expect(registry.getMacro('wrong')).toBeUndefined();
+    expect(registry.getMacro('inner')).toBeUndefined();
+  });
+
+  it('reads definitions that are not written as Story.defineMacro({ ... }) (the tooling API wins)', () => {
+    const registry = registryWith(`
+      defineMacro({ name: 'bare' });
+      const config = { name: 'viaVariable', block: true };
+      Story.defineMacro(config);
+    `);
+    expect(registry.getMacro('bare')?.source).toBe('user');
+    expect(registry.getMacro('viaVariable')?.block).toBe(true);
   });
 });
 
-describe('discoverMacrosFromSource: parameters', () => {
+describe('typed parameters of a definition', () => {
   const source = `Story.defineMacro({
   name: "damage", // the macro
   description: 'Apply damage',
@@ -45,58 +100,41 @@ describe('discoverMacrosFromSource: parameters', () => {
   render: function (props, ctx) { return { name: 'not this one', block: true, parameters: [{ name: 'x', type: 'flag' }] }; },
 });`;
 
-  it('reads the typed parameters, options included', () => {
-    const [macro] = discoverMacrosFromSource(source);
-    expect(macro).toMatchObject({ name: 'damage', description: 'Apply damage', merged: true });
-    expect(macro.block).toBeUndefined();
-    expect(macro.parameters).toEqual([
+  it('reaches the registry, options included', () => {
+    const registry = registryWith(source);
+    expect(registry.getMacro('damage')).toMatchObject({ description: 'Apply damage', merged: true, block: false });
+    expect(registry.getMacro('damage')?.parameterDefs).toEqual([
       { name: 'target', type: 'variable', required: true, description: 'The $variable' },
       { name: 'amount', type: 'expression', required: true },
       { name: 'label', type: 'text', holds: 'markup' },
       { name: 'mode', type: 'options', parameters: [{ name: 'fast', type: 'flag' }, { name: 'by', type: 'string' }] },
     ]);
-  });
-
-  it('reads no parameters when the definition declares none or one that Spindle rejects', () => {
-    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", render() {} });')[0].parameters).toBeUndefined();
-    // No type, or one that is not in the table: Story.defineMacro() throws, so the macro has no parameters
-    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: [{ name: "p" }], render() {} });')[0].parameters).toBeUndefined();
-    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: [{ name: "p", type: "bogus" }], render() {} });')[0].parameters).toBeUndefined();
-    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: params, render() {} });')[0].parameters).toBeUndefined();
-  });
-
-  it('declares an empty list of parameters', () => {
-    expect(discoverMacrosFromSource('Story.defineMacro({ name: "a", parameters: [], render() {} });')[0].parameters).toEqual([]);
-  });
-
-  it('reads the fields of the config, not those of a nested object or a comment', () => {
-    const [macro] = discoverMacrosFromSource(`Story.defineMacro({
-  /* name: "wrong", block: true */
-  render() { const o = { name: "inner", storeVar: true }; return o; },
-  name: "outer",
-  subMacros: ['a', "b"],
-});`);
-    expect(macro).toEqual({ name: 'outer', subMacros: ['a', 'b'] });
-  });
-
-  it('gives typed parameters to the registry and the tooling API', () => {
-    const registry = new MacroRegistry();
-    registry.loadBuiltins();
-    registry.setDiscoveredMacros(discoverMacrosFromSource(source));
-    expect(registry.getMacro('damage')?.parameterDefs?.map(p => p.type)).toEqual(['variable', 'expression', 'text', 'options']);
     expect(registry.toolingMacros().find(m => m.name === 'damage')?.parameters).toHaveLength(4);
+  });
 
-    // A definition replaces the built-in of its name, parameters included
-    registry.setDiscoveredMacros([{ name: 'set', render: undefined } as never]);
+  it('are absent when the definition declares none or one that Spindle rejects', () => {
+    const parametersOf = (config: string) =>
+      registryWith(`Story.defineMacro({ name: "a", ${config} render() {} });`).getMacro('a')?.parameterDefs;
+    expect(parametersOf('')).toBeUndefined();
+    // No type, or one that is not in the table: Story.defineMacro() throws, so the macro has no parameters
+    expect(parametersOf('parameters: [{ name: "p" }],')).toBeUndefined();
+    expect(parametersOf('parameters: [{ name: "p", type: "bogus" }],')).toBeUndefined();
+    expect(parametersOf('parameters: params,')).toBeUndefined();
+  });
+
+  it('can be an empty list', () => {
+    expect(registryWith('Story.defineMacro({ name: "a", parameters: [], render() {} });').getMacro('a')?.parameterDefs).toEqual([]);
+  });
+
+  it('replace those of the built-in macro they redefine, until they are gone', () => {
+    const registry = registryWith('Story.defineMacro({ name: "set", render() {} });');
     expect(registry.getMacro('set')?.parameterDefs).toBeUndefined();
     registry.setDiscoveredMacros([]);
     expect(registry.getMacro('set')?.parameterDefs?.length).toBeGreaterThan(0);
   });
 
-  it('carries storeVar to the tooling API', () => {
-    const registry = new MacroRegistry();
-    registry.loadBuiltins();
-    registry.setDiscoveredMacros([{ name: 'agebox', storeVar: true }]);
+  it('carry storeVar to the tooling API', () => {
+    const registry = registryWith('Story.defineMacro({ name: "agebox", storeVar: true });');
     const byName = new Map(registry.toolingMacros().map(m => [m.name, m]));
     expect(byName.get('agebox')?.storeVar).toBe(true);
     expect(byName.get('textbox')?.storeVar).toBe(true);
@@ -141,40 +179,43 @@ $hp = 10
   });
 });
 
-describe('discoverMacrosFromStoryInit', () => {
-  it('extracts from StoryInit passage content', () => {
-    const content = `{do}
+describe('macros defined in StoryInit', () => {
+  const definedIn = (story: string): string[] => definedMacros(new Map([['file:///story.tw', story]]));
+
+  it('extracts from the {do} body', () => {
+    const ws = new WorkspaceModel();
+    ws.initialize(new Map([['file:///story.tw', `:: StoryInit
+{do}
 Story.defineMacro({
   name: 'custom',
   block: true,
   render: () => null,
 });
-{/do}`;
-    const macros = discoverMacrosFromStoryInit(content);
-    expect(macros).toHaveLength(1);
-    expect(macros[0].name).toBe('custom');
-    expect(macros[0].block).toBe(true);
+{/do}
+`]]));
+    expect(ws.macros.getMacro('custom')).toMatchObject({ source: 'user', block: true });
+    ws.dispose();
   });
 
   it('reads the {do} bodies as the tokenizer does', () => {
     const define = (name: string) => `Story.defineMacro({ name: "${name}", render: () => null });`;
-    const found = discoverMacrosFromStoryInit([
+    expect(definedIn([
+      ':: StoryInit',
       `{DO}${define('upper')}{/DO}`,
       `<!-- {do}${define('commented')}{/do} -->`,
       `{print "{do}${define('instring')}{/do}"}`,
       `{do}\r\n${define('crlf')}\r\n{/do}`,
-    ].join('\n'));
-    expect(found.map(m => m.name)).toEqual(['upper', 'crlf']);
+    ].join('\n'))).toEqual(['upper', 'crlf']);
   });
 });
 
 describe('MacroRegistry discovered macros', () => {
   it('adds discovered macros and infers block from subMacros like Story.defineMacro', () => {
     const registry = new MacroRegistry();
-    registry.setDiscoveredMacros([
-      { name: 'dialog', subMacros: ['say'], description: 'A dialog' },
-      { name: 'plain', subMacros: ['x'], block: false },
-    ]);
+    registry.setDiscoveredMacros(discoverMacros(`
+      Story.defineMacro({ name: 'dialog', subMacros: ['say'], description: 'A dialog' });
+      Story.defineMacro({ name: 'plain', subMacros: ['x'], block: false });
+    `));
 
     expect(registry.getMacro('dialog')).toMatchObject({
       name: 'dialog', block: true, subMacros: ['say'], source: 'user', description: 'A dialog',
@@ -190,7 +231,7 @@ describe('MacroRegistry discovered macros', () => {
     registry.loadBuiltins();
     expect(registry.isBlock('set')).toBe(false);
 
-    registry.setDiscoveredMacros([{ name: 'set', block: true }, { name: 'hello' }]);
+    registry.setDiscoveredMacros(discoverMacros("Story.defineMacro({ name: 'set', block: true }); Story.defineMacro({ name: 'hello' });"));
     expect(registry.isBlock('set')).toBe(true);
     expect(registry.getMacro('hello')).toBeDefined();
 
@@ -208,7 +249,7 @@ describe('MacroRegistry discovered macros', () => {
         hello: { description: 'From config', container: false },
       });
       if (configFirst) loadConfig();
-      registry.setDiscoveredMacros([{ name: 'hello', block: true, storeVar: true, description: 'Discovered' }]);
+      registry.setDiscoveredMacros(discoverMacros("Story.defineMacro({ name: 'hello', block: true, storeVar: true, description: 'Discovered' });"));
       if (!configFirst) loadConfig();
 
       const hello = registry.getMacro('hello');

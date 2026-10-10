@@ -1,3 +1,4 @@
+import { discoverMacros } from '@rohal12/spindle/tooling';
 import { describe, it, expect } from 'vitest';
 import { MacroRegistry } from '../../src/core/workspace/macro-registry.js';
 import supplements from '../../src/macro-supplements.json' with { type: 'json' };
@@ -172,7 +173,7 @@ describe('MacroRegistry', () => {
   it('reloading config keeps discovered macros and drops removed config overrides', () => {
     const registry = new MacroRegistry();
     registry.loadBuiltins();
-    registry.setDiscoveredMacros([{ name: 'hello', block: true, description: 'Discovered' }]);
+    registry.setDiscoveredMacros(discoverMacros("Story.defineMacro({ name: 'hello', block: true, description: 'Discovered' });"));
     registry.loadConfig({ hello: { container: false, description: 'Configured' } });
     expect(registry.isBlock('hello')).toBe(false);
     expect(registry.getMacro('hello')!.description).toBe('Configured');
