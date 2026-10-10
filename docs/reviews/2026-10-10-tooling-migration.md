@@ -14,8 +14,8 @@ references and validation, and the markup validation behind the diagnostics.
 | Measure | Before (main, Spindle 0.45.1) | After |
 | --- | --- | --- |
 | Matrix (`npm run review:convergence`) | 3,995 cells | 5,209 cells, all pass (`docs/reviews/2026-10-06-cross-consumer-results.json` regenerated; cell names unchanged, cells added by earlier reviews retained) |
-| Unit + integration | 2,070 tests | 1,956 tests, 1,952 pass; 4 fail, all waiting on spindle#466 (see below) |
-| `src/` | about 10,800 lines | about 7,500 lines; `core/parsing` mirrors deleted: macro-parser, html-scanner, code-scanner, attribute-blocks, widget-arguments, the literal reader, the tracker's validation |
+| Unit + integration | 2,070 tests | 1,956 tests, 1,952 pass; 4 fail, all waiting on spindle#466 (see below). Test code: 22,373 to 19,793 lines |
+| `src/` (TypeScript lines) | 16,171 | 11,541 (-29%); `core/parsing` mirrors deleted: macro-parser, html-scanner, code-scanner, attribute-blocks, widget-arguments, the literal reader, the tracker's validation |
 | Per-release behavior | 6 capability flags, packed-release matrix | none; releases below 0.59.20 get a warning |
 
 The "State" cells in the per-scope tables below record the state when that
