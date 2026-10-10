@@ -1,7 +1,7 @@
 import type { Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { parseDocumentMacros } from '../core/parsing/macro-parser.js';
+import { walkNodes } from '../core/markup/tree.js';
 import { FoldingRangeKind } from 'vscode-languageserver';
 
 // ---------------------------------------------------------------------------
@@ -22,14 +22,12 @@ export interface FoldingRangeItem {
  *  - Block macros: matched {if}...{/if}, {for}...{/for}, etc.
  */
 export function computeFoldingRanges(uri: string, workspace: WorkspaceModel): FoldingRangeItem[] {
-  const text = workspace.documents.getText(uri);
-  if (text === undefined) return [];
+  if (workspace.documents.getText(uri) === undefined) return [];
 
   const ranges: FoldingRangeItem[] = [];
 
   // Passage folding ranges
-  const passages = workspace.passages.getPassagesInDocument(uri);
-  for (const passage of passages) {
+  for (const passage of workspace.passages.getPassagesInDocument(uri)) {
     const startLine = passage.range.start.line;
     const endLine = passage.range.end.line;
     if (endLine > startLine) {
@@ -41,20 +39,13 @@ export function computeFoldingRanges(uri: string, workspace: WorkspaceModel): Fo
     }
   }
 
-  // Block macro folding ranges
-  const macros = parseDocumentMacros(text, passages, (name) => workspace.isContainer(name), workspace.capabilities);
-
-  for (const macro of macros) {
-    if (macro.open && macro.pair !== -1) {
-      const closingMacro = macros[macro.pair];
-      const startLine = macro.range.start.line;
-      const endLine = closingMacro.range.start.line;
-      if (endLine > startLine) {
-        ranges.push({
-          startLine,
-          endLine,
-        });
-      }
+  // Block macro folding ranges: a macro with a closer, from its opener to its closer
+  for (const passage of workspace.markup.get(uri)?.passages ?? []) {
+    for (const node of walkNodes(passage.pairing.nodes)) {
+      if (node.token.type !== 'macro' || !node.body?.close) continue;
+      const startLine = passage.position(node.token.start).line;
+      const endLine = passage.position(node.body.close.start).line;
+      if (endLine > startLine) ranges.push({ startLine, endLine });
     }
   }
 

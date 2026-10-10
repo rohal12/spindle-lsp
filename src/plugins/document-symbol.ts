@@ -79,26 +79,23 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
 
     // Variable declarations in StoryVariables
     if (storyVarsPassage && storyVarsPassage.uri === uri && passage.name === 'StoryVariables') {
-      const contentStart = passage.range.start.line + 1;
-      const contentEnd = passage.range.end.line + 1;
-
-      for (let i = contentStart; i < contentEnd && i < lines.length; i++) {
-        const varMatch = lines[i].match(/^\$(\w+)\s*=/);
-        if (varMatch) {
-          const charEnd = varMatch[0].length;
-          passageSymbol.children!.push({
-            name: '$' + varMatch[1],
-            kind: SymbolKind.Variable,
-            range: {
-              start: { line: i, character: 0 },
-              end: { line: i, character: lines[i].length },
-            },
-            selectionRange: {
-              start: { line: i, character: 0 },
-              end: { line: i, character: charEnd },
-            },
-          });
-        }
+      const markup = workspace.markup.get(uri)?.passages.find(p => p.passage === passage);
+      for (const declaration of markup?.declarations.declarations ?? []) {
+        // The sigil is part of the declaration as written, one character before the name
+        const nameStart = markup!.position(declaration.nameStart - 1);
+        const line = nameStart.line;
+        passageSymbol.children!.push({
+          name: '$' + declaration.name,
+          kind: SymbolKind.Variable,
+          range: {
+            start: { line, character: 0 },
+            end: { line, character: lines[line]?.length ?? 0 },
+          },
+          selectionRange: {
+            start: { line, character: 0 },
+            end: markup!.position(declaration.nameEnd),
+          },
+        });
       }
     }
 
