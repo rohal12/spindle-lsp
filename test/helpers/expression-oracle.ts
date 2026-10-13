@@ -5,8 +5,8 @@ type Scope = Record<string, unknown>;
 /**
  * The runtime's expression evaluator for the tests: Spindle's own sigil
  * transformation (`transform`, public in the tooling API) wrapped in the same
- * `new Function('variables', 'temporary', 'locals', 'transient', ...)` the
- * runtime builds (src/expression.ts), over the scopes the caller passes. The
+ * `new Function('__variables', '__temporary', '__locals', '__fns', '__transient', ...)`
+ * the runtime builds (src/expression.ts, the names of `BINDINGS` in src/transform.ts), over the scopes the caller passes. The
  * story-state functions the runtime also puts in scope (`visited()`,
  * `random()`, ...) are fixed benign values: no visits, no renders. It is only
  * ever called with expressions written by these tests.
@@ -20,7 +20,7 @@ export function evaluate(expr: string, variables: Scope = {}, temporary: Scope =
     random: () => 0.5, randomInt: (min: number) => min,
   };
   const preamble = `const {${Object.keys(stubs).join(',')}}=__fns;`;
-  return new Function('variables', 'temporary', 'locals', '__fns', 'transient', `${preamble}return (${body});`)(
+  return new Function('__variables', '__temporary', '__locals', '__fns', '__transient', `${preamble}return (${body});`)(
     variables, temporary, locals, stubs, transient);
 }
 

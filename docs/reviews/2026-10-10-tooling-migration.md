@@ -2,7 +2,7 @@
 
 Status: **complete**.
 spindle-lsp's minimum Spindle is 0.59.20 (`MINIMUM_SPINDLE_VERSION`; devDependency
-0.59.25, bundled into the executable). Its parsing, which was a set of
+0.59.31, bundled into the executable). Its parsing, which was a set of
 hand-written mirrors of the runtime's rules checked by differential tests, is
 now `@rohal12/spindle/tooling` read through `workspace.markup`
 (`src/core/markup`): the tolerant tokens with sub-spans, the paired tree, the
@@ -547,3 +547,26 @@ matrix (616 added cells, none removed, no status changed; 5,825 pass):
   never evaluates). Harness fix: `propRename` classified a prepare-rename span
   starting with `_` or `@` as a variable; only `$`/`%` variables are renamed,
   so the passage named `_5` is a passage.
+
+## Widget parameters that hold a passage (#90, Spindle 0.59.31) — 2026-10-13
+
+Spindle 0.59.29 lets a widget parameter declare that it holds a passage name
+(`{widget "Go" @label @target:passage}`, rohal12/spindle#480), and
+`validateStoryMarkup` reports a quoted argument of one that names no passage
+(`unknown-passage`). spindle-lsp bundled 0.59.27, so `check` and the editor
+reported only the built-in macros. The fix is the devDependency bump to 0.59.31:
+`diagnostics.ts` already maps every `unknown-passage` to SP300, so no source
+changed. Retained in `diagnostics-story.test.ts` ("check the passage a widget
+parameter annotated :passage names"), with an unannotated parameter as the
+control and a passage added in another document clearing both.
+
+The SP110 "Nonexistent passage" the issue saw on a widget named `choice` comes
+from a parameter schema the project configures for that name
+(`argumentDiagnostics`, `parameter-validator.ts`), not from the annotation.
+
+Unit tests whose expectation changed with the runtime:
+
+| Test | Before | Now | Oracle |
+| --- | --- | --- | --- |
+| `test/helpers/expression-oracle.ts` `evaluate` | `new Function('variables', 'temporary', 'locals', '__fns', 'transient', …)` | `'__variables', '__temporary', '__locals', '__fns', '__transient'`: since 0.59.30 `transform` rewrites `_x` to `__temporary["x"]` (`BINDINGS`, not public) | `transform` |
+| `rename-target-encoding` R67-runtime-oracle, bare `temporary` | `"[object Object]"` (the scope object) | `null`: no binding is named `temporary`, the expression throws and the goto navigates nowhere | `passageTarget`, `evaluatePassageName`, `transform` |

@@ -42,6 +42,18 @@ describe('diagnostics follow the story', () => {
     expect(codes(model)).toEqual(['SP100']);
   });
 
+  it('check the passage a widget parameter annotated :passage names (#90)', () => {
+    const widgets = ':: W [widget]\n{widget "Go" @label @target:passage}<button data-to="{@target}">{@label}</button>{/widget}\n{widget "Show" @target:passage}{include @target}{/widget}\n{widget "Say" @label @target}{@label}{/widget}\n';
+    const model = workspace(':: Start\n{Go "Next" "Elsewhere"}\n{Show "Nowhere"}\n{Say "Hi" "Anywhere"}\n', [['file:///w.tw', widgets]]);
+    // a parameter without the annotation holds a value, not a passage name
+    expect(computeDiagnostics(uri, model).map(d => [d.code, d.message])).toEqual([
+      ['SP300', 'No passage named "Elsewhere" in {Go "Next" "Elsewhere"}.'],
+      ['SP300', 'No passage named "Nowhere" in {Show "Nowhere"}.'],
+    ]);
+    model.documents.update('file:///more.tw', ':: Elsewhere\nhi\n:: Nowhere\nhi\n');
+    expect(codes(model)).toEqual([]);
+  });
+
   it('follow the declarations of StoryVariables', () => {
     const model = workspace(':: Start\n{print $gold}\n', [['file:///vars.tw', ':: StoryVariables\n$health = 1\n']]);
     expect(computeDiagnostics(uri, model).map(d => [d.code, d.message])).toEqual([['SP200', 'Undeclared variable: $gold']]);

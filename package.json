@@ -30,7 +30,7 @@
     "prettier": "^3.9.9"
   },
   "devDependencies": {
-    "@rohal12/spindle": "0.59.27",
+    "@rohal12/spindle": "0.59.31",
     "@types/node": "^26.6.5",
     "esbuild": "^0.28.2",
     "fallow": "3.33.1",
