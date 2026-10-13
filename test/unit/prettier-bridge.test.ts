@@ -1,43 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { formatJS, formatCSS, formatHTML } from '../../src/plugins/format/prettier-bridge.js';
+import { loadPrettier } from '../../src/plugins/format/prettier-bridge.js';
+import { formatDocument } from '../../src/plugins/format.js';
 
 describe('prettier-bridge', () => {
-  it('formats JavaScript code', async () => {
-    const input = 'const   x=1;const y = 2';
-    const result = await formatJS(input);
-    expect(result).toContain('const x = 1;');
-    expect(result).toContain('const y = 2;');
+  it('loads Prettier with the resolved configuration over tabWidth 2', async () => {
+    const setup = await loadPrettier();
+    expect(setup).toBeDefined();
+    expect(setup!.options).toMatchObject({ tabWidth: 2 });
+    expect(await setup!.prettier.format('const   x=1', { parser: 'babel' })).toBe('const x = 1;\n');
   });
 
-  it('formats CSS code', async () => {
-    const input = '.foo{color:red;display:block}';
-    const result = await formatCSS(input);
-    expect(result).toContain('color: red;');
-    expect(result).toContain('display: block;');
+  it('formats script and stylesheet passages with it', async () => {
+    const doc = ':: Code [script]\nconst   x=1;const y = 2\n\n:: Style [stylesheet]\n.foo{color:red;display:block}\n';
+    expect(await formatDocument(doc)).toBe(
+      ':: Code [script]\nconst x = 1;\nconst y = 2;\n\n:: Style [stylesheet]\n.foo {\n  color: red;\n  display: block;\n}\n',
+    );
   });
 
-  it('formats HTML code', async () => {
-    const input = '<div><span>text</span><p>para</p></div>';
-    const result = await formatHTML(input);
-    expect(result).toContain('<div>');
-    expect(result).toContain('<span>');
-  });
-
-  it('returns input unchanged on malformed JS', async () => {
-    const input = 'const x = {{{';
-    const result = await formatJS(input);
-    expect(result).toBe(input);
-  });
-
-  it('returns input unchanged on malformed CSS', async () => {
-    const input = '.foo { color: }}}';
-    const result = await formatCSS(input);
-    expect(result).toBe(input);
-  });
-
-  it('returns input unchanged on malformed HTML', async () => {
-    const input = '<div id=">';
-    const result = await formatHTML(input);
-    expect(result).toBe(input);
+  it('leaves code Prettier cannot parse as written', async () => {
+    const doc = ':: Code [script]\nconst x = {{{\n\n:: Style [stylesheet]\n.foo { color: }}}\n';
+    expect(await formatDocument(doc)).toBe(doc);
   });
 });

@@ -53,10 +53,11 @@ describe('Spindle target', () => {
     expect(parseSpindleVersion('latest')).toBeUndefined();
     expect(resolveSpindleTarget('0.9.0').supported).toBe(false);
     expect(resolveSpindleTarget('0.59.19').supported).toBe(false);
-    expect(resolveSpindleTarget('0.59.20').supported).toBe(true);
+    expect(resolveSpindleTarget('0.59.31').supported).toBe(false);
+    expect(resolveSpindleTarget('0.60.0').supported).toBe(true);
     expect(resolveSpindleTarget('0.100.0').supported).toBe(true);
     expect(resolveSpindleTarget('1.0.0').supported).toBe(true);
-    expect(resolveSpindleTarget('0.59.21-beta.2')).toMatchObject({ version: '0.59.21', supported: true });
+    expect(resolveSpindleTarget('0.60.1-beta.2')).toMatchObject({ version: '0.60.1', supported: true });
     expect(resolveSpindleTarget('latest')).toBe(DEFAULT_TARGET);
   });
 
@@ -76,8 +77,8 @@ describe('Spindle target', () => {
   });
 
   it('prefers the installed version, then StoryData format-version, then the default', () => {
-    expect(resolveSpindleTarget('0.59.23', '0.43.0')).toMatchObject({ version: '0.59.23', source: 'installed', supported: true });
-    expect(resolveSpindleTarget(undefined, '0.59.21')).toMatchObject({ version: '0.59.21', source: 'story-data', supported: true });
+    expect(resolveSpindleTarget('0.60.3', '0.43.0')).toMatchObject({ version: '0.60.3', source: 'installed', supported: true });
+    expect(resolveSpindleTarget(undefined, '0.60.1')).toMatchObject({ version: '0.60.1', source: 'story-data', supported: true });
     expect(resolveSpindleTarget(undefined, '0.43.0')).toMatchObject({ version: '0.43.0', source: 'story-data', supported: false });
     expect(resolveSpindleTarget(undefined, 'x')).toBe(DEFAULT_TARGET);
     expect(resolveSpindleTarget(undefined)).toBe(DEFAULT_TARGET);
@@ -111,7 +112,7 @@ describe('SP001: Spindle older than the supported minimum', () => {
   });
 
   it('is silent from the minimum and when the version is unknown', () => {
-    for (const root of [project(MINIMUM_SPINDLE_VERSION), project('0.59.23'), project(INSTALLED_SPINDLE_VERSION), project(), undefined]) {
+    for (const root of [project(MINIMUM_SPINDLE_VERSION), project('0.60.3'), project(INSTALLED_SPINDLE_VERSION), project(), undefined]) {
       expect(diagnose(root, text).diagnostics.filter(d => d.code === 'SP001')).toEqual([]);
     }
   });
@@ -130,6 +131,6 @@ describe('SP001: Spindle older than the supported minimum', () => {
   it('prefers the installed Spindle over the StoryData format-version', () => {
     const data = ':: StoryData\n{"ifid": "A", "format": "Spindle", "format-version": "0.38.0"}\n';
     // The installed copy is the runtime the story builds with: it wins over StoryData
-    expect(diagnose(project('0.59.23'), data + text).diagnostics.filter(d => d.code === 'SP001')).toEqual([]);
+    expect(diagnose(project('0.60.3'), data + text).diagnostics.filter(d => d.code === 'SP001')).toEqual([]);
   });
 });
