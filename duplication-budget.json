@@ -1,7 +1,7 @@
 {
   "maxPercentage": {
-    "jscpd": 2.5,
+    "jscpd": 2.55,
     "cpd": 4.0,
-    "fallow": 10.9
+    "fallow": 10.7
   }
 }

@@ -7,7 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 /**
  * The version of the @rohal12/spindle the tests take their oracle from: the
  * devDependency, through its public `@rohal12/spindle/tooling` entry point
- * (see test/helpers/tooling.ts). spindle-lsp supports 0.59.20 and later; the
+ * (see test/helpers/tooling.ts). spindle-lsp supports 0.60.0 and later; the
  * suite no longer runs against other releases.
  */
 export const INSTALLED_SPINDLE_VERSION: string = (

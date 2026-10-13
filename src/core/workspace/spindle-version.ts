@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
  * argument rules it exports are the ones the runtime of this release reads
  * passages with, so a project on an older Spindle can disagree with them.
  */
-export const MINIMUM_SPINDLE_VERSION = '0.59.20';
+export const MINIMUM_SPINDLE_VERSION = '0.60.0';
 
 /** The Spindle a project targets, and whether the LSP supports it. */
 export interface SpindleTarget {
