@@ -83,7 +83,8 @@ describe('R67: arithmetic and other evaluating names', () => {
     expect(runtimeGotoTarget('_x1', { x1: 'Other' })).toBe('Other');
     expect(runtimeGotoTarget('URL')).toMatch(/URL/);
     expect(runtimeGotoTarget('URL')).not.toBe('URL');
-    expect(runtimeGotoTarget('temporary')).toBe('[object Object]');
+    // the scopes are bound as `__variables`, `__temporary`, ... (Spindle 0.59.30): a bare `temporary` is no binding
+    expect(runtimeGotoTarget('temporary')).toBeNull();
     // Spindle 0.59 has no text fallback: a bare name is an expression, and one that does not evaluate throws
     // when the macro runs, so it navigates nowhere (the 0.45.1 component used its text as the name)
     expect(runtimeGotoTarget('Chapter 2')).toBeNull();
