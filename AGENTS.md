@@ -35,3 +35,8 @@ lowering a budget after reducing it is welcome, raising one needs a reason.
 Review scope follows the user's request. A diff review reports introduced
 regressions; a full implementation audit can report existing defects and must
 identify them as such. Review does not authorize product fixes or commits.
+
+The Claude Code plugin is `plugins/spindle-lsp`, listed by the repository's
+marketplace (`.claude-plugin/marketplace.json`). It runs the latest npm release
+through `npx`, so it carries no version to bump; check it with
+`claude plugin validate .`.
