@@ -42,7 +42,7 @@ if (args.includes('--help') || args.includes('-h')) {
   process.exit(exitCode);
 } else if (args[0] === 'mcp') {
   const { startMcpServer } = await import('./mcp/server.js');
-  await startMcpServer();
+  await startMcpServer(VERSION);
 } else {
   // Default: start LSP server
   const { startServer } = await import('./server/server.js');
