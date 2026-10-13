@@ -326,7 +326,8 @@ export function propRename(files: Files) {
     for (const p of probes) {
       if (!p.prep) continue;
       const span = text.slice(...offsetRange(text, p.prep.range));
-      const kind = /^[$_@%]/.test(span) ? 'variable' : /^[\w$]/.test(p.prep.placeholder) && model.widgets.getWidget(p.prep.placeholder) && !model.passages.getPassage(p.prep.placeholder) ? 'widget' : 'passage';
+      // only `$variables` and `%transients` are renamed as variables; a `_` or `@` span is a passage or widget name
+      const kind = /^[$%]/.test(span) ? 'variable' : /^[\w$]/.test(p.prep.placeholder) && model.widgets.getWidget(p.prep.placeholder) && !model.passages.getPassage(p.prep.placeholder) ? 'widget' : 'passage';
       const key = `${kind}:${p.prep.placeholder}`;
       if (seen.has(key)) continue;
       seen.add(key);
