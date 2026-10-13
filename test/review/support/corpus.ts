@@ -182,6 +182,17 @@ for (const [spelling, target, snippet] of [
   scene(`C/${spelling}/include-widget-target`, { role: 'ordinary', context: 'include-widget-target', spelling, boundary: 'eof-newline', state: 'multi-file' },
     files(inRole('ordinary', snippet), { 'target.tw': `:: ${target} [widget]\n{widget "greet"}hi{/widget}\n` }));
 }
+// Family C3 (#77, L77/expression-identity): a bare word that Spindle's evaluator binds (an evaluator
+// parameter, a global, a temporary variable) is an expression, not the name of the passage that happens to
+// be called the same; the quoted spelling is that name. The bare forms resolve to `[object Object]` etc.
+for (const name of ['temporary', 'variables', 'locals', 'transient', 'Math', 'URL', '_5']) {
+  for (const [form, target] of [['bare', name], ['quoted', JSON.stringify(name)]] as const) {
+    scene(`C/expression-identity-${name}-${form}/goto-include-target`, { role: 'ordinary', context: 'goto-include-target', spelling: `${form}-bound-name`, boundary: 'eof-newline', state: 'multi-file' },
+      files(inRole('ordinary', `{goto ${target}} {include ${target}}`), {
+        'target.tw': `:: ${name} [widget]\n{widget "greet"}hi{/widget}\n:: \\[object Object\\]\nReal destination\n`,
+      }));
+  }
+}
 // Hyphenated widget spelling (case-insensitive, hyphen, sigil params)
 for (const [spelling, def, use] of [
   ['hyphenated-widget', 'my-widget', '{my-widget}'],
@@ -288,6 +299,11 @@ const DO_LITERALS: Record<string, string> = {
   'division-after-paren-and-index': 'const a = [6];\nconst q = (a[0]) / 3 + a[0] / 3;\nout.push(q, `a\n  b`);',
   'regex-without-backtick': 'const re = /a b/;\nconst value = `a\n  b`;\nout.push(value, re.test("a b"));',
   'slash-comment-backtick': 'const x = 1; // /`/\nconst value = `a\n  b`;\nout.push(x, value);',
+  // a regex expression statement after a control-flow condition (F66/if-, while-, for-regex-expression)
+  'if-regex-expression': 'if (true) /`/.test("x");\nconst value = `a\nb`;\nout.push(value);',
+  'while-regex-expression': 'while (false) /`/.test("x");\nconst value = `a\nb`;\nout.push(value);',
+  'for-regex-expression': 'for (;false;) /`/.test("x");\nconst value = `a\nb`;\nout.push(value);',
+  'braced-if-regex': 'if (true) { /`/.test("x"); }\nconst value = `a\nb`;\nout.push(value);',
 };
 const DO_WRAPS: Record<string, (b: string) => string> = {
   container: b => `{do}\n${b}\n{/do}`,

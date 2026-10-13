@@ -519,3 +519,31 @@ Not added: go-to-definition of a custom macro. Every discovered macro carries
 so it is cheap for JS/TS files (offset = document offset) and for script passages
 (offset into the passage body, after the header line); StoryInit `{do}` pieces would
 need the piece offset added.
+
+## Closure of the round-3 reopenings (#66, #77) — 2026-10-13
+
+Both were reopened on 2026-10-06 against `51c94c8`, before this migration; the
+code they cite (the formatter's previous-token regex heuristic, and
+`resolveExpressionTarget` / the diagnostics' include resolver) no longer exists.
+Re-checked on `main` at `c566d7a` (0.13.0, Spindle 0.59.27) and retained in the
+matrix (616 added cells, none removed, no status changed; 5,825 pass):
+
+- **#66** (`F66/if-regex-expression`, `-while-`, `-for-`, control `braced-if-regex`;
+  `DO_LITERALS` x 7 wrappers x LF/CRLF): the formatter reads JavaScript with the
+  tooling API's `lexJs` (statement goal), which knows that `/` after the
+  condition of `if`/`while`/`for` starts a regex. The executed `{do}` value is
+  `"a\nb"` before and after formatting; formatting is idempotent. A probe
+  executing the formatted body through `transform` gave 24/24 (the 12 reported
+  variants and 12 controls). There is one reading now, so "both readings" no
+  longer applies.
+- **#77** (family `C/expression-identity-<name>-<bare|quoted>/goto-include-target`,
+  names `temporary`, `variables`, `locals`, `transient`, `Math`, `URL`, `_5`): a bare
+  word is an expression (`passageTarget`), so it is no reference, definition,
+  prepare-rename target or lens count, no SP302, and a rename of the passage of
+  that name leaves it untouched; Spindle reports it as `unquoted-passage-name`
+  (SP113), except `_5`, a temporary variable. The quoted spellings are names
+  and navigate, count, rename and report SP302 as before. Release boundaries
+  and populated scopes no longer apply (no per-release behavior; production
+  never evaluates). Harness fix: `propRename` classified a prepare-rename span
+  starting with `_` or `@` as a variable; only `$`/`%` variables are renamed,
+  so the passage named `_5` is a passage.
