@@ -1,0 +1,17 @@
+{
+  "name": "spindle",
+  "owner": {
+    "name": "rohal12"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for the Spindle story format"
+  },
+  "plugins": [
+    {
+      "name": "spindle-lsp",
+      "source": "./plugins/spindle-lsp",
+      "description": "Spindle language server and MCP tools for .tw and .twee story files",
+      "category": "development"
+    }
+  ]
+}

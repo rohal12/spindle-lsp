@@ -83,6 +83,31 @@ describe('B76: public executable transport (#76)', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
     expect(execFileSync(process.execPath, [executable, '--version'], { encoding: 'utf8' }).trim()).toBe(pkg.version);
   });
+  it('B76-mcp-version: the mcp subcommand reports the package version', async () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+    const child = spawn(process.execPath, [executable, 'mcp'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      const serverInfo = await new Promise<{ name?: string; version?: string }>((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('mcp initialize timeout')), 4000);
+        let buffer = '';
+        child.stdout.on('data', data => {
+          buffer += data;
+          for (let newline = buffer.indexOf('\n'); newline >= 0; newline = buffer.indexOf('\n')) {
+            const message = JSON.parse(buffer.slice(0, newline));
+            buffer = buffer.slice(newline + 1);
+            if (message.id === 99) resolve(message.result?.serverInfo ?? {});
+          }
+        });
+        const request = { jsonrpc: '2.0', id: 99, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } } };
+        child.stdin.write(`${JSON.stringify(request)}\n`);
+      });
+      expect(serverInfo).toEqual({ name: 'spindle-lsp', version: pkg.version });
+    } finally {
+      clearTimeout(timer!);
+      child.kill();
+    }
+  });
   it('B76-check: check subcommand still dispatches', () => {
     const file = join(directory, 'story.tw');
     writeFileSync(file, ':: StoryVariables\n:: Start\nhello\n');

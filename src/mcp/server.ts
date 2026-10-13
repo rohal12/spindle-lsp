@@ -296,10 +296,10 @@ export async function checkFormatting(
 // MCP Server
 // ---------------------------------------------------------------------------
 
-export async function startMcpServer(): Promise<void> {
+export async function startMcpServer(version: string): Promise<void> {
   const server = new McpServer({
     name: 'spindle-lsp',
-    version: '0.3.5',
+    version,
   });
 
   // -------------------------------------------------------------------------

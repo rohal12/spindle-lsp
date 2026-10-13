@@ -1,0 +1,11 @@
+{
+  "name": "spindle-lsp",
+  "description": "Spindle language server and MCP tools for .tw and .twee story files: diagnostics after every edit, go-to-definition, hover, and project-wide check and format",
+  "author": {
+    "name": "rohal12"
+  },
+  "homepage": "https://github.com/rohal12/spindle-lsp",
+  "repository": "https://github.com/rohal12/spindle-lsp",
+  "license": "Unlicense",
+  "keywords": ["spindle", "twine", "twee", "lsp", "interactive-fiction"]
+}

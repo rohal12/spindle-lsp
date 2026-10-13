@@ -1,0 +1,11 @@
+{
+  "spindle": {
+    "command": "npx",
+    "args": ["-y", "@rohal12/spindle-lsp@latest", "--stdio"],
+    "extensionToLanguage": {
+      ".tw": "spindle",
+      ".twee": "spindle"
+    },
+    "startupTimeout": 60000
+  }
+}

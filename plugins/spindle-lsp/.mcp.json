@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "spindle": {
+      "command": "npx",
+      "args": ["-y", "@rohal12/spindle-lsp@latest", "mcp"]
+    }
+  }
+}
