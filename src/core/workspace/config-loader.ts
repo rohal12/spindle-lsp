@@ -1,12 +1,12 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
 /**
  * Spindle project config as loaded from config files.
  */
 export interface SpindleProjectConfig {
-  macros: Record<string, any>;
+  macros: Record<string, Record<string, any>>;
   enums?: Record<string, string>;
 }
 
@@ -56,13 +56,36 @@ export function parseConfig(
   const source = (spindle0 && typeof spindle0 === 'object') ? spindle0 : obj;
 
   return {
-    macros: (typeof source.macros === 'object' && source.macros !== null)
-      ? source.macros as Record<string, any>
-      : {},
+    macros: normalizeMacroEntries(source.macros),
     enums: (typeof source.enums === 'object' && source.enums !== null)
       ? source.enums as Record<string, string>
       : undefined,
   };
+}
+
+/** Null means no metadata. Reject invalid shapes before replacing any usable config. */
+export function normalizeMacroEntries(raw: unknown): SpindleProjectConfig['macros'] {
+  if (raw === undefined || raw === null) return {};
+  if (!isRecord(raw)) throw new Error('macros must be a mapping of macro names to metadata');
+  const entries: SpindleProjectConfig['macros'] = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (value === null) { entries[name] = {}; continue; }
+    if (!isRecord(value)) throw new Error(`macros.${name} must be a metadata object or null`);
+    const valid = (key: string, test: (v: unknown) => boolean) => {
+      if (value[key] !== undefined && !test(value[key])) throw new Error(`Invalid macros.${name}.${key}`);
+    };
+    for (const key of ['name', 'description']) valid(key, v => typeof v === 'string');
+    for (const key of ['container', 'skipArgs']) valid(key, v => typeof v === 'boolean');
+    for (const key of ['parameters', 'parents']) valid(key, v => Array.isArray(v) && v.every(item => typeof item === 'string'));
+    valid('parameterDocs', v => Array.isArray(v) && v.every(item => isRecord(item) && typeof item.name === 'string' && (item.documentation === undefined || typeof item.documentation === 'string')));
+    valid('children', v => Array.isArray(v) && v.every(item => isRecord(item) && typeof item.name === 'string' && ['min', 'max'].every(key => item[key] === undefined || typeof item[key] === 'number')));
+    entries[name] = value;
+  }
+  return entries;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -78,6 +101,18 @@ export function findConfigFile(workspaceRoot: string): string | null {
     }
   }
   return null;
+}
+
+/** Find a project's config above the directory its matched files share. */
+export function findConfigRoot(directory: string): string {
+  let search = directory;
+  for (let i = 0; i < 10; i++) {
+    if (findConfigFile(search)) return search;
+    const parent = resolve(search, '..');
+    if (parent === search) break;
+    search = parent;
+  }
+  return directory;
 }
 
 /**

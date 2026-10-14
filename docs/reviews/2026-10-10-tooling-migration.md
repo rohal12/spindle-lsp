@@ -570,3 +570,15 @@ Unit tests whose expectation changed with the runtime:
 | --- | --- | --- | --- |
 | `test/helpers/expression-oracle.ts` `evaluate` | `new Function('variables', 'temporary', 'locals', '__fns', 'transient', …)` | `'__variables', '__temporary', '__locals', '__fns', '__transient'`: since 0.59.30 `transform` rewrites `_x` to `__temporary["x"]` (`BINDINGS`, not public) | `transform` |
 | `rename-target-encoding` R67-runtime-oracle, bare `temporary` | `"[object Object]"` (the scope object) | `null`: no binding is named `temporary`, the expression throws and the goto navigates nowhere | `passageTarget`, `evaluatePassageName`, `transform` |
+
+## Review repairs after the formatter migration — 2026-10-15
+
+The [fourteen-ticket repair ledger](2026-10-15-review-repairs.md) rechecks the
+historical owners and retains the new editor/configuration contracts. PR #92
+moved formatter ownership to `formatPassage` in Spindle 0.60.0; the LSP keeps
+that API call and does not restore its deleted formatter. The #95 placeholder
+collisions pass with that API. The #96 wrapping hang still reproduces in
+published Spindle 0.60.0, 0.60.1 and 0.60.2, and is filed upstream as
+[rohal12/spindle#560](https://github.com/rohal12/spindle/issues/560). The bounded
+CLI cases remain enabled in the normal gate while the upstream repair is
+prepared; no local rule or fallback works around it.

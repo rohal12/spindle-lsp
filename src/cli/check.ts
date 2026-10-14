@@ -6,7 +6,7 @@ import { glob } from 'glob';
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
 import type { DiagnosticOptions } from '../plugins/diagnostics.js';
-import { loadConfigFromDisk, loadConfigFile, findConfigFile } from '../core/workspace/config-loader.js';
+import { loadConfigFromDisk, loadConfigFile, findConfigRoot } from '../core/workspace/config-loader.js';
 import type { SpindleProjectConfig } from '../core/workspace/config-loader.js';
 import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
 import { findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
@@ -169,16 +169,13 @@ export async function runCheck(args: string[]): Promise<number> {
   if (explicitConfig) {
     projectConfig = explicitConfig;
   } else {
-    let configRoot = commonDir;
-    // Walk up from common dir to find config (max 10 levels)
-    let search = configRoot;
-    for (let i = 0; i < 10; i++) {
-      if (findConfigFile(search)) { configRoot = search; break; }
-      const parent = resolve(search, '..');
-      if (parent === search) break;
-      search = parent;
+    const configRoot = findConfigRoot(commonDir);
+    try {
+      projectConfig = loadConfigFromDisk(configRoot);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
     }
-    projectConfig = loadConfigFromDisk(configRoot);
   }
 
   // Load files

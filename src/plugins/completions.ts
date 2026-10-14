@@ -3,6 +3,7 @@ import { tokenizeMarkupTolerant } from '@rohal12/spindle/tooling';
 import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
+import { encodeEnclosingMarkup } from '../core/markup/passage-refs.js';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
 import { markupAt, type MarkupCursor } from './markup-cursor.js';
 import { variableUses } from './markup-symbols.js';
@@ -63,16 +64,24 @@ export function getCompletions(
     return editing(getClosingMacroCompletions(cursor, head.brace), head.brace, at + tail);
   }
 
-  // --- Context: dot-path field `%var.` ---
-  const transientDotPathMatch = /%([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(before);
-  if (transientDotPathMatch) {
-    return typedEdit(getDotPathCompletions('%', transientDotPathMatch[1], workspace), (transientDotPathMatch[2] ?? '').length);
-  }
-
-  // --- Context: dot-path field `$var.` ---
-  const dotPathMatch = /\$([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(before);
-  if (dotPathMatch) {
-    return typedEdit(getDotPathCompletions('$', dotPathMatch[1], workspace), (dotPathMatch[2] ?? '').length);
+  // A field name that is not an identifier needs bracket access. Replace the
+  // dot as well as the typed suffix/tail so accepting accesses the chosen key.
+  const dotPath = /([$%])([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(before);
+  if (dotPath) {
+    const sigil = dotPath[1] as '$' | '%';
+    const typed = (dotPath[3] ?? '').length;
+    const end = at + /^[\w$]*/.exec(content.slice(at))![0].length;
+    return getDotPathCompletions(sigil, dotPath[2], workspace).map(item => {
+      const identifier = /^[A-Za-z_$][\w$]*$/.test(item.label);
+      const start = at - typed - (identifier ? 0 : 1);
+      return {
+        ...item,
+        textEdit: {
+          range: passage.range(start, end),
+          newText: identifier ? item.label : encodeEnclosingMarkup(passage, start, end, `[${JSON.stringify(item.label)}]`),
+        },
+      };
+    });
   }
 
   // --- Context: story variable `$` ---
