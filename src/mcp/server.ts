@@ -15,6 +15,8 @@ import { formatDocument } from '../plugins/format.js';
 import { findSpindleTarget, findStoryFormat, skippedFormatNote } from '../core/workspace/story-format.js';
 import { unsupportedVersionMessage } from '../core/workspace/spindle-version.js';
 import type { Diagnostic } from '../core/types.js';
+import { PlaySessions } from './play/sessions.js';
+import { registerPlayTools } from './play/tools.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -359,9 +361,34 @@ export async function startMcpServer(version: string): Promise<void> {
   );
 
   // -------------------------------------------------------------------------
+  // spindle_play_*
+  // -------------------------------------------------------------------------
+
+  const playSessions = new PlaySessions();
+  registerPlayTools(server, playSessions);
+
+  // -------------------------------------------------------------------------
   // Start transport
   // -------------------------------------------------------------------------
 
   const transport = new StdioServerTransport();
+  closePlaySessionsOnShutdown(playSessions, transport);
   await server.connect(transport);
+}
+
+/**
+ * Close every play session when the client goes away (stdin or the transport
+ * closes) or the process ends, so no story worker outlives the server.
+ */
+function closePlaySessionsOnShutdown(sessions: PlaySessions, transport: StdioServerTransport): void {
+  const closeAll = () => void sessions.closeAll();
+  transport.onclose = closeAll;
+  process.stdin.once('close', closeAll);
+  process.once('exit', closeAll);
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    // A listener replaces the default exit, so raise the signal again afterwards.
+    process.once(signal, () => {
+      void sessions.closeAll().finally(() => process.kill(process.pid, signal));
+    });
+  }
 }

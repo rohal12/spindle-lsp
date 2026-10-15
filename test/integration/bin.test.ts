@@ -46,6 +46,46 @@ async function initialize(executable: string, args: string[]): Promise<{ output:
   }
 }
 
+interface McpMessage {
+  id?: number;
+  result?: Record<string, unknown> & { tools?: { name: string }[] };
+}
+/** The `mcp` subcommand over stdio: newline-delimited JSON-RPC, initialized. */
+async function mcpProcess(executable: string) {
+  const child = spawn(process.execPath, [executable, 'mcp'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const pending = new Map<number, (message: McpMessage) => void>();
+  let buffer = '';
+  child.stdout.on('data', data => {
+    buffer += data;
+    for (let newline = buffer.indexOf('\n'); newline >= 0; newline = buffer.indexOf('\n')) {
+      const message: McpMessage = JSON.parse(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      if (message.id !== undefined) pending.get(message.id)?.(message);
+    }
+  });
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
+    child.once('exit', (code, signal) => resolve({ code, signal }));
+  });
+  let nextId = 1;
+  const send = (message: object) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+  const request = (method: string, params: object) =>
+    new Promise<McpMessage>(resolve => {
+      const id = nextId++;
+      pending.set(id, resolve);
+      send({ id, method, params });
+    });
+  await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
+  send({ method: 'notifications/initialized' });
+  return { child, request, exited };
+}
+/** Resolve with how the process exited, or reject when it is still running after `ms`. */
+function exitWithin(exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>, ms: number) {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`still running after ${ms} ms`)), ms); });
+  return Promise.race([exited, timeout]).finally(() => clearTimeout(timer));
+}
+const playFixture = join(import.meta.dirname, '..', 'fixtures', 'play', 'story.twee');
+
 describe('B76: public executable transport (#76)', () => {
   let directory: string;
   let executable: string;
@@ -141,4 +181,32 @@ describe('B76-dist: the executable built by `npm run build`', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
     expect(execFileSync(process.execPath, [dist.executable, '--version'], { encoding: 'utf8' }).trim()).toBe(pkg.version);
   });
+  it('B76-dist-play-tools: the mcp subcommand lists the six play tools', async () => {
+    const { child, request } = await mcpProcess(dist.executable);
+    try {
+      const { result } = await request('tools/list', {});
+      const names = result?.tools?.map(tool => tool.name) ?? [];
+      expect(names.filter(name => name.startsWith('spindle_play_')).sort()).toEqual([
+        'spindle_play_goto', 'spindle_play_observe', 'spindle_play_start',
+        'spindle_play_step', 'spindle_play_stop', 'spindle_play_vars',
+      ]);
+    } finally {
+      child.kill();
+    }
+  });
+  for (const ending of ['SIGTERM', 'SIGINT', 'stdin close'] as const) {
+    it(`B76-dist-play-shutdown: the mcp server exits on ${ending} with a play session open`, async () => {
+      const { child, request, exited } = await mcpProcess(dist.executable);
+      try {
+        const { result } = await request('tools/call', { name: 'spindle_play_start', arguments: { story: playFixture } });
+        expect(result?.isError, JSON.stringify(result)).toBeFalsy();
+        if (ending === 'stdin close') child.stdin.end();
+        else child.kill(ending);
+        const exit = await exitWithin(exited, 10_000);
+        expect(exit.signal ?? exit.code).toBe(ending === 'stdin close' ? 0 : ending);
+      } finally {
+        child.kill('SIGKILL');
+      }
+    });
+  }
 });

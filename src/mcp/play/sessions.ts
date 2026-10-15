@@ -1,8 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 
-import type { Observation } from '@rohal12/spindle';
-import type { TranscriptEntry } from '@rohal12/spindle/headless';
+import type {
+  Observation,
+  PlaySession,
+  openPlaySession,
+  resolveStoryHtml,
+} from '@rohal12/spindle/play';
+
+export type { PlaySession };
 
 /**
  * The first @rohal12/spindle release that ships `@rohal12/spindle/play`.
@@ -10,27 +16,13 @@ import type { TranscriptEntry } from '@rohal12/spindle/headless';
  */
 export const PLAY_SPINDLE_VERSION = '0.61.0';
 
-/** Handle on one booted story, as `@rohal12/spindle/play` returns it. */
-export interface PlaySession {
-  observe(): Promise<Observation>;
-  step(id: string, value?: unknown): Promise<Observation>;
-  goto(passage: string): Promise<Observation>;
-  get(names?: string[]): Promise<Record<string, unknown>>;
-  set(values: Record<string, unknown>): Promise<void>;
-  transcript(): Promise<TranscriptEntry[]>;
-  close(): Promise<void>;
-  readonly closed: boolean;
-}
-
 /**
- * The part of `@rohal12/spindle/play` this server uses. Declared structurally
- * because the installed Spindle may predate that entry (it is loaded lazily).
+ * The part of `@rohal12/spindle/play` this server uses. It is imported lazily
+ * because the installed Spindle may predate that entry.
  */
 export interface PlayModule {
-  resolveStoryHtml(
-    input: { path: string } | { html: string },
-  ): Promise<{ html: string; notes: string[] }>;
-  openPlaySession(options: { html: string; stepTimeoutMs?: number }): Promise<PlaySession>;
+  resolveStoryHtml: typeof resolveStoryHtml;
+  openPlaySession: typeof openPlaySession;
 }
 
 const PLAY_SPECIFIER = '@rohal12/spindle/play';
@@ -41,8 +33,8 @@ function missingPlayMessage(): string {
 
 /**
  * Import `@rohal12/spindle/play` on demand. The specifier is a variable so the
- * bundler leaves it to the runtime and the type checker does not need the
- * entry to exist in the installed Spindle.
+ * bundler leaves it to the runtime, and the rest of the server still loads
+ * with an installed Spindle that predates the entry.
  */
 export async function loadPlay(
   importer: () => Promise<unknown> = () => import(PLAY_SPECIFIER),

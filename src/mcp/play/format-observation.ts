@@ -1,4 +1,4 @@
-import type { Observation, ObservedAction } from '@rohal12/spindle';
+import type { Observation, ObservedAction } from '@rohal12/spindle/play';
 
 const COLUMN_GAP = 2;
 
