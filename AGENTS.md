@@ -9,7 +9,7 @@ Parsing comes from Spindle, not from this repo: the markup tokenizer, the
 paired tree, the code pieces, passage references, widget and variable
 declarations, variable validation and the diagnostics are `@rohal12/spindle/tooling`
 (minimum 0.60.0, `MINIMUM_SPINDLE_VERSION`; the build bundles the pinned
-devDependency, so the LSP's rules are that release's). Consumers read it through
+dependency, so the LSP's rules are that release's). Consumers read it through
 `workspace.markup` (`src/core/markup`), which maps the API's offsets into
 `content` back to document positions. Do not re-implement a rule the API owns,
 and do not work around a gap in it: file an issue on rohal12/spindle (the

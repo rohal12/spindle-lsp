@@ -12,7 +12,9 @@ A Claude Code plugin that connects Claude to the Spindle language server.
   [Play-testing while writing](#play-testing-while-writing)).
 
 Both run the latest `@rohal12/spindle-lsp` release through `npx`, so the
-plugin needs Node.js 18 or later on `PATH` and nothing else installed.
+plugin needs Node.js 18 or later on `PATH` and nothing else installed:
+`@rohal12/spindle`, which the play tools run stories on, comes with
+`@rohal12/spindle-lsp` as a dependency.
 
 ## Install
 
@@ -40,16 +42,17 @@ Six MCP tools let Claude play the story it is editing, the way a reader would:
 | `spindle_play_stop`    | Close a session                          |
 
 `spindle_play_start` takes a compiled `.html`, a `.twee` or `.tw` file, a glob
-or a project directory; Twee is compiled with the Spindle format installed in
-the project. Each result lists the passage text, the context, any open dialogs
+or a project directory. Twee is compiled and run by spindle-lsp's own
+`@rohal12/spindle`, not the one installed in the project; if the two differ,
+the result starts with a `Note:` saying so. Each result lists the passage text, the context, any open dialogs
 and macro errors, and the available actions with the ids to pass to
 `spindle_play_step`. Up to 8 sessions can be open, a session idle for 30
 minutes is closed, and a call that takes more than 10 seconds closes its
 session.
 
-The play tools need `@rohal12/spindle` with `@rohal12/spindle/play` (the first
-release that has it). With an older Spindle, `spindle_play_start` says so and
-the other tools are unaffected.
+The play tools need a `@rohal12/spindle` with `@rohal12/spindle/play`, which
+the plugin's `npx` install brings along. If it is missing, `spindle_play_start`
+says so and the other tools are unaffected.
 
 An example exchange, with Claude's calls on the left and the results shortened:
 

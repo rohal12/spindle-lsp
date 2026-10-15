@@ -12,20 +12,24 @@ stories can run side by side.
 
 ## Requirements
 
-The tools need an installed `@rohal12/spindle` release that ships
-`@rohal12/spindle/play`: the version in `PLAY_SPINDLE_VERSION`
-(`src/mcp/play/sessions.ts`) or later; that is the first release with
-`@rohal12/spindle/play`. With an older Spindle the rest of the server works as
-before (`spindle_check` and `spindle_format` still need only 0.60.0), and
-`spindle_play_start` answers
+Nothing beyond `@rohal12/spindle-lsp` itself. `@rohal12/spindle` (a release
+with `@rohal12/spindle/play`, the version in `PLAY_SPINDLE_VERSION` in
+`src/mcp/play/sessions.ts` or later), `happy-dom` and `@rohal12/twee-ts` (which
+compiles Twee) are its dependencies, so `npx @rohal12/spindle-lsp mcp` and the
+Claude Code plugin get them too. The stories run on that copy of Spindle, not
+on the one installed in the story's project; the project's copy only decides
+whether `spindle_play_start` adds a [note](#spindle_play_start).
+
+If `@rohal12/spindle` cannot be found, or the one found has no
+`@rohal12/spindle/play` entry, `spindle_play_start` answers
 
 ```
 spindle_play needs @rohal12/spindle <PLAY_SPINDLE_VERSION> or later
 ```
 
-with the constant's value in place of the placeholder. `happy-dom` and
-`@rohal12/twee-ts` (which compiles Twee) are dependencies of
-`@rohal12/spindle-lsp`, so there is nothing else to install.
+with the constant's value in place of the placeholder. Any other failure to
+load `@rohal12/spindle/play` (a missing dependency of it, say) is reported
+with its own message. The rest of the server works either way.
 
 ## The tools
 
@@ -55,14 +59,29 @@ with the constant's value in place of the placeholder. `happy-dom` and
   or as the directory itself if not
 
 A relative path resolves against the server's working directory, as it does
-for `spindle_check`. Twee is always compiled with the Spindle format
-installed in the project, whatever format the project's config names.
+for `spindle_check`. Twee is compiled and run by spindle-lsp's own
+`@rohal12/spindle`, with its Spindle format, whatever format the project's
+config names and whatever Spindle the project has installed.
 
 Result: `Session: <id>`, then one `Note: <text>` line for each note, a blank
-line, and the [observation](#result-format). A note is not an error. The usual
-one says that the story's HTML was built by another Spindle version than the
-installed one (`The story was compiled with Spindle 0.9.0; it runs on the
-installed Spindle 0.10.2.`); the session runs on the installed version.
+line, and the [observation](#result-format). A note is not an error. There
+are two:
+
+- The story's HTML was built by another Spindle version than the one that runs
+  it. "Installed" in it means spindle-lsp's own copy:
+
+  ```
+  The story was compiled with Spindle 0.9.0; it runs on the installed Spindle 0.10.2.
+  ```
+
+- The project has another `@rohal12/spindle` installed (found in
+  `node_modules` from the story's directory up) than spindle-lsp's own copy:
+
+  ```
+  The project has Spindle 0.60.0 installed; spindle_play runs the story on Spindle 0.61.0, the copy spindle-lsp ships with.
+  ```
+
+The session runs on spindle-lsp's own copy either way.
 
 If `passage` is given, the first observation is of that passage, reached the
 same way as `spindle_play_goto`. If that fails, no session is left open.
@@ -107,11 +126,20 @@ Setting waits for the story to settle but does not return an observation; use
 `spindle_play_observe` to see its effect on the passage.
 
 Result: the variables as JSON text, and the same object as
-`structuredContent`. Values are plain JSON: a `Map` becomes an object of its
-entries, a `Set` or typed array becomes an array, a `Date` becomes an ISO 8601
-string, a reference cycle becomes the string `"[circular]"`, and a value that
-cannot be cloned out of the worker (a function, say) comes back as
-`"[unserializable: <reason>]"`.
+`structuredContent`. Values are plain JSON:
+
+- a `Map` becomes an object of its entries. Its keys become strings (an object
+  key its JSON), so keys that read alike merge: `1` and `"1"` become one
+  property with the later entry's value.
+- a `Set` or typed array becomes an array.
+- a `Date` becomes an ISO 8601 string (`"Invalid Date"` if it is invalid).
+- a `bigint`, `NaN`, `Infinity`, a `RegExp` and an `Error` become strings
+  (`"10"`, `"NaN"`, `"/a+/g"`, `"TypeError: message"`).
+- as in JSON, a property whose value is `undefined` is left out, and an
+  `undefined` array item becomes `null`.
+- a reference cycle becomes the string `"[circular]"`.
+- a value that cannot be cloned out of the worker (a function, say) comes back
+  as `"[unserializable: <reason>]"`.
 
 ### spindle_play_stop
 
@@ -142,10 +170,12 @@ Actions:
 - `Dialogs:` appears only when dialogs are open, one `- <passage>: <text>`
   line each, innermost last.
 - `Actions:` numbers the available actions: the id to pass to
-  `spindle_play_step`, the type, and a description. A link shows its label and
-  `-> target`. An input shows `$variable = value` and, if it has any,
-  `options: a, b, c`. A disabled action ends in `(disabled)`. With none, the
-  section reads `Actions: none (ending or dead end)`.
+  `spindle_play_step`, the type, and a description. A link shows its label in
+  JSON quotes (so a `"` or a line break in it is escaped) and `-> target`. An
+  input shows `$variable = value`, with the value as JSON (`(unset)` when it
+  has none) and, if it has any, `options: a, b, c`. A disabled action ends in
+  `(disabled)`. With none, the section reads
+  `Actions: none (ending or dead end)`.
 - `Errors:` appears only when macro or runtime errors are on screen, one
   `- <message>` line each.
 
@@ -176,12 +206,15 @@ text. A tool never throws out of the server.
 | --------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | `too many open play sessions (8); stop one with spindle_play_stop`                | `start` with 8 sessions open                            |
 | `unknown or expired session <id>`                                                 | An id that was never issued, stopped, expired or closed |
-| `spindle_play needs @rohal12/spindle <PLAY_SPINDLE_VERSION> or later`             | `start` with a Spindle that has no `spindle/play`       |
+| `spindle_play needs @rohal12/spindle <PLAY_SPINDLE_VERSION> or later`             | `start` when Spindle or its `spindle/play` is missing   |
 | `play sessions are shutting down`                                                 | `start` while the server is closing                     |
 | `spindle: play session timed out after <n> ms (the story may be stuck in a loop)` | A call exceeded the timeout; the session is closed      |
 | `spindle: play session is closed`                                                 | A call queued behind a timeout                          |
 | `spindle: no story files match <pattern>`                                         | `start` with a glob that matches nothing                |
 | `file:line: message`, one per error                                               | `start` on Twee that does not compile                   |
+
+In the no-match message, `<pattern>` is the glob resolved against the
+server's working directory (an absolute path), not the text as given.
 
 After a timeout the session id is forgotten, so the next call with it reports
 `unknown or expired session <id>`. Messages that start with `spindle:` come
