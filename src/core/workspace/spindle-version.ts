@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { globSync } from 'glob';
 
 /**
  * The oldest Spindle the LSP supports. spindle-lsp is built on the tooling
@@ -50,13 +51,20 @@ export const DEFAULT_TARGET: SpindleTarget = { version: undefined, source: 'defa
  * declares `@rohal12/spindle` (in any dependency field). Otherwise another
  * package put it there, such as `npm i @rohal12/spindle-lsp`, whose own
  * Spindle npm hoists into a project that has none: it says nothing about the
- * Spindle the story runs on, and counts as not installed.
+ * Spindle the story runs on, and counts as not installed. So does a copy put
+ * there by hand (vendored): only a declared Spindle counts.
+ *
+ * A monorepo root counts as declaring it when its `package.json` lists
+ * `workspaces` (an array of globs, or `{ packages: [...] }`) and a member
+ * package matching them declares it: npm and yarn hoist that member's Spindle
+ * to the root, and the editor and CLI start the lookup at the root.
  */
 export function readInstalledSpindleVersion(startDir: string): string | undefined {
   const target = join('node_modules', '@rohal12', 'spindle', 'package.json');
   let declared = false;
   return findUp(startDir, dir => {
-    declared ||= declaresSpindle(readPackageJson(join(dir, 'package.json')));
+    const pkg = readPackageJson(join(dir, 'package.json'));
+    declared ||= declaresSpindle(pkg) || aWorkspaceMemberDeclaresSpindle(dir, pkg);
     const candidate = join(dir, target);
     if (!existsSync(candidate)) return undefined;
     return { version: declared ? spindleVersionOf(readPackageJson(candidate)) : undefined };
@@ -75,6 +83,30 @@ function declaresSpindle(pkg: PackageJson | undefined): boolean {
     const deps = pkg?.[field];
     return typeof deps === 'object' && deps !== null && Object.hasOwn(deps, '@rohal12/spindle');
   });
+}
+
+/** The member globs of `pkg.workspaces`: npm's and yarn's array, or yarn's `{ packages }`. */
+function workspaceGlobs(pkg: PackageJson | undefined): string[] {
+  const workspaces = pkg?.workspaces;
+  const packages = typeof workspaces === 'object' && workspaces !== null
+    ? (workspaces as { packages?: unknown }).packages
+    : undefined;
+  const globs: unknown[] = Array.isArray(workspaces)
+    ? workspaces
+    : Array.isArray(packages) ? packages : [];
+  return globs.filter((g): g is string => typeof g === 'string');
+}
+
+/** Whether a workspace member of the project in `dir` (package.json `pkg`) declares Spindle. */
+function aWorkspaceMemberDeclaresSpindle(dir: string, pkg: PackageJson | undefined): boolean {
+  const manifest = (glob: string) => `${glob.replace(/\/+$/, '')}/package.json`;
+  const globs = workspaceGlobs(pkg);
+  const members = globs.filter(g => !g.startsWith('!')).map(manifest);
+  if (members.length === 0) return false;
+  const excluded = globs.filter(g => g.startsWith('!')).map(g => manifest(g.slice(1)));
+  const ignore = ['**/node_modules/**', ...excluded];
+  return globSync(members, { cwd: dir, ignore })
+    .some(file => declaresSpindle(readPackageJson(join(dir, file))));
 }
 
 /**
@@ -110,7 +142,7 @@ function findUp(
   }
 }
 
-type PackageJson = { name?: unknown; version?: unknown } & {
+type PackageJson = { name?: unknown; version?: unknown; workspaces?: unknown } & {
   [field in (typeof DEPENDENCY_FIELDS)[number]]?: unknown;
 };
 

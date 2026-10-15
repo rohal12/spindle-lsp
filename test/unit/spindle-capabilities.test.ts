@@ -121,6 +121,29 @@ describe('Spindle target', () => {
     expect(readInstalledSpindleVersion(inner)).toBeUndefined();
   });
 
+  it('accepts a declaring workspace member when the lookup starts at the monorepo root', () => {
+    /** A monorepo root with Spindle hoisted to its node_modules and `members` (path -> package.json). */
+    const monorepo = (workspaces: unknown, members: Record<string, object>) => {
+      const root = project('0.70.0', false, { name: 'monorepo', workspaces });
+      for (const [path, manifest] of Object.entries(members)) {
+        mkdirSync(join(root, path), { recursive: true });
+        writeFileSync(join(root, path, 'package.json'), JSON.stringify(manifest));
+      }
+      return root;
+    };
+    // npm/yarn array form and the yarn { packages } form, with globs
+    expect(readInstalledSpindleVersion(monorepo(['story'], { story: DECLARES_SPINDLE }))).toBe('0.70.0');
+    expect(readInstalledSpindleVersion(monorepo(['packages/*'], { 'packages/story': DECLARES_SPINDLE, 'packages/tools': { name: 'tools' } }))).toBe('0.70.0');
+    expect(readInstalledSpindleVersion(monorepo({ packages: ['packages/*'] }, { 'packages/story': DECLARES_SPINDLE }))).toBe('0.70.0');
+    // only a member that declares Spindle counts
+    expect(readInstalledSpindleVersion(monorepo(['packages/*'], { 'packages/tools': { name: 'tools' } }))).toBeUndefined();
+    // a declaring package.json outside the workspace globs, or excluded by one, is not a member
+    expect(readInstalledSpindleVersion(monorepo(['packages/*'], { 'vendor/story': DECLARES_SPINDLE }))).toBeUndefined();
+    expect(readInstalledSpindleVersion(monorepo(['packages/*', '!packages/old'], { 'packages/old': DECLARES_SPINDLE }))).toBeUndefined();
+    // without `workspaces`, a declaring subdirectory is not the root's
+    expect(readInstalledSpindleVersion(monorepo(undefined, { story: DECLARES_SPINDLE }))).toBeUndefined();
+  });
+
   it('prefers the installed version, then StoryData format-version, then the default', () => {
     expect(resolveSpindleTarget('0.60.3', '0.43.0')).toMatchObject({ version: '0.60.3', source: 'installed', supported: true });
     expect(resolveSpindleTarget(undefined, '0.60.1')).toMatchObject({ version: '0.60.1', source: 'story-data', supported: true });

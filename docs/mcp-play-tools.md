@@ -75,7 +75,13 @@ are two:
   ```
 
 - The project has another `@rohal12/spindle` installed (found in
-  `node_modules` from the story's directory up) than spindle-lsp's own copy:
+  `node_modules` from the story's directory up) than spindle-lsp's own copy.
+  Only a declared Spindle counts: a `package.json` in the directory holding
+  that `node_modules`, or between it and the story, lists `@rohal12/spindle`
+  in a dependency field, or one of those has `workspaces` and a member
+  package matching them lists it (npm and yarn hoist a member's Spindle to the
+  root). A copy nothing declares, such as one another package brought along
+  or one copied in by hand, is ignored:
 
   ```
   The project has Spindle 0.60.0 installed; spindle_play runs the story on Spindle 0.61.0, the copy spindle-lsp ships with.

@@ -44,8 +44,9 @@ Six MCP tools let Claude play the story it is editing, the way a reader would:
 `spindle_play_start` takes a compiled `.html`, a `.twee` or `.tw` file, a glob
 or a project directory. Twee is compiled and run by spindle-lsp's own
 `@rohal12/spindle`, not the one installed in the project; if the project's
-package.json depends on a different version, the result starts with a `Note:`
-saying so. Each result lists the passage text, the context, any open dialogs
+package.json (or, in a monorepo, a workspace member's) depends on a different
+version, the result starts with a `Note:` saying so. A copy in `node_modules`
+that no package.json declares is ignored. Each result lists the passage text, the context, any open dialogs
 and macro errors, and the available actions with the ids to pass to
 `spindle_play_step`. Up to 8 sessions can be open, a session idle for 30
 minutes is closed, and a call that takes more than 10 seconds closes its
