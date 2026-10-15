@@ -65,7 +65,8 @@ export function readSpindlePackageVersion(file: string): string | undefined {
     const candidate = join(dir, 'package.json');
     if (!existsSync(candidate)) return undefined;
     const pkg = readPackageJson(candidate);
-    // A package.json without a name (`{"type": "module"}` in a build folder) is not the package root.
+    // A package.json without a name (`{"type": "module"}` in a build folder)
+    // is not the package root.
     if (pkg?.name === undefined) return undefined;
     return { version: pkg.name === '@rohal12/spindle' ? spindleVersionOf(pkg) : undefined };
   });

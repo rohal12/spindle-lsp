@@ -68,7 +68,8 @@ function checkIsolated(base: string): void {
     for (const name of ['node_modules', 'package.json', '.git']) {
       if (existsSync(join(dir, name))) {
         throw new Error(
-          `${join(dir, name)} would leak into the smoke project; set SMOKE_PACK_DIR to a clean directory`,
+          `${join(dir, name)} would leak into the smoke project; ` +
+            'set SMOKE_PACK_DIR to a clean directory',
         );
       }
     }
