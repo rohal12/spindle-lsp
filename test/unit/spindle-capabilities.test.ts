@@ -203,4 +203,15 @@ describe('SP001: Spindle older than the supported minimum', () => {
       expect(found.map(d => d.range), eol).toEqual([{ start: { line: 0, character: 0 }, end: { line: 0, character: 17 } }]);
     }
   });
+
+  it('stays on the same document whatever order documents open in', () => {
+    const root = project('0.59.19');
+    const files: Array<[string, string]> = [['file:///b.tw', ':: Other\nx\n'], ['file:///a.tw', text]];
+    for (const order of [files, [...files].reverse()]) {
+      const workspace = new WorkspaceModel({ workspaceRoot: root });
+      workspace.initialize(new Map(order));
+      const owners = order.filter(([u]) => computeDiagnostics(u, workspace).some(d => d.code === 'SP001')).map(([u]) => u);
+      expect(owners, order.map(([u]) => u).join()).toEqual(['file:///a.tw']);
+    }
+  });
 });

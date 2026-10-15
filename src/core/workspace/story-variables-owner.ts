@@ -4,7 +4,9 @@ import type { WorkspaceModel } from './workspace-model.js';
 /**
  * The one document that carries the workspace-wide SP202 (no StoryVariables
  * passage) and receives its "Create StoryVariables passage" quick fix: the
- * first story document, in workspace order, that holds a passage.
+ * first story document, in sorted URI order, that holds a passage. The order
+ * is the passage index's, so the owner does not move with the order documents
+ * were opened, closed or reopened in.
  *
  * A story document is what the workspace model indexes and the diagnostics
  * plugin publishes for: any non-JS/TS document (the extension is not
@@ -16,8 +18,5 @@ import type { WorkspaceModel } from './workspace-model.js';
  * the document that reported the problem.
  */
 export function missingStoryVariablesOwner(workspace: WorkspaceModel): string | undefined {
-  return workspace.documents.getUris().find(
-    u => !isMacroSource(u)
-      && workspace.passages.getPassagesInDocument(u).length > 0,
-  );
+  return workspace.passages.getDocumentUris().find(u => !isMacroSource(u));
 }

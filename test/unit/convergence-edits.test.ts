@@ -207,9 +207,11 @@ describe('H78: SP202 owner and quick-fix target are one document (#78)', () => {
     return { owner, next };
   }
 
-  it('H78-first: owner is the first story document', () => {
-    const { owner } = fixAndRebuild([[uri, `${data}:: Start\nhi`], ['file:///b.tw', ':: B\nhi']]);
-    expect(owner).toBe(uri);
+  it('H78-first: owner is the first story document in URI order, whatever order they open in', () => {
+    const entries: Array<[string, string]> = [[uri, `${data}:: Start\nhi`], ['file:///b.tw', ':: B\nhi']];
+    for (const order of [entries, [...entries].reverse()]) {
+      expect(fixAndRebuild(order).owner).toBe('file:///b.tw');
+    }
   });
   it('H78-empty-first: first document without passages is skipped by both', () => {
     const empty = 'file:///empty.tw';
@@ -230,9 +232,13 @@ describe('H78: SP202 owner and quick-fix target are one document (#78)', () => {
   });
   it('H78-multi: with several story documents only the first with passages is touched', () => {
     const b = 'file:///b.tw';
-    const { owner, next } = fixAndRebuild([['file:///a-empty.tw', '\n'], [uri, `${data}:: Start\nhi`], [b, ':: B\nhi\n']]);
-    expect(owner).toBe(uri);
-    expect(next.get(b)).toBe(':: B\nhi\n');
+    const entries: Array<[string, string]> = [['file:///a-empty.tw', '\n'], [uri, `${data}:: Start\nhi`], [b, ':: B\nhi\n']];
+    for (const order of [entries, [...entries].reverse()]) {
+      const { owner, next } = fixAndRebuild(order);
+      expect(owner).toBe(b);
+      expect(next.get(uri)).toBe(`${data}:: Start\nhi`);
+      expect(next.get('file:///a-empty.tw')).toBe('\n');
+    }
   });
   it('H78-unsaved: an open unsaved edit that adds passages changes owner and target together', () => {
     const empty = 'file:///empty.tw';

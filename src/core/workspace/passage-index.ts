@@ -117,6 +117,11 @@ export class PassageIndex {
     return this.byUri.get(uri) ?? [];
   }
 
+  /** The documents that hold a passage, in sorted URI order (never the order they were opened in). */
+  getDocumentUris(): readonly string[] {
+    return this.uris();
+  }
+
   private getAllPassagesByUri(): Passage[][] {
     return this.uris().map(uri => this.byUri.get(uri)!);
   }
