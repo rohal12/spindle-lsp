@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * The oldest Spindle the LSP supports. spindle-lsp is built on the tooling
@@ -46,21 +47,52 @@ export const DEFAULT_TARGET: SpindleTarget = { version: undefined, source: 'defa
  */
 export function readInstalledSpindleVersion(startDir: string): string | undefined {
   const target = join('node_modules', '@rohal12', 'spindle', 'package.json');
+  return findUp(startDir, dir => {
+    const candidate = join(dir, target);
+    return existsSync(candidate) ? { version: spindleVersionOf(readPackageJson(candidate)) } : undefined;
+  });
+}
+
+/**
+ * The version of the @rohal12/spindle package that contains `file` (a path or
+ * a `file:` URL, such as a resolved module): the nearest `package.json` above
+ * it that has a name, if that one is @rohal12/spindle's. Undefined otherwise.
+ */
+export function readSpindlePackageVersion(file: string): string | undefined {
+  const path = file.startsWith('file:') ? fileURLToPath(file) : file;
+  return findUp(dirname(path), dir => {
+    const candidate = join(dir, 'package.json');
+    if (!existsSync(candidate)) return undefined;
+    const pkg = readPackageJson(candidate);
+    // A package.json without a name (`{"type": "module"}` in a build folder) is not the package root.
+    if (pkg?.name === undefined) return undefined;
+    return { version: pkg.name === '@rohal12/spindle' ? spindleVersionOf(pkg) : undefined };
+  });
+}
+
+/** Walk from `startDir` up to the root until `visit` returns a result. */
+function findUp(startDir: string, visit: (dir: string) => { version: string | undefined } | undefined): string | undefined {
   let dir = resolve(startDir);
   for (;;) {
-    const candidate = join(dir, target);
-    if (existsSync(candidate)) {
-      try {
-        const version: unknown = (JSON.parse(readFileSync(candidate, 'utf-8')) as { version?: unknown }).version;
-        return typeof version === 'string' && parseSpindleVersion(version) ? version : undefined;
-      } catch {
-        return undefined;
-      }
-    }
+    const found = visit(dir);
+    if (found) return found.version;
     const parent = dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;
   }
+}
+
+function readPackageJson(file: string): { name?: unknown; version?: unknown } | undefined {
+  try {
+    return JSON.parse(readFileSync(file, 'utf-8')) as { name?: unknown; version?: unknown };
+  } catch {
+    return undefined;
+  }
+}
+
+function spindleVersionOf(pkg: { version?: unknown } | undefined): string | undefined {
+  const version = pkg?.version;
+  return typeof version === 'string' && parseSpindleVersion(version) ? version : undefined;
 }
 
 /**

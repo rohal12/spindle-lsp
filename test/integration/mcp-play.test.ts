@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,6 +13,13 @@ import { registerPlayTools } from '../../src/mcp/play/tools.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
 const fixture = join(fixturesDir, 'play', 'story.twee');
+/** The version of the @rohal12/spindle the play tools run on. */
+const runtimeVersion: string = JSON.parse(
+  readFileSync(
+    join(import.meta.dirname, '..', '..', 'node_modules', '@rohal12', 'spindle', 'package.json'),
+    'utf-8',
+  ),
+).version;
 
 interface ToolResult {
   isError?: boolean;
@@ -70,7 +77,8 @@ describe('spindle_play_* tools over MCP', () => {
       session: string;
       observation: Observation;
     };
-    expect(started.content[0].text).toMatch(/^Session: \w+/);
+    expect(started.content[0].text).toMatch(/^Session: \w+\n\nPassage: Start/);
+    expect(started.content[0].text).not.toContain('Note:');
     expect(started.content[0].text).toContain('Passage: Start');
     expect(started.content[0].text).toContain('HP: 3');
 
@@ -114,12 +122,38 @@ describe('spindle_play_* tools over MCP', () => {
     const directory = mkdtempSync(join(tmpdir(), 'spindle-play-html-'));
     try {
       const file = join(directory, 'story.html');
-      writeFileSync(file, html);
+      const older = html.replace(/(<tw-storydata\b[^>]*?\sformat-version=")[^"]*"/, '$10.0.1"');
+      expect(older).not.toBe(html);
+      writeFileSync(file, older);
       const { call } = await connect();
       const result = await call('spindle_play_start', { story: file });
       expect(result.isError).toBeFalsy();
-      expect(result.content[0].text).toContain('Passage: Start');
+      const note = `The story was compiled with Spindle 0.0.1; it runs on the installed Spindle ${runtimeVersion}.`;
+      expect(result.content[0].text).toMatch(/^Session: \w+\nNote: /);
+      expect(result.content[0].text).toContain(`\nNote: ${note}\n`);
+      expect(result.structuredContent?.notes).toContain(note);
       expect(result.content[0].text).toContain('HP: 3');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('notes when the project has another Spindle installed than the one that plays it', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'spindle-play-project-'));
+    try {
+      const installed = join(directory, 'node_modules', '@rohal12', 'spindle');
+      mkdirSync(installed, { recursive: true });
+      writeFileSync(
+        join(installed, 'package.json'),
+        JSON.stringify({ name: '@rohal12/spindle', version: '0.60.0' }),
+      );
+      copyFileSync(fixture, join(directory, 'story.twee'));
+      const { call } = await connect();
+      const result = await call('spindle_play_start', { story: join(directory, 'story.twee') });
+      expect(result.isError, result.content[0].text).toBeFalsy();
+      const note = `The project has Spindle 0.60.0 installed; spindle_play runs the story on Spindle ${runtimeVersion}, the copy spindle-lsp ships with.`;
+      expect(result.content[0].text).toContain(`\nNote: ${note}\n\nPassage: Start`);
+      expect(result.structuredContent?.notes).toEqual([note]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -206,7 +240,7 @@ describe('spindle_play_* tools over MCP', () => {
           const play = await import('@rohal12/spindle/play');
           return {
             resolveStoryHtml: play.resolveStoryHtml,
-            openPlaySession: options => play.openPlaySession({ ...options, stepTimeoutMs: 1000 }),
+            openPlaySession: options => play.openPlaySession({ ...options, stepTimeoutMs: 3000 }),
           };
         },
       });
@@ -216,7 +250,7 @@ describe('spindle_play_* tools over MCP', () => {
       const stuck = await call('spindle_play_step', { session: id, action: link.id });
       expect(stuck.isError).toBe(true);
       expect(stuck.content[0].text).toBe(
-        'spindle: play session timed out after 1000 ms (the story may be stuck in a loop)',
+        'spindle: play session timed out after 3000 ms (the story may be stuck in a loop)',
       );
       const after = await call('spindle_play_observe', { session: id });
       expect(after.isError).toBe(true);

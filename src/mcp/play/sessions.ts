@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { statSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 import type {
   Observation,
@@ -7,6 +8,11 @@ import type {
   openPlaySession,
   resolveStoryHtml,
 } from '@rohal12/spindle/play';
+
+import {
+  readInstalledSpindleVersion,
+  readSpindlePackageVersion,
+} from '../../core/workspace/spindle-version.js';
 
 export type { PlaySession };
 
@@ -23,6 +29,8 @@ export const PLAY_SPINDLE_VERSION = '0.61.0';
 export interface PlayModule {
   resolveStoryHtml: typeof resolveStoryHtml;
   openPlaySession: typeof openPlaySession;
+  /** The version of the @rohal12/spindle that runs the stories, if known. */
+  version?: string;
 }
 
 const PLAY_SPECIFIER = '@rohal12/spindle/play';
@@ -32,18 +40,44 @@ function missingPlayMessage(): string {
 }
 
 /**
+ * Whether `error` says that @rohal12/spindle itself is not installed or has no
+ * `./play` entry, as opposed to spindle/play failing to load (a dependency of
+ * it missing, a syntax error), which is reported as it is.
+ */
+function isMissingPlay(error: unknown): boolean {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  if (typeof message !== 'string') return false;
+  if (code === 'ERR_MODULE_NOT_FOUND') return message.includes("'@rohal12/spindle'");
+  if (code === 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
+    return /[\\/]@rohal12[\\/]spindle[\\/]package\.json\b/.test(message);
+  }
+  return false;
+}
+
+function runtimeVersion(locate: () => string): string | undefined {
+  try {
+    return readSpindlePackageVersion(locate());
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Import `@rohal12/spindle/play` on demand. The specifier is a variable so the
  * bundler leaves it to the runtime, and the rest of the server still loads
- * with an installed Spindle that predates the entry.
+ * when it is missing. `locate` resolves the entry, to read the version of the
+ * package it belongs to.
  */
 export async function loadPlay(
   importer: () => Promise<unknown> = () => import(PLAY_SPECIFIER),
+  locate: () => string = () => import.meta.resolve(PLAY_SPECIFIER),
 ): Promise<PlayModule> {
   let mod: unknown;
   try {
     mod = await importer();
-  } catch {
-    throw new Error(missingPlayMessage());
+  } catch (error) {
+    if (isMissingPlay(error)) throw new Error(missingPlayMessage());
+    throw error;
   }
   if (
     typeof mod !== 'object' ||
@@ -52,7 +86,22 @@ export async function loadPlay(
   ) {
     throw new Error(missingPlayMessage());
   }
-  return mod as PlayModule;
+  const { resolveStoryHtml, openPlaySession } = mod as PlayModule;
+  return { resolveStoryHtml, openPlaySession, version: runtimeVersion(locate) };
+}
+
+/**
+ * A note when the Spindle installed for the story's project is not the one
+ * that plays it (spindle-lsp's own dependency), or none.
+ */
+function runtimeNote(storyPath: string, runtime: string | undefined): string[] {
+  if (runtime === undefined) return [];
+  const isDirectory = statSync(storyPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
+  const installed = readInstalledSpindleVersion(isDirectory ? storyPath : dirname(storyPath));
+  if (installed === undefined || installed === runtime) return [];
+  return [
+    `The project has Spindle ${installed} installed; spindle_play runs the story on Spindle ${runtime}, the copy spindle-lsp ships with.`,
+  ];
 }
 
 export interface PlaySessionsOptions {
@@ -102,9 +151,9 @@ export class PlaySessions {
     this.starting++;
     try {
       const play = await this.load();
-      const { html, notes } = await play.resolveStoryHtml({
-        path: resolve(process.cwd(), storyPath),
-      });
+      const path = resolve(process.cwd(), storyPath);
+      const { html, notes: storyNotes } = await play.resolveStoryHtml({ path });
+      const notes = [...storyNotes, ...runtimeNote(path, play.version)];
       const session = await play.openPlaySession({ html });
       let observation: Observation;
       try {
