@@ -14,6 +14,7 @@
     "review:convergence": "vitest run --config vitest.review.config.ts",
     "typecheck": "tsc --noEmit",
     "duplication": "node scripts/duplication.ts jscpd && node scripts/duplication.ts cpd && node scripts/duplication.ts fallow",
+    "smoke:pack": "node scripts/smoke-pack.ts",
     "lint": "tsc --noEmit && npm test"
   },
   "dependencies": {

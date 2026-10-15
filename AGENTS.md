@@ -36,6 +36,20 @@ Review scope follows the user's request. A diff review reports introduced
 regressions; a full implementation audit can report existing defects and must
 identify them as such. Review does not authorize product fixes or commits.
 
+Before a release that touches packaging (dependencies, `files`, the esbuild
+externals) or the play tools, run `npm run smoke:pack`. It packs spindle-lsp,
+installs the tarball into a fresh project outside the repository, starts the
+installed `dist/bin.js mcp` and plays `test/fixtures/play/story.twee` through
+`spindle_play_start`, so a dependency that npm users would not get fails here
+and not only for them. While `@rohal12/spindle` is a `file:` dependency, the
+linked Spindle checkout must already be built; it is packed with its scripts
+off. The project goes under `SMOKE_PACK_DIR`, else the system temp directory,
+and the script refuses a directory with a `node_modules`, `package.json` or
+`.git` above it (on a machine with a stray `/tmp/node_modules`, set
+`SMOKE_PACK_DIR`). CI does not run it yet: `npm ci` there cannot install the
+`file:` link to a sibling Spindle checkout. Once the dependency is a
+registry version, add it to the CI workflow.
+
 The Claude Code plugin is `plugins/spindle-lsp`, listed by the repository's
 marketplace (`.claude-plugin/marketplace.json`). It runs the latest npm release
 through `npx`, so it carries no version to bump; check it with
