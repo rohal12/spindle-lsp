@@ -10,12 +10,12 @@ export interface ParsedPassageHeader {
 
 /**
  * Regex for matching passage headers.
- * Captures: (1) `:: ` prefix, (2) passage name, (3) optional `[tags]`, (4) optional `{meta}`
+ * Captures: (1) `::` and optional whitespace, (2) passage name, (3) optional `[tags]`, (4) optional `{meta}`
  *
  * Derived from the reference in twee3-language-tools/src/parse-text.ts:
  *   /(^::\s*)(.*?)(\[.*?\]\s*)?(\{.*?\}\s*)?\r?$/
  */
-const passageHeaderRegex = /^(::\s+)(.*?)(\[.*?\]\s*)?(\{.*?\}\s*)?\r?$/;
+const passageHeaderRegex = /^(::\s*)(.*?)(\[.*?\]\s*)?(\{.*?\}\s*)?\r?$/;
 
 const SPECIAL_PASSAGES = new Set([
   'StoryVariables',
@@ -59,13 +59,14 @@ export function parsePassageHeader(line: string, lineNumber: number): ParsedPass
   if (/[\[\]\{\}]/.test(escapedName)) return null;
 
   // Parse tags
-  const tagsStr = rawTags.trim();
+  const tagsStr = line.slice(nameEnd, nameEnd + rawTags.length).trim();
   let tags: string[] = [];
   if (tagsStr) {
-    const inner = tagsStr.substring(1, tagsStr.length - 1).trim();
+    const inner = tagsStr.substring(1, tagsStr.length - 1);
     // Reject unescaped meta characters inside tags
     if (/[\[\]\{\}]/.test(inner.replace(/\\./g, 'ec'))) return null;
-    tags = inner ? inner.split(/\s+/) : [];
+    const decoded = inner.replace(/\\(.)/g, '$1').trim();
+    tags = decoded ? decoded.split(/\s+/) : [];
   }
 
   // Parse meta JSON

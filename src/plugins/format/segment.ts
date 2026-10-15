@@ -7,8 +7,6 @@ export interface Passage {
   startLine: number;
 }
 
-const PASSAGE_HEADER_REGEX = /^::\s+/;
-
 /**
  * Split a Twee document into passages by `::` headers.
  */
@@ -38,7 +36,7 @@ export function splitPassages(text: string): Passage[] {
   }
 
   for (let i = 0; i < lines.length; i++) {
-    if (PASSAGE_HEADER_REGEX.test(lines[i])) {
+    if (parsePassageHeader(lines[i], i)) {
       pushPassage();
       currentHeader = lines[i];
       bodyLines = [];
@@ -56,7 +54,7 @@ export function splitPassages(text: string): Passage[] {
  * Classify a passage by its tags.
  */
 export function classifyPassage(header: string): 'script' | 'stylesheet' | 'normal' {
-  const tags = headerTags(header).map(t => t.toLowerCase());
+  const tags = headerTags(header);
   if (tags.includes('script')) return 'script';
   if (tags.includes('stylesheet')) return 'stylesheet';
   return 'normal';

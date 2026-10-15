@@ -109,7 +109,7 @@ export async function runFormat(args: string[]): Promise<number> {
 
   for (const [filePath, text] of texts) {
     try {
-      const formatted = await formatDocument(text, formatOpts);
+      const formatted = await formatDocument(text, { ...formatOpts, filePath });
 
       if (formatted !== text) {
         if (options.check) {

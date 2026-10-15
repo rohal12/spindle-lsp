@@ -17,6 +17,14 @@ interface SupplementEntry {
   skipArgs?: boolean;
 }
 
+/** Apply only the explicitly supplied presentation/schema overrides. */
+function applySupplement(info: MacroInfo, entry: SupplementEntry): void {
+  for (const field of ['description', 'parameters', 'parameterDocs', 'children', 'parents', 'skipArgs'] as const) {
+    if (entry[field] !== undefined) Object.assign(info, { [field]: entry[field] });
+  }
+  if (entry.container !== undefined) info.block = entry.container;
+}
+
 /** What the registry takes of a discovered macro (the name's span is not needed). */
 export type DiscoveredMacroEntry = Omit<DiscoveredMacro, 'nameStart' | 'nameEnd'>;
 
@@ -222,33 +230,21 @@ export class MacroRegistry {
     if (!found) return base;
 
     const info: MacroInfo = {
-      ...base,
-      name: base?.name ?? found.name,
-      block: found.block ?? base?.block ?? false,
-      subMacros: found.subMacros?.length ? found.subMacros : base?.subMacros ?? [],
+      name: found.name,
+      block: found.block ?? false,
+      subMacros: found.subMacros ?? [],
       source: 'user',
-      storeVar: found.storeVar ?? base?.storeVar,
-      interpolate: found.interpolate ?? base?.interpolate,
-      merged: found.merged ?? base?.merged,
-      description: found.description ?? base?.description,
+      storeVar: found.storeVar,
+      interpolate: found.interpolate,
+      merged: found.merged,
+      description: found.description,
       // A definition replaces the macro it names, parameters included
       parameterDefs: found.parameterDefs,
-      // A discovered sub-macro may also belong to other (e.g. built-in) parents
-      parents: found.parents
-        ? [...new Set([...(base?.parents ?? []), ...found.parents])]
-        : base?.parents,
+      parents: found.parents,
     };
 
     const config = this.configEntries.get(key);
-    if (config) {
-      if (config.description !== undefined) info.description = config.description;
-      if (config.parameters !== undefined) info.parameters = config.parameters;
-      if (config.parameterDocs !== undefined) info.parameterDocs = config.parameterDocs;
-      if (config.children !== undefined) info.children = config.children;
-      if (config.parents !== undefined) info.parents = config.parents;
-      if (config.skipArgs !== undefined) info.skipArgs = config.skipArgs;
-      if (config.container !== undefined) info.block = config.container;
-    }
+    if (config) applySupplement(info, config);
 
     return info;
   }
@@ -261,13 +257,7 @@ export class MacroRegistry {
 
       if (existing) {
         // Overlay fields — supplement fields win when present
-        if (entry.description !== undefined) existing.description = entry.description;
-        if (entry.parameters !== undefined) existing.parameters = entry.parameters;
-        if (entry.parameterDocs !== undefined) existing.parameterDocs = entry.parameterDocs;
-        if (entry.children !== undefined) existing.children = entry.children;
-        if (entry.parents !== undefined) existing.parents = entry.parents;
-        if (entry.skipArgs !== undefined) existing.skipArgs = entry.skipArgs;
-        if (entry.container !== undefined) existing.block = entry.container;
+        applySupplement(existing, entry);
       } else {
         // Create a new entry from the supplement
         this.macros.set(key, {

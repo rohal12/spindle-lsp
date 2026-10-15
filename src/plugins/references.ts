@@ -83,43 +83,9 @@ export interface VariableAtCursor {
   range: Range;
 }
 
-// Spindle's expression transform reads a name as `\w+` (expression.ts): `$a$b` is two variables
-const VARIABLE_CANDIDATE = /(?:\$|(?<!\w)%)(?=\w)/g;
-const VARIABLE_PATH = /^([$%])(\w+(?:\.[A-Za-z_$][\w$]*)*)/;
-
-/**
- * The `$variable` or `%transient` whose reference or declaration, as the
- * variable tracker records it, contains the cursor. Text that merely looks
- * like a variable (comments, attribute values, string contents, code in
- * script/stylesheet/data passages) is not one: navigation, rename and
- * highlighting must agree with the tracker about what is a reference.
- */
+/** The tracker owns executable source ranges, including escaped spellings. */
 export function variableAt(uri: string, position: Position, workspace: WorkspaceModel): VariableAtCursor | null {
-  const line = workspace.documents.getText(uri)?.split('\n')[position.line];
-  if (line === undefined) return null;
-  // A cursor between two adjacent variables (`$a$b`) belongs to the one it is in front of
-  let atEnd: VariableAtCursor | null = null;
-  VARIABLE_CANDIDATE.lastIndex = 0;
-  let found: RegExpExecArray | null;
-  while ((found = VARIABLE_CANDIDATE.exec(line)) !== null) {
-    const match = VARIABLE_PATH.exec(line.slice(found.index))!;
-    const start = found.index;
-    const end = start + match[0].length;
-    VARIABLE_CANDIDATE.lastIndex = start + 1;
-    if (position.character < start || position.character > end) continue;
-    const sigil = match[1] as '$' | '%';
-    const name = match[2].split('.')[0];
-    const refs = sigil === '%'
-      ? findTransientReferences(name, workspace, true)
-      : findVariableReferences(name, workspace, true);
-    const hit = refs.find(r =>
-      r.uri === uri && r.range.start.line === position.line && r.range.start.character === start);
-    if (!hit) continue;
-    const symbol = { sigil, name, range: hit.range };
-    if (position.character < end) return symbol;
-    atEnd ??= symbol;
-  }
-  return atEnd;
+  return workspace.variables.referenceAt(uri, position);
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,9 @@ import { ErrorCodes, ResponseError } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { passagePieces, type Piece } from '@rohal12/spindle/tooling';
+import { lexJs, parseDeclarations, passagePieces, pieceOffset, type Piece } from '@rohal12/spindle/tooling';
+import { sourceView, viewIndex } from '../core/markup/source-view.js';
+import { positionToOffset } from '../core/text.js';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
 import { encodeEnclosingMarkup, passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
@@ -129,6 +131,10 @@ export function computeRename(
           `Cannot rename to ${JSON.stringify(newName)}: a transient name cannot start with a digit, \`%5\` is the modulo operator in code.`,
         ).at(uri, symbol.range);
       }
+      const declaration = parseDeclarations(`${symbol.sigil}${bareName} = 0`, symbol.sigil);
+      if (declaration.errors.length || declaration.declarations[0]?.name !== bareName) {
+        throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: ${declaration.errors[0]?.message ?? 'invalid variable name'}.`).at(uri, symbol.range);
+      }
       if (bareName === symbol.name) return new Map();
       if (workspace.variables.getDeclared().has(bareName) || workspace.variables.getDeclaredTransient().has(bareName)) {
         throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: a variable with that name already exists.`).at(uri, symbol.range);
@@ -139,11 +145,22 @@ export function computeRename(
       // Reference ranges start with the sigil and may continue with a
       // property path (`$player.health`): replace only the base identifier.
       for (const ref of refs) {
-        const start = ref.range.start.character + 1;
-        addEdit(ref.uri, {
-          start: { line: ref.range.start.line, character: start },
-          end: { line: ref.range.start.line, character: start + symbol.name.length },
-        }, bareName);
+        const doc = workspace.markup.get(ref.uri)!;
+        const passage = doc.passageAt(ref.range.start)!;
+        const start = passage.contentOffset(positionToOffset(ref.range.start, doc.lineStarts));
+        const end = passage.contentOffset(positionToOffset(ref.range.end, doc.lineStarts));
+        const view = sourceView(passage, start, end);
+        const index = viewIndex(view, start);
+        let base: [number, number] | undefined;
+        lexJs(view.text.slice(index, viewIndex(view, end)), {
+          variable(sigil, name, at, _nesting, nameEnd) {
+            if (at === 0 && sigil === symbol.sigil && name === symbol.name) {
+              base = [pieceOffset(view, index + 1), pieceOffset(view, index + nameEnd)];
+            }
+          },
+        });
+        if (!base) throw new RenameError('Cannot locate the variable name safely.').at(ref.uri, ref.range);
+        addEdit(ref.uri, passage.range(...base), bareName);
       }
       break;
     }

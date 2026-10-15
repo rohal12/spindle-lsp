@@ -1,4 +1,5 @@
-import { splitArgs } from '@rohal12/spindle/tooling';
+import { pieceOffset, splitArgs } from '@rohal12/spindle/tooling';
+import { textAt, viewIndex } from '../core/markup/source-view.js';
 import type { Range, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
@@ -63,13 +64,15 @@ function addWidgetParamHints(
 
       // Spindle's own split of the arguments: each is a trimmed piece of rawArgs, in order
       const args = splitArgs(token.rawArgs);
+      const view = textAt(passage, token.start, token.end) ?? { offset: 0 };
+      const argsStart = viewIndex(view, token.argsStart);
       let from = 0;
       for (let i = 0; i < Math.min(args.length, widget.params.length); i++) {
         const at = token.rawArgs.indexOf(args[i], from);
         if (at === -1) break;
         from = at + args[i].length;
         hints.push({
-          position: passage.position(token.argsStart + at),
+          position: passage.position(pieceOffset(view, argsStart + at)),
           label: `${widget.params[i]}:`,
           kind: 'parameter',
         });

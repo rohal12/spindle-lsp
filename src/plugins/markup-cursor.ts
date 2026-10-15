@@ -10,6 +10,7 @@ import {
 } from '@rohal12/spindle/tooling';
 import { PassageMarkup } from '../core/markup/passage-markup.js';
 import { walkNodes } from '../core/markup/tree.js';
+import { viewIndex, type SourceView } from '../core/markup/source-view.js';
 import { positionToOffset } from '../core/text.js';
 import type { Passage, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
@@ -24,6 +25,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 
 /** A run of markup the tokenizer read as one: the passage itself, or a label or attribute value that holds markup of its own. */
 export interface Region {
+  view: SourceView;
   /** The span of the passage `content` the region covers (inclusive at both ends). */
   start: number;
   end: number;
@@ -99,6 +101,7 @@ export class MarkupCursor {
       start: 0,
       end: content.length,
       text: false,
+      view: { offset: 0, text: content },
       tokens: passage.tokens,
       errors: passage.tokenization.errors,
       nodes: () => passage.pairing.nodes,
@@ -111,6 +114,7 @@ export class MarkupCursor {
         start: piece.offset,
         end,
         text: true,
+        view: piece,
         tokens: piece.tokens,
         errors: piece.errors,
         nodes: () => pairMarkup(piece.tokens, { isBlock: name => this.workspace.isContainer(name), source: content }).nodes,
@@ -126,17 +130,19 @@ export class MarkupCursor {
    * of its name.
    */
   enclosingMacro(known: (name: string) => boolean): EnclosingMacro | undefined {
-    const { content, at } = this;
+    const { at } = this;
     for (const region of this.regions) {
       const found: Array<EnclosingMacro & { start: number }> = [];
       for (const token of region.tokens) {
         if (token.type !== 'macro' || token.isClose || token.nameEnd >= at || at >= token.end) continue;
-        found.push({ start: token.start, name: token.name, argsBefore: at >= token.argsStart ? content.slice(token.argsStart, at) : '' });
+        found.push({ start: token.start, name: token.name, argsBefore: at >= token.argsStart ? region.view.text.slice(viewIndex(region.view, token.argsStart), viewIndex(region.view, at)) : '' });
       }
       for (const error of region.errors) {
-        if (error.code !== 'unclosed-macro' || error.offset >= at || error.end >= at || !/\s/.test(content[error.end] ?? '')) continue;
-        const name = content.slice(parseSelectors(content, error.offset + 1).end, error.end);
-        if (name && name[0] !== '/') found.push({ start: error.offset, name, argsBefore: content.slice(error.end, at).trimStart() });
+        const source = region.view.text;
+        const end = viewIndex(region.view, error.end);
+        if (error.code !== 'unclosed-macro' || error.offset >= at || error.end >= at || !/\s/.test(source[end] ?? '')) continue;
+        const name = source.slice(parseSelectors(source, viewIndex(region.view, error.offset) + 1).end, end);
+        if (name && name[0] !== '/') found.push({ start: error.offset, name, argsBefore: source.slice(end, viewIndex(region.view, at)).trimStart() });
       }
       const innermost = found.filter(macro => known(macro.name)).sort((a, b) => b.start - a.start)[0];
       if (innermost) return { name: innermost.name, argsBefore: innermost.argsBefore };

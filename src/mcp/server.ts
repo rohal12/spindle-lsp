@@ -231,7 +231,7 @@ export async function formatFiles(pattern: string, cwd: string = process.cwd()):
     const text = contents.get(pathToFileURL(filePath).toString());
     if (text === undefined) continue;
     try {
-      const result = await formatDocument(text);
+      const result = await formatDocument(text, { filePath });
 
       if (result !== text) {
         writeFileSync(filePath, result, 'utf-8');
@@ -280,7 +280,7 @@ export async function checkFormatting(
     const text = contents.get(pathToFileURL(filePath).toString());
     if (text === undefined) continue;
     try {
-      const result = await formatDocument(text);
+      const result = await formatDocument(text, { filePath });
       (result !== text ? needsFormatting : alreadyFormatted).push(relativeTo(cwd, filePath));
     } catch {
       // Skip files the formatter fails on

@@ -55,10 +55,9 @@ export function variableUses(passage: PassageMarkup): VariableUse[] {
   for (const piece of passage.pieces) {
     if (piece.kind !== 'code') continue;
     lexJs(piece.code, {
-      variable(sigil, name, index) {
-        const nameEnd = index + 1 + name.length;
+      variable(sigil, name, index, _nesting, nameEnd) {
         const pathEnd = nameEnd + pathLength(piece.code, nameEnd);
-        uses.push({ sigil, name, start: pieceOffset(piece, index), end: pieceOffset(piece, pathEnd - 1) + 1 });
+        uses.push({ sigil, name, start: pieceOffset(piece, index), end: pieceOffset(piece, pathEnd) });
       },
     }, piece.goal);
   }
