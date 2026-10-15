@@ -73,3 +73,27 @@ authorized commits, pushes and PRs, not an upstream merge that publishes npm.
 The six failures remain defects with that owner; the draft is not ready to
 merge. Once the dependency is released, regenerate the results file and record
 the published runtime and green commands here before closing #96.
+
+## Published release and merge verification — 2026-10-15
+
+The draft dependency gate above is resolved. Upstream PR #561 merged as
+`2efcd0a45b6610b5fe9adfc67bff089b1bec6314`; its automatic
+[release workflow](https://github.com/rohal12/spindle/actions/runs/38648107197)
+passed and published Spindle 0.60.3. The LSP now pins that published release
+in its devDependency and lockfile. The lockfile's root peer range is also
+synchronized with the existing `package.json` range, `>=0.60.0`.
+
+On Node 22.18.0, `TMPDIR=/var/tmp npm test` exits 0: all 2,089 unit/integration
+tests in 80 files and all 6,077 matrix cells in 18 shards pass. Regenerating
+the retained results against 0.60.3 changes exactly the six #96 wrapping
+cells from fail to pass; all cell identities, dimensions and the 13 retained
+not-applicable states are unchanged. No assertion was removed or weakened.
+`npm run typecheck`, `npm run build` and `npm run duplication` also exit 0;
+duplication remains 2.49% jscpd, 4.02% PMD CPD and 10.50% fallow.
+
+The actual PR diff and relevant consumers received a second independent
+review with no actionable findings, including the dependency provenance and
+the six result transitions. An additional 48 temporary edit-encoding probes
+passed for nested labels and quoted/backslash passage names; the permanent
+ticket-owned contracts remain in the normal gate. This supersedes the draft
+publication blocker recorded above; #96 is repaired by the bundled release.

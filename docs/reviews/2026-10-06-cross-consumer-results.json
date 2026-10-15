@@ -1,10 +1,10 @@
 {
  "generated": "2026-10-06",
- "spindleVersion": "0.60.0",
+ "spindleVersion": "0.60.3",
  "summary": {
   "total": 6077,
-  "pass": 6058,
-  "fail": 6,
+  "pass": 6064,
+  "fail": 0,
   "not-run": 0,
   "not-applicable": 13
  },
@@ -59084,8 +59084,7 @@
    "boundary": "LF",
    "state": "public stdio/disk/reload",
    "consumer": "bundled CLI bounded memory/termination",
-   "status": "fail",
-   "note": "expected 'SIGABRT' to be null"
+   "status": "pass"
   },
   {
    "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-4-width-2-space",
@@ -59105,8 +59104,7 @@
    "boundary": "LF",
    "state": "public stdio/disk/reload",
    "consumer": "bundled CLI bounded memory/termination",
-   "status": "fail",
-   "note": "expected 'SIGABRT' to be null"
+   "status": "pass"
   },
   {
    "id": "I/entry-cli/FORMAT-WRAP/plain/indent-4-width-4-space",
@@ -59206,8 +59204,7 @@
    "boundary": "LF",
    "state": "public stdio/disk/reload",
    "consumer": "bundled CLI bounded memory/termination",
-   "status": "fail",
-   "note": "expected 'SIGABRT' to be null"
+   "status": "pass"
   },
   {
    "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-1-width-2-tab",
@@ -59227,8 +59224,7 @@
    "boundary": "LF",
    "state": "public stdio/disk/reload",
    "consumer": "bundled CLI bounded memory/termination",
-   "status": "fail",
-   "note": "expected 'SIGABRT' to be null"
+   "status": "pass"
   },
   {
    "id": "I/entry-cli/FORMAT-WRAP/plain/indent-84-width-80-space",
@@ -59238,8 +59234,7 @@
    "boundary": "LF",
    "state": "public stdio/disk/reload",
    "consumer": "bundled CLI bounded memory/termination",
-   "status": "fail",
-   "note": "expected 'SIGABRT' to be null"
+   "status": "pass"
   },
   {
    "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-84-width-80-space",
@@ -59259,8 +59254,7 @@
    "boundary": "LF",
    "state": "public stdio/disk/reload",
    "consumer": "bundled CLI bounded memory/termination",
-   "status": "fail",
-   "note": "expected 'SIGABRT' to be null"
+   "status": "pass"
   },
   {
    "id": "I/entry-cli/FORMAT-WRAP/plain/indent-0-width-2-space",

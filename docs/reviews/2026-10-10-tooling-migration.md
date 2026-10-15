@@ -582,3 +582,13 @@ published Spindle 0.60.0, 0.60.1 and 0.60.2, and is filed upstream as
 [rohal12/spindle#560](https://github.com/rohal12/spindle/issues/560). The bounded
 CLI cases remain enabled in the normal gate while the upstream repair is
 prepared; no local rule or fallback works around it.
+
+### Published wrapping repair — 2026-10-15
+
+Upstream PR #561 merged and published Spindle 0.60.3. The LSP pins that
+release and retains its public `formatPassage` call. All six previously
+failing wrapping cells now pass, with no local workaround or assertion
+change. The normal gate passes 2,089 unit/integration tests and 6,077 matrix
+cells; typecheck, build and all three duplication checks pass. See the
+[published-release verification](2026-10-15-review-repairs.md#published-release-and-merge-verification--2026-10-15)
+for release provenance and exact corpus changes.
