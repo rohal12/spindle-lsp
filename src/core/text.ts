@@ -34,3 +34,17 @@ export function positionToOffset(position: Position, lineStarts: readonly number
 export function offsetsToRange(start: number, end: number, lineStarts: readonly number[]): Range {
   return { start: offsetToPosition(start, lineStarts), end: offsetToPosition(end, lineStarts) };
 }
+
+/** `line` without the CR a CRLF line ending leaves on it when text is split at LF. */
+export function withoutCr(line: string): string {
+  return line.endsWith('\r') ? line.slice(0, -1) : line;
+}
+
+/**
+ * The lines of `text`, split at LF as Twee and the rest of the server do, each
+ * without its line ending: a CRLF's CR is not part of the line, so a range
+ * built from a line's length never ends past the line the client sees.
+ */
+export function splitLines(text: string): string[] {
+  return text.split('\n').map(withoutCr);
+}

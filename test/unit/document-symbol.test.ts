@@ -89,4 +89,11 @@ describe('computeDocumentSymbols', () => {
     const symbols = computeDocumentSymbols('file:///unknown.tw', ws);
     expect(symbols).toEqual([]);
   });
+
+  it('ends the selection range before the CR of a CRLF header', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\r\nHello\r\n:: Next\nBye\r\n' });
+    const symbols = computeDocumentSymbols('file:///test.tw', ws);
+    expect(symbols.map(s => s.selectionRange.end)).toEqual([{ line: 0, character: 8 }, { line: 2, character: 7 }]);
+    expect(symbols[0].range.end).toEqual({ line: 1, character: 5 });
+  });
 });

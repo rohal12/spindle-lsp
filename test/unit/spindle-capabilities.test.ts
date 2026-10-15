@@ -192,4 +192,15 @@ describe('SP001: Spindle older than the supported minimum', () => {
     // The installed copy is the runtime the story builds with: it wins over StoryData
     expect(diagnose(project('0.60.3'), data + text).diagnostics.filter(d => d.code === 'SP001')).toEqual([]);
   });
+
+  it('ends at the first header, not past its line, on CRLF and mixed line endings', () => {
+    const root = project('0.59.19');
+    for (const [eol, source] of [
+      ['crlf', text.replaceAll('\n', '\r\n')],
+      ['mixed', ':: StoryVariables\r\n$x = 1\n:: Start\r\n{$x}\n'],
+    ]) {
+      const found = diagnose(root, source).diagnostics.filter(d => d.code === 'SP001');
+      expect(found.map(d => d.range), eol).toEqual([{ start: { line: 0, character: 0 }, end: { line: 0, character: 17 } }]);
+    }
+  });
 });

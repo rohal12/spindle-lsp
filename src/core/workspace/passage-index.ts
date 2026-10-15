@@ -1,5 +1,6 @@
 import type { Passage } from '../types.js';
 import { parsePassageHeader } from '../parsing/passage-parser.js';
+import { splitLines } from '../text.js';
 
 /**
  * Maintains an index of all passages across all open documents.
@@ -24,7 +25,7 @@ export class PassageIndex {
     this.byUri.delete(uri);
     this.sortedUris = null;
 
-    const lines = text.split('\n');
+    const lines = splitLines(text);
     const passages: Passage[] = [];
 
     for (let i = 0; i < lines.length; i++) {

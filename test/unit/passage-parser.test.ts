@@ -97,4 +97,11 @@ describe('parsePassageHeader', () => {
     // Invalid JSON meta should cause the line to not match as a valid header
     expect(result).toBeNull();
   });
+
+  it('ends the header range before a CRLF line ending', () => {
+    // A caller that splits at LF keeps the CR: it is the line break, not header text
+    const result = parsePassageHeader(':: Start [tag]\r', 2);
+    expect(result!.name).toBe('Start');
+    expect(result!.headerRange).toEqual({ start: { line: 2, character: 0 }, end: { line: 2, character: 14 } });
+  });
 });

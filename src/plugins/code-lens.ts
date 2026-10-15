@@ -1,4 +1,5 @@
 import type { Range } from '../core/types.js';
+import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
@@ -32,7 +33,7 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
   if (text === undefined) return [];
 
   // Lines end at `\n`; a CRLF document's `\r` is part of the line break, not of the line
-  const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+  const lines = splitLines(text);
   const lenses: CodeLensItem[] = [];
 
   const storyVarsPassage = workspace.passages.getStoryVariables();

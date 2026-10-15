@@ -113,4 +113,21 @@ describe('PassageIndex', () => {
     expect(index.getPassage('Alpha')).toBeUndefined();
     expect(index.getPassage('Gamma')).toBeDefined();
   });
+
+  it('ends every range before the CR of a CRLF or mixed line ending', () => {
+    // Line lengths without the line break, as the client counts them
+    const text = ':: Start\r\nline\nbody\r\n:: Next\nmore\r\n';
+    const lengths = text.split(/\r\n|\n/).map(l => l.length);
+    const index = new PassageIndex();
+    index.rebuild('file:///story.tw', text);
+    for (const p of index.getPassagesInDocument('file:///story.tw')) {
+      for (const pos of [p.range.end, p.headerEnd.end, p.nameRange.end]) {
+        expect(pos.character, `${p.name} ${JSON.stringify(pos)}`).toBeLessThanOrEqual(lengths[pos.line]);
+      }
+    }
+    const [start, next] = index.getPassagesInDocument('file:///story.tw');
+    expect(start.headerEnd.end).toEqual({ line: 0, character: 8 });
+    expect(start.range.end).toEqual({ line: 2, character: 4 });
+    expect(next.headerEnd.end).toEqual({ line: 3, character: 7 });
+  });
 });

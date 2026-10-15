@@ -17,6 +17,7 @@ import {
   type WidgetDefinition,
 } from '@rohal12/spindle/tooling';
 import type { Range } from '../core/types.js';
+import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
@@ -914,7 +915,7 @@ function lineLengthDiagnostics(doc: DocumentMarkup, maxLength: number): SpindleD
   }
 
   const diagnostics: SpindleDiagnostic[] = [];
-  const lines = doc.text.split('\n');
+  const lines = splitLines(doc.text);
   for (let i = 0; i < lines.length; i++) {
     if (excludedLines.has(i)) continue;
     const line = lines[i];
