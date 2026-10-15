@@ -7,6 +7,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { WorkspaceModel } from '../../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../../src/core/types.js';
 import { computeDiagnostics } from '../../../src/plugins/diagnostics.js';
+import { splitLines } from '../../../src/core/text.js';
 import { computeRename, RenameError } from '../../../src/plugins/rename.js';
 import { computeDocumentLinks } from '../../../src/plugins/document-link.js';
 import { computeCodeLenses } from '../../../src/plugins/code-lens.js';
@@ -15,7 +16,7 @@ import { formatDocument } from '../../../src/plugins/format.js';
 import { getHoverInfo } from '../../../src/plugins/hover.js';
 import { findPassageReferences, findWidgetReferences } from '../../../src/plugins/references.js';
 import {
-  build, buildFresh, cursorOffsets, doc, notApplicable, rangeProblem, root, snapshot, spanKey, sweep, texts, U,
+  build, buildFresh, cursorOffsets, doc, notApplicable, rangeProblem, defaultRoot, snapshot, spanKey, sweep, texts, U,
   type Files, type Probe,
 } from './harness.js';
 import {
@@ -34,7 +35,7 @@ function allSweeps(model: WorkspaceModel) {
 
 // --- 1. every range any consumer returns is a valid range in its document ---
 
-export function propBounds(files: Files, at = root) {
+export function propBounds(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   // ranges are validated against the client's own text, not the model's copy
   const check = (what: string, uri: string, r: Range) => {
@@ -47,9 +48,9 @@ export function propBounds(files: Files, at = root) {
     for (const l of computeDocumentLinks(uri, model)) check('document link', uri, l.range);
     for (const l of computeCodeLenses(uri, model)) check('code lens', uri, l.range);
     const text = files[uri.replace('file:///', '')];
-    const lines = text.split('\n');
+    const lines = splitLines(text);
     for (const t of computeSemanticTokensAbsolute(uri, model)) {
-      const line = (lines[t.line] ?? '').replace(/\r$/, '');
+      const line = lines[t.line] ?? '';
       check('semantic token', uri, { start: { line: t.line, character: t.startChar }, end: { line: t.line, character: t.startChar + t.length } });
       expect(t.length, `token on line ${t.line} is empty`).toBeGreaterThan(0);
       expect(t.startChar + t.length).toBeLessThanOrEqual(line.length);
@@ -69,7 +70,7 @@ export function propBounds(files: Files, at = root) {
 
 // --- 2. references / definition / prepareRename agree on every span ---
 
-export function propNavigationAgree(files: Files, at = root) {
+export function propNavigationAgree(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   const sweeps = allSweeps(model);
   const byUri = new Map(sweeps.map(s => [s.uri, s.probes]));
@@ -116,7 +117,7 @@ export function propNavigationAgree(files: Files, at = root) {
 
 // --- 3. runtime oracle: passage references across diagnostics/links/references/lenses ---
 
-export function propPassageOracle(files: Files, at = root) {
+export function propPassageOracle(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   const known = new Set<string>();
   const perDoc = new Map<string, ReturnType<typeof runtimePassageRefs>>();
@@ -198,7 +199,7 @@ function isBlockWidget(files: Files, name: string): boolean {
 
 // --- 4. widget and macro heads: oracle for definitions, references, diagnostics, tokens ---
 
-export function propMacroHeadOracle(files: Files, at = root) {
+export function propMacroHeadOracle(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   for (const uri of model.documents.getUris()) {
     const text = model.documents.getText(uri)!;
@@ -317,7 +318,7 @@ const codeMultiset = (model: WorkspaceModel) => {
   return out.sort();
 };
 
-export function propRename(files: Files, at = root) {
+export function propRename(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   const seen = new Set<string>();
   let renamed = 0;
@@ -395,7 +396,7 @@ export function propRename(files: Files, at = root) {
 
 // --- 6. formatting: idempotent, diagnostics and runtime payload unchanged ---
 
-export async function propFormat(files: Files, at = root) {
+export async function propFormat(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   const formatted: Files = {};
   let changed = false;
@@ -461,14 +462,14 @@ export async function propFormatDoLiterals(files: Files) {
 
 // --- 7. semantic tokens: valid, sorted, non-overlapping ---
 
-export function propTokens(files: Files, at = root) {
+export function propTokens(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   let n = 0;
   for (const uri of model.documents.getUris()) {
     const toks = computeSemanticTokensAbsolute(uri, model);
     n += toks.length;
     const text = model.documents.getText(uri)!;
-    const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+    const lines = splitLines(text);
     let prev: { line: number; end: number } | null = null;
     for (const t of toks) {
       if (prev) {
@@ -494,7 +495,7 @@ export function propTokens(files: Files, at = root) {
 
 // --- 7b. hover: only on what the semantic tokens and the runtime tokens say is a symbol ---
 
-export function propHover(files: Files, at = root) {
+export function propHover(files: Files, at = defaultRoot()) {
   const model = build(files, undefined, at);
   let hovers = 0;
   for (const uri of model.documents.getUris()) {
@@ -528,7 +529,7 @@ export function propHover(files: Files, at = root) {
 
 // --- 8. state: incremental sequences equal a fresh build; order independence ---
 
-export function propStateOrder(files: Files, at = root) {
+export function propStateOrder(files: Files, at = defaultRoot()) {
   const names = Object.keys(files);
   if (names.length < 2) notApplicable('single document: file order cannot differ');
   const a = snapshot(build(files, names, at));
@@ -536,7 +537,7 @@ export function propStateOrder(files: Files, at = root) {
   expect(b, 'workspace initialization order changed consumer output').toEqual(a);
 }
 
-export function propStateIncremental(files: Files, at = root) {
+export function propStateIncremental(files: Files, at = defaultRoot()) {
   const names = Object.keys(files);
   const fresh = snapshot(build(files, undefined, at));
   // open documents one at a time, as an editor does

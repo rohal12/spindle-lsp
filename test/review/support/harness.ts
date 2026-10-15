@@ -4,11 +4,10 @@
  * selection. Its status is pass / fail / not-run / not-applicable and is
  * written to docs/reviews/2026-10-06-cross-consumer-results.json.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { expect } from 'vitest';
+import { expect, inject } from 'vitest';
 import { MINIMUM_SPINDLE_VERSION } from '../../../src/core/workspace/spindle-version.js';
 import { WorkspaceModel } from '../../../src/core/workspace/workspace-model.js';
 import type { Position, Range } from '../../../src/core/types.js';
@@ -46,16 +45,14 @@ export const records: CellRecord[] = [];
  * `format-version` decides, as in a project without Spindle installed.
  */
 const roots = new Map<string | null, string>();
-let rootsParent: string | undefined;
+let workerRoots: string | undefined;
 export function projectRoot(installed: string | null): string {
   let dir = roots.get(installed);
   if (dir) return dir;
-  if (!rootsParent) {
-    rootsParent = mkdtempSync(join(tmpdir(), 'spindle-review-roots-'));
-    const parent = rootsParent;
-    process.once('exit', () => rmSync(parent, { recursive: true, force: true }));
-  }
-  dir = join(rootsParent, installed === null ? 'undeclared' : `spindle-${installed}`);
+  // Each worker writes its projects into a directory of its own, inside the one
+  // global-setup.ts creates and removes after the run (`reviewProjectRoots`).
+  workerRoots ??= mkdtempSync(join(inject('reviewProjectRoots'), 'worker-'));
+  dir = join(workerRoots, installed === null ? 'undeclared' : `spindle-${installed}`);
   const pkg = join(dir, 'node_modules', '@rohal12', 'spindle');
   mkdirSync(pkg, { recursive: true });
   const dependencies = installed === null ? {} : { '@rohal12/spindle': installed };
@@ -70,7 +67,9 @@ export function projectRoot(installed: string | null): string {
  * the checkout (the BASE fixture's StoryData names 0.45.1, which the installed
  * version overrides, as it does in a real project).
  */
-export const root = projectRoot(MINIMUM_SPINDLE_VERSION);
+export function defaultRoot(): string {
+  return projectRoot(MINIMUM_SPINDLE_VERSION);
+}
 export type Files = Record<string, string>;
 export const U = (name: string) => `file:///${name}`;
 
@@ -103,7 +102,7 @@ function make(files: Files, order: string[], at: string): WorkspaceModel {
   return model;
 }
 /** A read-only workspace; the same `files`, `order` and root give the same model while it is recent. */
-export function build(files: Files, order: string[] = Object.keys(files), at: string = root): WorkspaceModel {
+export function build(files: Files, order: string[] = Object.keys(files), at: string = defaultRoot()): WorkspaceModel {
   const key = JSON.stringify([at, order, order.map(n => files[n])]);
   const hit = shared.get(key);
   if (hit) { shared.delete(key); shared.set(key, hit); return hit; }
@@ -117,7 +116,7 @@ export function build(files: Files, order: string[] = Object.keys(files), at: st
   return model;
 }
 /** A workspace of the caller's own, disposed after the test; for properties that change it. */
-export function buildFresh(files: Files, order: string[] = Object.keys(files), at: string = root): WorkspaceModel {
+export function buildFresh(files: Files, order: string[] = Object.keys(files), at: string = defaultRoot()): WorkspaceModel {
   const model = make(files, order, at);
   live.push(model);
   return model;

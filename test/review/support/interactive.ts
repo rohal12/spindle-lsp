@@ -30,7 +30,7 @@ import { getDefinition } from '../../../src/plugins/definition.js';
 import { computeRename, prepareRename } from '../../../src/plugins/rename.js';
 import { WorkspaceModel } from '../../../src/core/workspace/workspace-model.js';
 import { runtimeBracketLink } from '../../helpers/link-macro-oracle.js';
-import { build, cursorOffsets, doc, notApplicable, rangeProblem, root, type Dims, type Files } from './harness.js';
+import { build, cursorOffsets, doc, notApplicable, rangeProblem, type Dims, type Files } from './harness.js';
 import { runtimePassageRefs, runtimeTokens, splitPassages } from './oracle.js';
 
 type CellFn = (id: string, dims: Dims, fn: () => void | Promise<void>) => void;
@@ -299,7 +299,7 @@ export function registerInteractiveCells(cell: CellFn, ctx: Ctx): void {
 
   // ---------------------------------------------------------------- entrypoints
   registerEntrypointCells(cell, ctx);
-  void notApplicable; void root;
+  void notApplicable;
 }
 
 // ===========================================================================

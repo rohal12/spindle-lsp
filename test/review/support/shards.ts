@@ -15,7 +15,7 @@ import { afterAll, afterEach, it, inject } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  NotApplicable, disposeAll, disposeShared, notApplicable, projectRoot, root,
+  NotApplicable, disposeAll, disposeShared, notApplicable, projectRoot, defaultRoot,
   type CellRecord, type Dims,
 } from './harness.js';
 import {
@@ -35,6 +35,8 @@ declare module 'vitest' {
     reviewExecutable: string;
     /** Where each shard leaves its records for the merge. */
     reviewResultsDir: string;
+    /** Where the workers write the temporary projects the models are built in (harness `projectRoot`). */
+    reviewProjectRoots: string;
   }
 }
 
@@ -83,8 +85,8 @@ export function registerShard(shard: string): void {
     scenes.forEach((s, index) => {
       const owner = `matrix-${(index % MATRIX_SHARDS) + 1}`;
       const d = (consumer: string): Dims => ({ ...s.dims, consumer });
-      // the scene's own project, else the default one (harness `root`)
-      const at = () => (s.installed === undefined ? root : projectRoot(s.installed));
+      // the scene's own project, else the default one
+      const at = () => (s.installed === undefined ? defaultRoot() : projectRoot(s.installed));
       cell(`${s.id} [bounds]`, d('all consumers: ranges within document and UTF-16 valid'), () => propBounds(s.files, at()), owner);
       cell(`${s.id} [navigation]`, d('references x definition x prepareRename'), () => propNavigationAgree(s.files, at()), owner);
       cell(`${s.id} [passage-oracle]`, d('diagnostics x references x document links x code lens vs runtime'), () => propPassageOracle(s.files, at()), owner);

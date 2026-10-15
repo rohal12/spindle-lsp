@@ -46,11 +46,11 @@ or a project directory. Twee is compiled and run by spindle-lsp's own
 `@rohal12/spindle`, not the one installed in the project; if the project's
 package.json (or, in a monorepo, a workspace member's) depends on a different
 version, the result starts with a `Note:` saying so. A copy in `node_modules`
-that no package.json declares is ignored. Each result lists the passage text, the context, any open dialogs
-and macro errors, and the available actions with the ids to pass to
-`spindle_play_step`. Up to 8 sessions can be open, a session idle for 30
-minutes is closed, and a call that takes more than 10 seconds closes its
-session.
+that no package.json declares is ignored. Each result lists the passage text,
+the context, any open dialogs and macro errors, and the available actions with
+the ids to pass to `spindle_play_step`. Up to 8 sessions can be open, a session
+idle for 30 minutes is closed, and a call that takes more than 10 seconds
+closes its session.
 
 The play tools need a `@rohal12/spindle` with `@rohal12/spindle/play`, which
 the plugin's `npx` install brings along. If it is missing, `spindle_play_start`

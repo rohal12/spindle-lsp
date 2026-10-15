@@ -150,12 +150,14 @@ them with the results file (below). Within a shard, a workspace built with
 kept per model/text; a property that mutates a workspace must use `buildFresh`.
 The models are built in temporary projects (`projectRoot` in
 `support/harness.ts`), by default one that declares and installs the minimum
-supported Spindle, so no cell depends on the Spindle in the checkout's
-`node_modules`; a scene sets `installed` to run in another project (family G
-covers the version diagnostic that way). Keep each shard well under the worker
-RPC timeout: cells yield to the event loop between them, but a single cell must not run for tens of seconds. It is
-part of the normal gate: `npm test` runs the
-unit/integration suite and then the corpus. Run:
+supported Spindle (each worker writes them into a directory that
+`global-setup.ts` creates and removes after the run), so no cell depends on the
+Spindle in the checkout's `node_modules`; a scene sets `installed` to run in
+another project (family G covers the version diagnostic that way). Keep each
+shard well under the worker RPC timeout: cells yield to the event loop between
+them, but a single cell must not run for tens of seconds. It is part of the
+normal gate: `npm test` runs the unit/integration suite and then the corpus.
+Run:
 
 ```sh
 npm test                                   # unit + integration + the matrix

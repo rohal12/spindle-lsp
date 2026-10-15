@@ -2,6 +2,8 @@
  * Global setup of the retained matrix (vitest.review.config.ts):
  *  - builds the executable once for every entrypoint cell, instead of per cell
  *    or per worker (`inject('reviewExecutable')`);
+ *  - creates the directory the temporary projects of the models go in
+ *    (`inject('reviewProjectRoots')`) and removes it after the run;
  *  - after all shard files ran, merges their records in sequence order and
  *    checks them against docs/reviews/2026-10-06-cross-consumer-results.json
  *    (the committed file must list the cells and states of the run), or
@@ -25,6 +27,9 @@ export default function setup({ provide }: GlobalSetupContext) {
   const dist = buildDist();
   provide('reviewExecutable', dist.executable);
   provide('reviewResultsDir', dir);
+  // the temporary projects of the matrix (harness `projectRoot`), removed after the run
+  const projects = mkdtempSync(join(tmpdir(), 'spindle-review-roots-'));
+  provide('reviewProjectRoots', projects);
 
   return function teardown() {
     try {
@@ -68,6 +73,7 @@ export default function setup({ provide }: GlobalSetupContext) {
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
+      rmSync(projects, { recursive: true, force: true });
     }
   };
 }

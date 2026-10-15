@@ -57,7 +57,10 @@ export const DEFAULT_TARGET: SpindleTarget = { version: undefined, source: 'defa
  * A monorepo root counts as declaring it when its `package.json` lists
  * `workspaces` (an array of globs, or `{ packages: [...] }`) and a member
  * package matching them declares it: npm and yarn hoist that member's Spindle
- * to the root, and the editor and CLI start the lookup at the root.
+ * to the root, and the editor and CLI start the lookup at the root. The rule
+ * holds for every directory the lookup passes, so a lookup that starts in a
+ * member that does not declare Spindle still finds the copy a sibling member
+ * declares: npm hoisted it to the shared root, where that member resolves it.
  */
 export function readInstalledSpindleVersion(startDir: string): string | undefined {
   const target = join('node_modules', '@rohal12', 'spindle', 'package.json');
