@@ -192,6 +192,30 @@ export class VariableTracker {
     return usagesOf(this.usagesByUri, name);
   }
 
+  /** The executable usage or declaration containing the cursor, in source coordinates. */
+  referenceAt(uri: string, position: Position): { sigil: '$' | '%'; name: string; range: Range } | null {
+    const contains = (range: Range) =>
+      (position.line > range.start.line || (position.line === range.start.line && position.character >= range.start.character)) &&
+      (position.line < range.end.line || (position.line === range.end.line && position.character <= range.end.character));
+    let atEnd: { sigil: '$' | '%'; name: string; range: Range } | null = null;
+    for (const [sigil, usages, declarations] of [
+      ['$', this.usagesByUri.get(uri), this.variables.declared],
+      ['%', this.transientUsagesByUri.get(uri), this.transients.declared],
+    ] as const) {
+      const candidates = (usages ?? []).map(u => ({ name: u.baseName, range: u.range }));
+      for (const [name, declaration] of declarations) {
+        if (declaration.declarationUri === uri && declaration.declarationRange) candidates.push({ name, range: declaration.declarationRange });
+      }
+      for (const candidate of candidates) {
+        if (!contains(candidate.range)) continue;
+        const symbol = { sigil, ...candidate };
+        if (position.line !== candidate.range.end.line || position.character < candidate.range.end.character) return symbol;
+        atEnd ??= symbol;
+      }
+    }
+    return atEnd;
+  }
+
   /** Whether a StoryVariables passage has been parsed. */
   hasStoryVariables(): boolean {
     return this.variables.present;

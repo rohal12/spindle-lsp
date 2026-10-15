@@ -16,6 +16,7 @@
  *   (group)        — grouping
  */
 
+import { passageTarget } from '@rohal12/spindle/tooling';
 import { ArgType, type Arg } from './argument-lexer.js';
 
 // ---------------------------------------------------------------------------
@@ -176,8 +177,8 @@ const parameterTypes: ParameterType[] = [
       // Extract passage name from the argument
       let passageName: string | undefined;
       if (arg.type === ArgType.String) {
-        // Strip quotes
-        passageName = arg.text.slice(1, -1);
+        const target = passageTarget(arg.text);
+        if (target.kind === 'name') passageName = target.name;
       } else if (arg.type === ArgType.Bareword) {
         passageName = arg.text;
       } else if (arg.type === ArgType.Number) {
@@ -187,7 +188,6 @@ const parameterTypes: ParameterType[] = [
       }
 
       if (passageName !== undefined) {
-        passageName = passageName.replace(/\\/g, '');
         if (state && state.passages.length > 0) {
           if (!state.passages.includes(passageName)) {
             return new TypeWarning(`Nonexistent passage: "${passageName}"`);

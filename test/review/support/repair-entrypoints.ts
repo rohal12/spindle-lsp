@@ -25,6 +25,111 @@ function project(files: Record<string, string>) {
 const dims = (contract: string, consumer: string): Dims => ({ role: 'ordinary/declarations', context: contract, spelling: 'ticket reproduction/control', boundary: 'LF', state: 'public stdio/disk/reload', consumer });
 
 export function registerRepairEntrypoints(cell: Cell, executable: () => string): void {
+  const octoberDefinitions = 'Story.defineMacro({name:"textbox",parameters:[{name:"label",type:"string"}],render(){return null;}});\nStory.defineMacro({name:"switch",block:true,render(){return null;}});\nStory.defineMacro({name:"custom",parameters:[{name:"p",type:"passage"}],render(){return null;}});';
+  const octoberConfig = 'macros:\n  custom:\n    parameters: ["passage"]\n';
+  const octoberStory = (unclosed: boolean) => `::StoryVariables\n$x = {hp:1}\n::W [widget]\n{widget "wid" @label @count}{@label}{/widget}\n::Target\nx\n::Start\n{button "{$\\u0078.hp}"}ok{/button}\n{button ${JSON.stringify('{wid "two words" 2}')}}ok{/button}\n{textbox "$x"}\n{switch}x{/switch}\n{custom "\\u0054arget"}\n{for @n of [1,2]}{set _x = @n}<!-- _x -->{/for}\n${unclosed ? '{button "{if true}hello"}x{/button}\n' : ''}::Code [scri\\pt]\nif(true){console.log("hello");}\n::Prose [Script]\nfoo( 1 );\n`;
+  const octoberFiles = (unclosed: boolean) => ({
+    'story.tw': octoberStory(unclosed),
+    'macros.js': octoberDefinitions,
+    'spindle.config.yaml': octoberConfig,
+    '.prettierrc.json': '{"singleQuote":true,"tabWidth":6}',
+  });
+
+  for (const consumer of ['cli', 'mcp']) {
+    cell(`I/entry-cli/OCTOBER-CONTRACTS/${consumer}`, dims('October issue contracts', `${consumer} diagnostic and formatting public entrypoints`), async () => {
+      const fixture = project(octoberFiles(false));
+      // Launch outside the project: resolution must follow the actual document path.
+      const file = join(fixture.directory, 'story.tw');
+      try {
+        if (consumer === 'cli') {
+          const checked = spawnSync(process.execPath, [executable(), 'check', file, '--format', 'json'], { encoding: 'utf8', timeout: 8000 });
+          expect(checked.status, checked.stderr).toBe(0);
+          expect(JSON.parse(checked.stdout).files.flatMap((f: any) => f.diagnostics).filter((d: any) => d.severity === 'error' || ['SP110', 'SP115', 'SP205'].includes(d.code))).toEqual([]);
+          const formatted = spawnSync(process.execPath, [executable(), 'format', file], { encoding: 'utf8', timeout: 8000 });
+          expect(formatted.status, formatted.stderr).toBe(0);
+        } else {
+          const transport = new StdioClientTransport({ command: process.execPath, args: [executable(), 'mcp'], stderr: 'pipe' });
+          const client = new Client({ name: 'october-contracts', version: '1' });
+          try {
+            await client.connect(transport);
+            const checked = await client.callTool({ name: 'spindle_check', arguments: { path: fixture.directory } });
+            expect(checked.isError).not.toBe(true);
+            expect(JSON.parse((checked.content as any)[0].text).filter((d: any) => d.severity === 'error' || ['SP110', 'SP115', 'SP205'].includes(d.code))).toEqual([]);
+            const formatted = await client.callTool({ name: 'spindle_format', arguments: { path: file } });
+            expect(formatted.isError).not.toBe(true);
+          } finally { await client.close(); }
+        }
+        const output = readFileSync(file, 'utf8');
+        expect(output).toContain("      console.log('hello');");
+        expect(output).toContain(':: Prose [Script]\nfoo( 1 );');
+        expect(output).toContain(':: Code [scri\\pt]');
+        // The CLI must also fail on the malformed compact-header story.
+        writeFileSync(file, octoberStory(true));
+        const broken = spawnSync(process.execPath, [executable(), 'check', file, '--format', 'json'], { encoding: 'utf8', timeout: 8000 });
+        expect(broken.status).toBe(1);
+        expect(JSON.parse(broken.stdout).files.flatMap((f: any) => f.diagnostics).filter((d: any) => d.code === 'SP101')).toHaveLength(1);
+      } finally { fixture.dispose(); }
+    });
+  }
+
+  cell('I/entry-lsp/OCTOBER-CONTRACTS', dims('October issue contracts', 'framed LSP diagnostics/rename/actions/signature/inlay/format/lenses'), async () => {
+    const text = octoberStory(true).replaceAll('\n', '\r\n');
+    const fixture = project({ ...octoberFiles(true), 'story.tw': text });
+    const proc = spawn(process.execPath, [executable(), '--stdio'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    proc.stderr.resume();
+    const conn = createMessageConnection(new StreamMessageReader(proc.stdout), new StreamMessageWriter(proc.stdin));
+    const uri = pathToFileURL(join(fixture.directory, 'story.tw')).toString();
+    const source = TextDocument.create(uri, 'twee', 0, text);
+    let diagnostics: any[] | undefined;
+    conn.onNotification('textDocument/publishDiagnostics', params => { if (params.uri === uri) diagnostics = params.diagnostics; });
+    conn.onRequest(() => null);
+    conn.listen();
+    const request = (method: string, params: any) => conn.sendRequest<any>(method, params);
+    const position = (fragment: string, delta = 0) => source.positionAt(text.indexOf(fragment) + delta);
+    const textDocument = { uri };
+    try {
+      await request('initialize', { processId: null, rootUri: pathToFileURL(fixture.directory).toString(), capabilities: {} });
+      await conn.sendNotification('initialized', {});
+      await conn.sendNotification('textDocument/didOpen', { textDocument: { uri, languageId: 'twee', version: 1, text } });
+      const deadline = Date.now() + 8000;
+      while (!diagnostics?.some(d => d.code === 'SP101') && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+      expect(diagnostics).toBeDefined();
+      expect(diagnostics!.filter(d => ['SP100', 'SP110', 'SP115', 'SP200', 'SP205', 'SP300'].includes(d.code))).toEqual([]);
+      const broken = diagnostics!.filter(d => d.code === 'SP101');
+      expect(broken).toHaveLength(1);
+      const rename = (newName: string) => request('textDocument/rename', { textDocument, position: position('$x =', 1), newName });
+      await expect(rename('__proto__')).rejects.toThrow(/reserved/);
+      await expect(rename('$__proto__')).rejects.toThrow(/reserved/);
+      const renamed = TextDocument.applyEdits(source, (await rename('fresh')).changes[uri]);
+      expect(renamed).toContain('{button "{$fresh.hp}"}ok{/button}');
+      expect(renamed).toContain('{textbox "$x"}');
+      const actions = await request('textDocument/codeAction', { textDocument, range: broken[0].range, context: { diagnostics: broken } });
+      const close = actions.find((a: any) => a.title === 'Insert {/if}');
+      const fixed = TextDocument.applyEdits(source, close.edit.changes[uri]);
+      expect(fixed).toContain('{button "{if true}hello{/if}"}x{/button}');
+      const signature = await request('textDocument/signatureHelp', { textDocument, position: position(' 2}', 1) });
+      expect(signature.activeParameter).toBe(1);
+      const hints = await request('textDocument/inlayHint', { textDocument, range: { start: { line: 0, character: 0 }, end: source.positionAt(text.length) } });
+      expect(hints.find((h: any) => h.label === '@count:').position).toEqual(position(' 2}', 1));
+      const lenses = await request('textDocument/codeLens', { textDocument });
+      for (const at of [position('::Target').line, position('$x =').line, position('{widget').line]) {
+        const lens = lenses.find((l: any) => l.range.start.line === at);
+        expect(lens.command.title).toMatch(/reference|usage/);
+        expect(lens.command.command).toBe('');
+      }
+      const formatting = await request('textDocument/formatting', { textDocument, options: { tabSize: 2, insertSpaces: true } });
+      const formatted = TextDocument.applyEdits(source, formatting);
+      expect(formatted).toContain("      console.log('hello');");
+      expect(formatted).toContain('foo( 1 );');
+      diagnostics = undefined;
+      await conn.sendNotification('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: fixed }] });
+      const fixedDeadline = Date.now() + 8000;
+      while (!diagnostics && Date.now() < fixedDeadline) await new Promise(resolve => setTimeout(resolve, 25));
+      expect(diagnostics).toBeDefined();
+      expect(diagnostics!.filter(d => d.code === 'SP101')).toEqual([]);
+    } finally { conn.dispose(); proc.kill(); fixture.dispose(); }
+  });
+
   // #96: fatal heap exhaustion needs a bounded subprocess, never the vitest worker.
   for (const [indent, width] of [['    ', 2], ['    ', 4], ['    ', 5], ['    ', 80], ['\t', 2], [' '.repeat(84), 80], ['', 2]] as const) {
     for (const wrapper of ['plain', 'nested-macro', 'nested-list']) {

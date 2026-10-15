@@ -1,6 +1,7 @@
 import {
   builtinMacros,
   lexJs,
+  pieceOffset,
   splitArgs,
   validateStoryMarkup,
   validateVariableReferences,
@@ -21,7 +22,8 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue, DiagnosticData, SpindleDiagnostic } from '../core/diagnostic-codes.js';
 import type { DocumentMarkup, PassageMarkup } from '../core/markup/passage-markup.js';
-import { macroTokens } from '../core/markup/tokens.js';
+import { macroTokens, markupTokens } from '../core/markup/tokens.js';
+import { textAt } from '../core/markup/source-view.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { findLinkRuntimeMismatches, findLiteralLinkInterpolations } from '../core/parsing/link-parser.js';
@@ -298,7 +300,9 @@ function fromMarkup(passage: PassageMarkup, found: MarkupDiagnostic, workspace: 
       if (element) code = DiagnosticCode.MalformedElement;
       else if (found.code === 'stray-closer' && !workspace.isContainer(name)) code = DiagnosticCode.IllegalClosingTag;
       if (found.code === 'unclosed-block') {
-        data = { kind: 'unclosed-block', closer: element ? `</${name}>` : `{/${name}}`, at: passage.position(passage.content.trimEnd().length) };
+        const owner = textAt(passage, found.start, found.end);
+        const end = owner ? pieceOffset(owner, owner.text.trimEnd().length) : passage.content.trimEnd().length;
+        data = { kind: 'unclosed-block', closer: element ? `</${name}>` : `{/${name}}`, at: passage.position(end) };
       }
       break;
     }
@@ -682,10 +686,9 @@ function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: r
 
   const targets = macro === 'computed' ? computedTemporaryTarget(token.rawArgs) : setTemporaryTargets(token.rawArgs);
   const bodyStart = loop.node.token.end;
-  const body = passage.content.slice(bodyStart, close.start);
   const diagnostics: SpindleDiagnostic[] = [];
   for (const target of targets) {
-    if (!isReadInBody(body, bodyStart, target.name, token.start, token.end)) continue;
+    if (!isReadInBody(passage, bodyStart, close.start, target.name, token.start, token.end)) continue;
     const start = token.argsStart + target.offset;
     diagnostics.push(makeDiag(
       passage.range(start, start + 1 + target.name.length),
@@ -704,15 +707,21 @@ function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: r
  * macro. Occurrences that are themselves plain assignment targets
  * (`_name = …`) do not count as reads.
  */
-function isReadInBody(body: string, bodyOffset: number, name: string, macroStart: number, macroEnd: number): boolean {
-  const re = temporaryRefRegex(name);
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
-    const offset = bodyOffset + m.index;
-    if (offset >= macroStart && offset < macroEnd) continue;
-    const after = body.slice(m.index + m[0].length);
-    if (/^\s*=(?![=>])/.test(after)) continue;
-    return true;
+function isReadInBody(passage: PassageMarkup, bodyStart: number, bodyEnd: number, name: string, macroStart: number, macroEnd: number): boolean {
+  const eligible = (offset: number) => offset >= bodyStart && offset < bodyEnd && !(offset >= macroStart && offset < macroEnd);
+  for (const token of markupTokens(passage)) {
+    if (token.type === 'variable' && token.scope === 'temporary' && token.name.split('.')[0] === name && eligible(token.start)) return true;
+  }
+  for (const piece of passage.pieces) {
+    if (piece.kind !== 'code') continue;
+    let read = false;
+    lexJs(piece.code, {
+      variable(sigil, found, index, _nesting, end) {
+        if (sigil !== '_' || found !== name || !eligible(pieceOffset(piece, index))) return;
+        if (!/^\s*=(?![=>])/.test(maskLiterals(piece.code.slice(end)))) read = true;
+      },
+    }, piece.goal);
+    if (read) return true;
   }
   return false;
 }
@@ -738,7 +747,7 @@ function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel):
   const diagnostics: SpindleDiagnostic[] = [];
   const passageNames = Array.from(workspace.passages.getAllPassages(), (candidate) => candidate.name);
 
-  for (const token of passage.isMarkup ? passage.tokens : []) {
+  for (const token of passage.isMarkup ? macroTokens(passage) : []) {
     if (token.type !== 'macro' || token.isClose) continue;
     const info = workspace.macros.getMacro(token.name);
     if (!info?.parameters || info.skipArgs || SPINDLE_MACROS.has(token.name.toLowerCase())) continue;

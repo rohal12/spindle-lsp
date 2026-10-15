@@ -56,8 +56,8 @@ describe('classifyPassage', () => {
     expect(classifyPassage(':: Init [script] {"note": "[stylesheet]"}')).toBe('script');
   });
 
-  it('handles case-insensitive tags', () => {
-    expect(classifyPassage(':: Init [Script]')).toBe('script');
-    expect(classifyPassage(':: Styles [Stylesheet]')).toBe('stylesheet');
+  it('preserves case-sensitive compiler tag membership (#35)', () => {
+    expect(classifyPassage(':: Init [Script]')).toBe('normal');
+    expect(classifyPassage(':: Styles [Stylesheet]')).toBe('normal');
   });
 });

@@ -2,8 +2,8 @@
  "generated": "2026-10-06",
  "spindleVersion": "0.60.3",
  "summary": {
-  "total": 6077,
-  "pass": 6064,
+  "total": 6284,
+  "pass": 6271,
   "fail": 0,
   "not-run": 0,
   "not-applicable": 13
@@ -56877,6 +56877,266 @@
    "status": "pass"
   },
   {
+   "id": "N/PRETTIER-CONFIG/json-root",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "json-root",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/json-nested",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "json-nested",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/json-override",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "json-override",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/yaml-root",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "yaml-root",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/yaml-nested",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "yaml-nested",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/yaml-override",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "yaml-override",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/package-root",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "package-root",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/package-nested",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "package-nested",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/package-override",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "package-override",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/none-root",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "none-root",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/none-nested",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "none-nested",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/PRETTIER-CONFIG/none-override",
+   "role": "ordinary/declarations",
+   "context": "PRETTIER-CONFIG",
+   "spelling": "none-override",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "script/style/embedded formatting with document path outside cwd",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-$-__proto__",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-$-__proto__",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-$-$__proto__",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-$-$__proto__",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-$-constructor",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-$-constructor",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-$-prototype",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-$-prototype",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-$-toString",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-$-toString",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-$-fresh",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-$-fresh",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-$-5",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-$-5",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-%-__proto__",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-%-__proto__",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-%-%__proto__",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-%-%__proto__",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-%-constructor",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-%-constructor",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-%-prototype",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-%-prototype",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-%-toString",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-%-toString",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-%-fresh",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-%-fresh",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/runtime-name-%-5",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "runtime-name-%-5",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic rejection or applied/rebuilt runtime-valid declaration",
+   "status": "pass"
+  },
+  {
    "id": "N/RENAME-COLLISION/$-declaration-same-scope",
    "role": "ordinary/declarations",
    "context": "RENAME-COLLISION",
@@ -57184,6 +57444,1786 @@
    "boundary": "LF",
    "state": "multi-file/rebuilt",
    "consumer": "passage collision control",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-$-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-$-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-$-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-$-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-$-\\u0078-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-$-\\u0078-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-$-\\u0078-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-$-\\u0078-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-$-\\u{78}-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-$-\\u{78}-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-$-\\u{78}-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-$-\\u{78}-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-%-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-%-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/top-%-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "top-%-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-$-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-$-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-$-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-$-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-$-\\u0078-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-$-\\u0078-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-$-\\u0078-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-$-\\u0078-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-$-\\u{78}-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-$-\\u{78}-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-$-\\u{78}-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-$-\\u{78}-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-%-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-%-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-double-%-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-double-%-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-$-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-$-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-$-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-$-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-$-\\u0078-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-$-\\u0078-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-$-\\u0078-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-$-\\u0078-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-$-\\u{78}-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-$-\\u{78}-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-$-\\u{78}-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-$-\\u{78}-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-%-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-%-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/button-single-%-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "button-single-%-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-$-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-$-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-$-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-$-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-$-\\u0078-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-$-\\u0078-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-$-\\u0078-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-$-\\u0078-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-$-\\u{78}-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-$-\\u{78}-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-$-\\u{78}-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-$-\\u{78}-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-%-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-%-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-double-%-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-double-%-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-$-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-$-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-$-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-$-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-$-\\u0078-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-$-\\u0078-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-$-\\u0078-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-$-\\u0078-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-$-\\u{78}-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-$-\\u{78}-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-$-\\u{78}-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-$-\\u{78}-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-%-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-%-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/attribute-single-%-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "attribute-single-%-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-$-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-$-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-$-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-$-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-$-\\u0078-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-$-\\u0078-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-$-\\u0078-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-$-\\u0078-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-$-\\u{78}-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-$-\\u{78}-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-$-\\u{78}-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-$-\\u{78}-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-%-x-display",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-%-x-display",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/nested-button-%-x-print",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "nested-button-%-x-print",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/prepare and rename applied/rebuilt",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-\"two words\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-\"two words\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-\"two words\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-\"two words\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-'two words'-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-'two words'-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-'two words'-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-'two words'-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-\"a\\\"b\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-\"a\\\"b\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-\"a\\\"b\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-\"a\\\"b\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-\"a\\nb\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-\"a\\nb\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-top-\"a\\nb\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-top-\"a\\nb\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-\"two words\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-\"two words\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-\"two words\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-\"two words\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-'two words'-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-'two words'-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-'two words'-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-'two words'-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-\"a\\\"b\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-\"a\\\"b\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-\"a\\\"b\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-\"a\\\"b\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-\"a\\nb\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-\"a\\nb\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-double-\"a\\nb\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-double-\"a\\nb\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-\"two words\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-\"two words\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-\"two words\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-\"two words\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-'two words'-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-'two words'-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-'two words'-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-'two words'-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-\"a\\\"b\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-\"a\\\"b\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-\"a\\\"b\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-\"a\\\"b\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-\"a\\nb\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-\"a\\nb\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-button-single-\"a\\nb\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-button-single-\"a\\nb\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-\"two words\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-\"two words\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-\"two words\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-\"two words\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-'two words'-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-'two words'-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-'two words'-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-'two words'-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-\"a\\\"b\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-\"a\\\"b\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-\"a\\\"b\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-\"a\\\"b\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-\"a\\nb\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-\"a\\nb\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-attribute-single-\"a\\nb\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-attribute-single-\"a\\nb\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-\"two words\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-\"two words\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-\"two words\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-\"two words\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-'two words'-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-'two words'-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-'two words'-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-'two words'-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-\"a\\\"b\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-\"a\\\"b\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-\"a\\\"b\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-\"a\\\"b\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-\"a\\nb\"-true",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-\"a\\nb\"-true",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/source-position-nested-button-\"a\\nb\"-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "source-position-nested-button-\"a\\nb\"-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "signature active parameter and widget inlay source position",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/top-1",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "top-1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/top-2",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "top-2",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/button-double-1",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "button-double-1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/button-double-2",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "button-double-2",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/button-single-1",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "button-single-1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/button-single-2",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "button-single-2",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/attribute-double-1",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "attribute-double-1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/attribute-double-2",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "attribute-double-2",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/attribute-single-1",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "attribute-single-1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/attribute-single-2",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "attribute-single-2",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/nested-button-1",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "nested-button-1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-CLOSER/nested-button-2",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-CLOSER",
+   "spelling": "nested-button-2",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "action applied/rebuilt and pairing error removal",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-macros.js",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-macros.js",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "runtime metadata/diagnostics/references/rename/state restoration",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-macros.ts",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-macros.ts",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "runtime metadata/diagnostics/references/rename/state restoration",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-StoryInit",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-StoryInit",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "runtime metadata/diagnostics/references/rename/state restoration",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-true-true-markup",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-true-true-markup",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-true-true-undefined",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-true-true-undefined",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-true-false-markup",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-true-false-markup",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-true-false-undefined",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-true-false-undefined",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-false-true-markup",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-false-true-markup",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-false-true-undefined",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-false-true-undefined",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-false-false-markup",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-false-false-markup",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/replacement-flags-false-false-undefined",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "replacement-flags-false-false-undefined",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "effective flags/markup parameter behavior against public tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-\"Target\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-\"Target\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-\"Target\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-\"Target\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-\"Target\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-\"Target\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-\"Target\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-\"Target\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-'Target'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-'Target'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-'Target'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-'Target'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-'Target'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-'Target'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-'Target'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-'Target'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-\"\\u0054arget\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-\"\\u0054arget\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-\"\\u0054arget\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-\"\\u0054arget\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-\"\\u0054arget\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-\"\\u0054arget\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-\"\\u0054arget\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-\"\\u0054arget\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-'\\u0054arget'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-'\\u0054arget'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-'\\u0054arget'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-'\\u0054arget'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-'\\u0054arget'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-'\\u0054arget'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-'\\u0054arget'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-'\\u0054arget'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-\"a\\\\b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-\"a\\\\b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-\"a\\\\b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-\"a\\\\b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-\"a\\\\b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-\"a\\\\b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-\"a\\\\b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-\"a\\\\b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-\"a\\\"b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-\"a\\\"b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-\"a\\\"b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-\"a\\\"b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-\"a\\\"b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-\"a\\\"b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-\"a\\\"b\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-\"a\\\"b\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-'a\\'b'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-'a\\'b'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-'a\\'b'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-'a\\'b'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-'a\\'b'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-'a\\'b'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-'a\\'b'",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-'a\\'b'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-top-\"Missing\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-top-\"Missing\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-double-\"Missing\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-double-\"Missing\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-button-single-\"Missing\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-button-single-\"Missing\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/passage-literal-nested-button-\"Missing\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "passage-literal-nested-button-\"Missing\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configured diagnostics against public passageTarget",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/<!-- _x -->",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "<!-- _x -->",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{print \"_x\"}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{print \"_x\"}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{print /_x/.test(\"x\")}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{print /_x/.test(\"x\")}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{print `_x`}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{print `_x`}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/plain _x text",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "plain _x text",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{_x}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{_x}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{print `${_x}`}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{print `${_x}`}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{print _x}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{print _x}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{set _x = 2}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{set _x = 2}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/TEMP-LOOP/{set _x /* comment */ = 2}",
+   "role": "ordinary/declarations",
+   "context": "TEMP-LOOP",
+   "spelling": "{set _x /* comment */ = 2}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "SP205 lexical contexts with real read controls",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/::-1",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": "::-1",
+   "boundary": "LF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/::-2",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": "::-2",
+   "boundary": "CRLF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/:: -1",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": ":: -1",
+   "boundary": "LF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/:: -2",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": ":: -2",
+   "boundary": "CRLF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/::\t-1",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": "::\t-1",
+   "boundary": "LF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/::\t-2",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": "::\t-2",
+   "boundary": "CRLF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/mixed-1",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": "mixed-1",
+   "boundary": "LF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/mixed-2",
+   "role": "ordinary/declarations",
+   "context": "HEADER",
+   "spelling": "mixed-2",
+   "boundary": "CRLF/BOM",
+   "state": "multi-file/rebuilt",
+   "consumer": "index/diagnostics/navigation/rename/outline/format boundaries",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/script",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "script",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/scri\\pt",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "scri\\pt",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/stylesheet",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "stylesheet",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/style\\sheet",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "style\\sheet",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/script extra",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "script extra",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/Script",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "Script",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/SCRIPT",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "SCRIPT",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/Stylesheet",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "Stylesheet",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/STYLESHEET",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "STYLESHEET",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/foo\\[bar\\]",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "foo\\[bar\\]",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/one\\ two",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "one\\ two",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/script\\ ",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "script\\ ",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/\\ script",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "\\ script",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "decoded tags/role exclusions/format payload and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/declaration-cross-file-{$\\u0078.hp}",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "declaration-cross-file-{$\\u0078.hp}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "exact reported source escape, cross-document applied rename",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/declaration-cross-file-{print $\\u0078.hp}",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "declaration-cross-file-{print $\\u0078.hp}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "exact reported source escape, cross-document applied rename",
+   "status": "pass"
+  },
+  {
+   "id": "N/VARIABLE-SPANS/declaration-cross-file-{$x.hp}",
+   "role": "ordinary/declarations",
+   "context": "VARIABLE-SPANS",
+   "spelling": "declaration-cross-file-{$x.hp}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "exact reported source escape, cross-document applied rename",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/escaped-script-discovery-and-literal-preservation",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-ROLE",
+   "spelling": "escaped-script-discovery-and-literal-preservation",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "discovery/diagnostics/rename exclusion",
    "status": "pass"
   },
   {
@@ -59074,6 +61114,36 @@
    "boundary": "LF",
    "state": "multi-file/rebuilt",
    "consumer": "references/definition/rename existing contract control",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/OCTOBER-CONTRACTS/cli",
+   "role": "ordinary/declarations",
+   "context": "October issue contracts",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "cli diagnostic and formatting public entrypoints",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/OCTOBER-CONTRACTS/mcp",
+   "role": "ordinary/declarations",
+   "context": "October issue contracts",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "mcp diagnostic and formatting public entrypoints",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-lsp/OCTOBER-CONTRACTS",
+   "role": "ordinary/declarations",
+   "context": "October issue contracts",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "framed LSP diagnostics/rename/actions/signature/inlay/format/lenses",
    "status": "pass"
   },
   {

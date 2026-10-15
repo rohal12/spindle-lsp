@@ -131,7 +131,8 @@ export const codeLensPlugin: SpindlePlugin = {
         range: toLspRange(l.range),
         command: {
           title: l.command.title,
-          command: 'spindle.findReferences',
+          // Informational counts: no editor-specific navigation command is registered.
+          command: '',
         },
       }));
     });

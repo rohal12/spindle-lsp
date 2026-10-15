@@ -9,6 +9,8 @@ import { loadPrettier } from './format/prettier-bridge.js';
 // ---------------------------------------------------------------------------
 
 export interface FormatOptions {
+  /** Document path or file URI used to resolve its Prettier configuration. */
+  filePath?: string;
   /** Returns true if the named macro is a block/container macro. */
   isBlock?: (name: string) => boolean;
   /** Returns true for sub-macros that dedent to parent level (else, elseif, next, case, default). */
@@ -21,7 +23,7 @@ export interface FormatOptions {
 // Patterns
 // ---------------------------------------------------------------------------
 
-const PASSAGE_HEADER_REGEX = /^(::)\s+/;
+const PASSAGE_HEADER_REGEX = /^(::)\s*/;
 
 /** Default dedenting sub-macros. */
 const DEFAULT_DEDENTING = new Set(['else', 'elseif', 'next', 'case', 'default']);
@@ -88,7 +90,7 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
   const isBlock = options?.isBlock ?? buildDefaultIsBlock(text);
   const isDedentingSubMacro = options?.isDedentingSubMacro
     ?? ((name: string) => DEFAULT_DEDENTING.has(name.toLowerCase()));
-  const prettier = await loadPrettier();
+  const prettier = await loadPrettier(options?.filePath);
 
   const passages = splitPassages(text);
   const resultLines: string[] = [];
@@ -145,7 +147,7 @@ export async function formatRange(text: string, _range: Range, options?: FormatO
 // ---------------------------------------------------------------------------
 
 function normalizePassageHeader(line: string): string {
-  const headerMatch = line.match(/^::\s+(.*)/);
+  const headerMatch = line.match(/^::\s*(.*)/);
   if (!headerMatch) return line;
 
   const rest = headerMatch[1];
@@ -192,7 +194,7 @@ export const formatPlugin: SpindlePlugin = {
       const text = ctx.workspace.documents.getText(params.textDocument.uri);
       if (text === undefined) return [];
 
-      const formatted = await formatDocument(text, formatOpts);
+      const formatted = await formatDocument(text, { ...formatOpts, filePath: params.textDocument.uri });
       if (formatted === text) return [];
 
       const lines = text.split('\n');
@@ -214,7 +216,7 @@ export const formatPlugin: SpindlePlugin = {
         end: { line: params.range.end.line, character: params.range.end.character },
       };
 
-      const formatted = await formatRange(text, range, formatOpts);
+      const formatted = await formatRange(text, range, { ...formatOpts, filePath: params.textDocument.uri });
       if (formatted === text) return [];
 
       const lines = text.split('\n');
