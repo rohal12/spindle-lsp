@@ -49,7 +49,8 @@ export function readInstalledSpindleVersion(startDir: string): string | undefine
   const target = join('node_modules', '@rohal12', 'spindle', 'package.json');
   return findUp(startDir, dir => {
     const candidate = join(dir, target);
-    return existsSync(candidate) ? { version: spindleVersionOf(readPackageJson(candidate)) } : undefined;
+    if (!existsSync(candidate)) return undefined;
+    return { version: spindleVersionOf(readPackageJson(candidate)) };
   });
 }
 
@@ -71,7 +72,10 @@ export function readSpindlePackageVersion(file: string): string | undefined {
 }
 
 /** Walk from `startDir` up to the root until `visit` returns a result. */
-function findUp(startDir: string, visit: (dir: string) => { version: string | undefined } | undefined): string | undefined {
+function findUp(
+  startDir: string,
+  visit: (dir: string) => { version: string | undefined } | undefined,
+): string | undefined {
   let dir = resolve(startDir);
   for (;;) {
     const found = visit(dir);

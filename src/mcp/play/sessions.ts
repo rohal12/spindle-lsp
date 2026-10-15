@@ -100,7 +100,8 @@ function runtimeNote(storyPath: string, runtime: string | undefined): string[] {
   const installed = readInstalledSpindleVersion(isDirectory ? storyPath : dirname(storyPath));
   if (installed === undefined || installed === runtime) return [];
   return [
-    `The project has Spindle ${installed} installed; spindle_play runs the story on Spindle ${runtime}, the copy spindle-lsp ships with.`,
+    `The project has Spindle ${installed} installed; spindle_play runs the story on ` +
+      `Spindle ${runtime}, the copy spindle-lsp ships with.`,
   ];
 }
 
