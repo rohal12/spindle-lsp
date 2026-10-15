@@ -1,14 +1,14 @@
-import { randomBytes } from "node:crypto";
-import { resolve } from "node:path";
+import { randomBytes } from 'node:crypto';
+import { resolve } from 'node:path';
 
-import type { Observation } from "@rohal12/spindle";
-import type { TranscriptEntry } from "@rohal12/spindle/headless";
+import type { Observation } from '@rohal12/spindle';
+import type { TranscriptEntry } from '@rohal12/spindle/headless';
 
 /**
  * The first @rohal12/spindle release that ships `@rohal12/spindle/play`.
  * Placeholder until that release exists.
  */
-export const PLAY_SPINDLE_VERSION = "0.61.0";
+export const PLAY_SPINDLE_VERSION = '0.61.0';
 
 /** Handle on one booted story, as `@rohal12/spindle/play` returns it. */
 export interface PlaySession {
@@ -30,13 +30,10 @@ export interface PlayModule {
   resolveStoryHtml(
     input: { path: string } | { html: string },
   ): Promise<{ html: string; notes: string[] }>;
-  openPlaySession(options: {
-    html: string;
-    stepTimeoutMs?: number;
-  }): Promise<PlaySession>;
+  openPlaySession(options: { html: string; stepTimeoutMs?: number }): Promise<PlaySession>;
 }
 
-const PLAY_SPECIFIER = "@rohal12/spindle/play";
+const PLAY_SPECIFIER = '@rohal12/spindle/play';
 
 function missingPlayMessage(): string {
   return `spindle_play needs @rohal12/spindle ${PLAY_SPINDLE_VERSION} or later`;
@@ -57,9 +54,9 @@ export async function loadPlay(
     throw new Error(missingPlayMessage());
   }
   if (
-    typeof mod !== "object" ||
+    typeof mod !== 'object' ||
     mod === null ||
-    typeof (mod as { openPlaySession?: unknown }).openPlaySession !== "function"
+    typeof (mod as { openPlaySession?: unknown }).openPlaySession !== 'function'
   ) {
     throw new Error(missingPlayMessage());
   }
@@ -87,6 +84,8 @@ export class PlaySessions {
   private readonly idleMs: number;
   /** Sessions being opened; they count toward the cap before they are registered. */
   private starting = 0;
+  /** Set by closeAll(): no session may be registered after shutdown. */
+  private closing = false;
 
   constructor(options: PlaySessionsOptions = {}) {
     this.load = options.load ?? loadPlay;
@@ -95,6 +94,7 @@ export class PlaySessions {
   }
 
   get size(): number {
+    this.prune();
     return this.entries.size;
   }
 
@@ -102,10 +102,10 @@ export class PlaySessions {
     storyPath: string,
     passage?: string,
   ): Promise<{ session: string; observation: Observation; notes: string[] }> {
+    if (this.closing) throw shuttingDown();
+    this.prune();
     if (this.entries.size + this.starting >= this.max) {
-      throw new Error(
-        `too many open play sessions (${this.max}); stop one with spindle_play_stop`,
-      );
+      throw new Error(`too many open play sessions (${this.max}); stop one with spindle_play_stop`);
     }
     this.starting++;
     try {
@@ -116,10 +116,9 @@ export class PlaySessions {
       const session = await play.openPlaySession({ html });
       let observation: Observation;
       try {
-        observation =
-          passage === undefined
-            ? await session.observe()
-            : await session.goto(passage);
+        observation = passage === undefined ? await session.observe() : await session.goto(passage);
+        // closeAll() ran while this start was in flight.
+        if (this.closing) throw shuttingDown();
       } catch (error) {
         await session.close().catch(() => {});
         throw error;
@@ -152,17 +151,16 @@ export class PlaySessions {
   }
 
   async closeAll(): Promise<void> {
+    this.closing = true;
     const entries = [...this.entries.values()];
     this.entries.clear();
     for (const entry of entries) clearTimeout(entry.timer);
-    await Promise.all(
-      entries.map((entry) => entry.session.close().catch(() => {})),
-    );
+    await Promise.all(entries.map(entry => entry.session.close().catch(() => {})));
   }
 
   private newId(): string {
     let id: string;
-    do id = randomBytes(4).toString("hex");
+    do id = randomBytes(4).toString('hex');
     while (this.entries.has(id));
     return id;
   }
@@ -178,12 +176,23 @@ export class PlaySessions {
     return timer;
   }
 
+  /** Forget sessions whose handle closed on its own (e.g. a step timed out). */
+  private prune(): void {
+    for (const [id, entry] of this.entries) {
+      if (entry.session.closed) this.forget(id);
+    }
+  }
+
   private forget(id: string): void {
     const entry = this.entries.get(id);
     if (!entry) return;
     clearTimeout(entry.timer);
     this.entries.delete(id);
   }
+}
+
+function shuttingDown(): Error {
+  return new Error('play sessions are shutting down');
 }
 
 function unknownSession(id: string): Error {
