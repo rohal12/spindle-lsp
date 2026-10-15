@@ -172,3 +172,15 @@ function classify(piece: PassagePiece, first: string | undefined, whole: [number
 function isBracket(piece: PassagePiece): boolean {
   return piece.macro === 'link' && piece.label.startsWith('[[');
 }
+
+/** Encode replacement markup through every enclosing label's string escapes. */
+export function encodeEnclosingMarkup(passage: PassageMarkup, start: number, end: number, spelling: string): string {
+  const parents = passage.pieces.filter((piece): piece is TextPiece =>
+    piece.kind === 'text' && piece.offset <= start && textEnd(piece) >= end);
+  for (const parent of parents.reverse()) {
+    if (/\battribute of </.test(parent.where)) continue;
+    const quote = quoteAt(passage.content, parent.offset - 1);
+    if (quote) spelling = spelling.replace(/\\/g, '\\\\').replace(/["']/g, ch => ch === quote ? `\\${ch}` : ch);
+  }
+  return spelling;
+}

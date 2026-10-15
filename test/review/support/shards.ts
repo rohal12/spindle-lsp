@@ -22,6 +22,8 @@ import {
   propBounds, propFormat, propFormatDoLiterals, propHover, propMacroHeadOracle, propNavigationAgree, propPassageOracle,
   propRename, propStateIncremental, propStateOrder, propTokens,
 } from './properties.js';
+import { registerRepairEntrypoints } from './repair-entrypoints.js';
+import { registerRepairContracts } from './repair-contracts.js';
 import { registerInteractiveCells } from './interactive.js';
 import { BASE, NOT_APPLICABLE, STATE_SUBSET, TARGET_FILE, files, scenes } from './corpus.js';
 
@@ -98,6 +100,8 @@ export function registerShard(shard: string): void {
     });
   }
 
+  registerRepairContracts(cell);
+  registerRepairEntrypoints(cell, () => inject('reviewExecutable'));
   registerInteractiveCells(cell, { files, BASE, TARGET_FILE });
 
   // named cells that are decided but have nothing to execute

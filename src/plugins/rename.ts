@@ -4,7 +4,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { passagePieces, type Piece } from '@rohal12/spindle/tooling';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
-import { passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
+import { encodeEnclosingMarkup, passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { macroHeadAt } from '../core/markup/macro-heads.js';
@@ -129,6 +129,10 @@ export function computeRename(
           `Cannot rename to ${JSON.stringify(newName)}: a transient name cannot start with a digit, \`%5\` is the modulo operator in code.`,
         ).at(uri, symbol.range);
       }
+      if (bareName === symbol.name) return new Map();
+      if (workspace.variables.getDeclared().has(bareName) || workspace.variables.getDeclaredTransient().has(bareName)) {
+        throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: a variable with that name already exists.`).at(uri, symbol.range);
+      }
       const refs = symbol.sigil === '%'
         ? findTransientReferences(symbol.name, workspace, true)
         : findVariableReferences(symbol.name, workspace, true);
@@ -145,6 +149,7 @@ export function computeRename(
     }
 
     case 'widget': {
+      if (newName === symbol.name) return new Map();
       if (!/^[A-Za-z][\w-]*$/.test(newName)) {
         throw new RenameError(
           `Cannot rename to ${JSON.stringify(newName)}: a widget name must start with a letter and contain only letters, digits, _ and - to be called as {name}.`,
@@ -154,6 +159,10 @@ export function computeRename(
         throw new RenameError(
           `Cannot rename to ${JSON.stringify(newName)}: a macro of that name exists and takes precedence over the widget.`,
         ).at(uri, symbol.range);
+      }
+      const destination = workspace.widgets.getWidget(newName);
+      if (destination && destination.name.toLowerCase() !== symbol.name.toLowerCase()) {
+        throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: a widget with that name already exists.`).at(uri, symbol.range);
       }
       // Rename invocations
       const invocationRefs = findWidgetReferences(symbol.name, workspace, false);
@@ -240,10 +249,7 @@ export function encodePassageRefName(ref: PassageRef, newName: string): string {
       spelling = newName;
       break;
   }
-  const within = ref.within;
-  if (!within || within.attribute) return spelling;
-  // The text of a quoted macro argument is unescaped (`\"`, `\'`, `\\`) before its markup is read
-  return spelling.replace(/\\/g, '\\\\').replace(/["']/g, quote => (quote === within.quote ? `\\${quote}` : quote));
+  return encodeEnclosingMarkup(ref.passage, ref.start, ref.end, spelling);
 }
 
 function groupByPassage(edits: Array<{ ref: PassageRef; text: string }>): Map<PassageMarkup, Array<{ ref: PassageRef; text: string }>> {

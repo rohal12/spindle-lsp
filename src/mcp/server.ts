@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { glob } from 'glob';
@@ -8,7 +8,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
-import { loadConfigFromDisk, findConfigFile } from '../core/workspace/config-loader.js';
+import { loadConfigFromDisk, findConfigRoot } from '../core/workspace/config-loader.js';
 import { addProjectMacroSources, commonDirectory } from '../core/workspace/macro-sources.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
 import { formatDocument } from '../plugins/format.js';
@@ -37,27 +37,25 @@ function filterBySeverity(
  * Resolve glob patterns to absolute file paths.
  */
 async function resolveFiles(pattern: string, cwd: string): Promise<string[]> {
-  const matches = await glob(pattern, {
-    cwd,
+  let input = pattern;
+  let directory = cwd;
+  try {
+    const literal = resolve(cwd, pattern);
+    const stat = statSync(literal);
+    if (stat.isFile()) return [literal];
+    if (stat.isDirectory()) {
+      directory = literal;
+      input = '**/*.{tw,twee}';
+    }
+  } catch {
+    // A glob is not a literal filesystem path.
+  }
+  const matches = await glob(input, {
+    cwd: directory,
     absolute: true,
     nodir: true,
   });
   return [...new Set(matches)];
-}
-
-/**
- * Find the config root by walking up from the common directory of matched files.
- */
-function findConfigRoot(commonDir: string): string {
-  let configRoot = commonDir;
-  let search = configRoot;
-  for (let i = 0; i < 10; i++) {
-    if (findConfigFile(search)) { configRoot = search; break; }
-    const parent = resolve(search, '..');
-    if (parent === search) break;
-    search = parent;
-  }
-  return configRoot;
 }
 
 /** Read the given files (file URI to text), skipping unreadable ones. */

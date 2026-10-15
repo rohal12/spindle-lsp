@@ -1,4 +1,5 @@
 import { builtinMacros, type DiscoveredMacro, type ToolingMacro } from '@rohal12/spindle/tooling';
+import { normalizeMacroEntries } from './config-loader.js';
 import type { MacroInfo, ChildConstraint, ParameterDoc } from '../types.js';
 
 /**
@@ -90,6 +91,7 @@ export class MacroRegistry {
    * back to their builtin/supplement definition).
    */
   loadConfig(config: Record<string, SupplementEntry>): void {
+    config = normalizeMacroEntries(config);
     for (const [key, previous] of this.configSnapshot) {
       if (previous) {
         this.macros.set(key, previous);

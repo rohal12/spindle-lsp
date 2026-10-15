@@ -1,9 +1,9 @@
 {
  "generated": "2026-10-06",
- "spindleVersion": "0.59.27",
+ "spindleVersion": "0.60.3",
  "summary": {
-  "total": 5825,
-  "pass": 5812,
+  "total": 6077,
+  "pass": 6064,
   "fail": 0,
   "not-run": 0,
   "not-applicable": 13
@@ -56877,6 +56877,2526 @@
    "status": "pass"
   },
   {
+   "id": "N/RENAME-COLLISION/$-declaration-same-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-declaration-same-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-declaration-cross-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-declaration-cross-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-declaration-unused",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-declaration-unused",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-declaration-noop",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-declaration-noop",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-declaration-invalid-internal-dollar",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-declaration-invalid-internal-dollar",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-declaration-digit-leading",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-declaration-digit-leading",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-usage-same-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-usage-same-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-usage-cross-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-usage-cross-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-usage-unused",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-usage-unused",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-usage-noop",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-usage-noop",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-usage-invalid-internal-dollar",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-usage-invalid-internal-dollar",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/$-usage-digit-leading",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "$-usage-digit-leading",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-declaration-same-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-declaration-same-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-declaration-cross-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-declaration-cross-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-declaration-unused",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-declaration-unused",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-declaration-noop",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-declaration-noop",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-declaration-invalid-internal-dollar",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-declaration-invalid-internal-dollar",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-declaration-digit-leading",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-declaration-digit-leading",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-usage-same-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-usage-same-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-usage-cross-scope",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-usage-cross-scope",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-usage-unused",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-usage-unused",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-usage-noop",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-usage-noop",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-usage-invalid-internal-dollar",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-usage-invalid-internal-dollar",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/%-usage-digit-leading",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "%-usage-digit-leading",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "rename applied/rebuilt and binding preservation",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/widget-two",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "widget-two",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "widget rename/definition/usages",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/widget-TWO",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "widget-TWO",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "widget rename/definition/usages",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/widget-one",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "widget-one",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "widget rename/definition/usages",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/widget-ONE",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "widget-ONE",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "widget rename/definition/usages",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/widget-fresh",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "widget-fresh",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "widget rename/definition/usages",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/widget-if",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "widget-if",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "widget rename/definition/usages",
+   "status": "pass"
+  },
+  {
+   "id": "N/RENAME-COLLISION/passage-existing",
+   "role": "ordinary/declarations",
+   "context": "RENAME-COLLISION",
+   "spelling": "passage-existing",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "passage collision control",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/top-double-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "top-double-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/top-double-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "top-double-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/top-single-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "top-single-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/top-single-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "top-single-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/top-bare-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "top-bare-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/top-bare-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "top-bare-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-double-double-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-double-double-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-double-double-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-double-double-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-double-single-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-double-single-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-double-single-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-double-single-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-double-bare-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-double-bare-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-double-bare-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-double-bare-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-single-double-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-single-double-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-single-double-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-single-double-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-single-single-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-single-single-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-single-single-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-single-single-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-single-bare-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-single-bare-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/button-single-bare-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "button-single-bare-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-double-single-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-double-single-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-double-single-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-double-single-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-double-bare-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-double-bare-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-double-bare-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-double-bare-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-single-double-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-single-double-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-single-double-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-single-double-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-single-bare-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-single-bare-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/attribute-single-bare-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "attribute-single-bare-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/nested-button-double-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "nested-button-double-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/nested-button-double-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "nested-button-double-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/nested-button-single-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "nested-button-single-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/nested-button-single-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "nested-button-single-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/nested-button-bare-lf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "nested-button-bare-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/QUICKFIX-PASSAGE/nested-button-bare-crlf",
+   "role": "ordinary/declarations",
+   "context": "QUICKFIX-PASSAGE",
+   "spelling": "nested-button-bare-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "diagnostics/code action applied/runtime identity",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/__SP0__-lf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "__SP0__-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/__SP0__-crlf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "__SP0__-crlf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/<!--SP:0-->-lf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "<!--SP:0-->-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/<!--SP:0-->-crlf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "<!--SP:0-->-crlf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/<!--SVG:0-->-lf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "<!--SVG:0-->-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/<!--SVG:0-->-crlf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "<!--SVG:0-->-crlf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/__SPX0__ <!--SPX:0-->-lf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "__SPX0__ <!--SPX:0-->-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-MARKER/__SPX0__ <!--SPX:0-->-crlf",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-MARKER",
+   "spelling": "__SPX0__ <!--SPX:0-->-crlf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "format payload/order/idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/W [widget]-lf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "W [widget]-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline/registry/public definition agreement",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/StoryInit-lf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "StoryInit-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline/registry/public definition agreement",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/W [widget]-crlf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "W [widget]-crlf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline/registry/public definition agreement",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/StoryInit-crlf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "StoryInit-crlf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline/registry/public definition agreement",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/complete-head-no-close-lf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "complete-head-no-close-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/complete-head-no-close-crlf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "complete-head-no-close-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/multiline-head-no-close-lf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "multiline-head-no-close-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/multiline-head-no-close-crlf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "multiline-head-no-close-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/incomplete-head-lf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "incomplete-head-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/incomplete-head-crlf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "incomplete-head-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/escaped-name-lf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "escaped-name-lf",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/OUTLINE-WIDGET/escaped-name-crlf",
+   "role": "ordinary/declarations",
+   "context": "OUTLINE-WIDGET",
+   "spelling": "escaped-name-crlf",
+   "boundary": "CRLF",
+   "state": "multi-file/rebuilt",
+   "consumer": "outline names/exact source spans vs tooling",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-name-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-name-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-first-name-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-first-name-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-two words-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-two words-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-5key-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-5key-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\"b-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\"b-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a'b-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a'b-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/$-a\\b-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "$-a\\b-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-name-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-name-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-first-name-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-first-name-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-two words-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-two words-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-5key-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-5key-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\"b-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\"b-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a'b-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a'b-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-top-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-top-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-top-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-top-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-button-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-button-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-button-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-button-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-attribute-double-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-attribute-double-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-attribute-double-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-attribute-double-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-attribute-single-empty",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-attribute-single-empty",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/COMPLETION-FIELD/%-a\\b-attribute-single-fi§rst",
+   "role": "ordinary/declarations",
+   "context": "COMPLETION-FIELD",
+   "spelling": "%-a\\b-attribute-single-fi§rst",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "completion applied/runtime evaluated on benign fixture",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/yaml-null-foo",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "yaml-null-foo",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configuration load/registry/no crash",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/yaml-null-if",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "yaml-null-if",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configuration load/registry/no crash",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/json-null-foo",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "json-null-foo",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configuration load/registry/no crash",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/json-null-if",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "json-null-if",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "configuration load/registry/no crash",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-1",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-false",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-false",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-\"bad\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-\"bad\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-[]",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-[]",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-{\"parameters\":\"number\"}",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-{\"parameters\":\"number\"}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-{\"container\":[]}",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-{\"container\":[]}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-{\"parameterDocs\":[null]}",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-{\"parameterDocs\":[null]}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIG-ENTRY/reject-{\"children\":[null]}",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "reject-{\"children\":[null]}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "atomic registry reload rejection",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/(1 + 2)",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "(1 + 2)",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "splitArgs/diagnostics/signature classification",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/[1, 2]",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "[1, 2]",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "splitArgs/diagnostics/signature classification",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/{a: 1}",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "{a: 1}",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "splitArgs/diagnostics/signature classification",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/`a ${1}`",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "`a ${1}`",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "splitArgs/diagnostics/signature classification",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/$5",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "$5",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "splitArgs/diagnostics/signature classification",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/1",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "1",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "splitArgs/diagnostics/signature classification",
+   "status": "pass"
+  },
+  {
+   "id": "N/CONFIGURED-ARGS/\"wrong\"",
+   "role": "ordinary/declarations",
+   "context": "CONFIGURED-ARGS",
+   "spelling": "\"wrong\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "splitArgs/diagnostics/signature classification",
+   "status": "pass"
+  },
+  {
+   "id": "N/DECLARATION-LOCATION/$",
+   "role": "ordinary/declarations",
+   "context": "DECLARATION-LOCATION",
+   "spelling": "$",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/rename/workspace symbols",
+   "status": "pass"
+  },
+  {
+   "id": "N/DECLARATION-LOCATION/%",
+   "role": "ordinary/declarations",
+   "context": "DECLARATION-LOCATION",
+   "spelling": "%",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/rename/workspace symbols",
+   "status": "pass"
+  },
+  {
+   "id": "N/MACRO-DISCOVERY/StoryInit-edit",
+   "role": "ordinary/declarations",
+   "context": "MACRO-DISCOVERY",
+   "spelling": "StoryInit-edit",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "discovery/diagnostics/state refresh",
+   "status": "pass"
+  },
+  {
+   "id": "N/PASSAGE-LITERALS/'Target'",
+   "role": "ordinary/declarations",
+   "context": "PASSAGE-LITERALS",
+   "spelling": "'Target'",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/definition/rename existing contract control",
+   "status": "pass"
+  },
+  {
+   "id": "N/PASSAGE-LITERALS/\"Target\" inline",
+   "role": "ordinary/declarations",
+   "context": "PASSAGE-LITERALS",
+   "spelling": "\"Target\" inline",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/definition/rename existing contract control",
+   "status": "pass"
+  },
+  {
+   "id": "N/PASSAGE-LITERALS/inline \"Target\"",
+   "role": "ordinary/declarations",
+   "context": "PASSAGE-LITERALS",
+   "spelling": "inline \"Target\"",
+   "boundary": "LF",
+   "state": "multi-file/rebuilt",
+   "consumer": "references/definition/rename existing contract control",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/plain/indent-4-width-2-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-4-width-2-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-list/indent-4-width-2-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/plain/indent-4-width-4-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-4-width-4-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-list/indent-4-width-4-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/plain/indent-4-width-5-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-4-width-5-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-list/indent-4-width-5-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/plain/indent-4-width-80-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-4-width-80-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-list/indent-4-width-80-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/plain/indent-1-width-2-tab",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-1-width-2-tab",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-list/indent-1-width-2-tab",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/plain/indent-84-width-80-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-84-width-80-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-list/indent-84-width-80-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/plain/indent-0-width-2-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-macro/indent-0-width-2-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-WRAP/nested-list/indent-0-width-2-space",
+   "role": "ordinary/declarations",
+   "context": "FORMAT-WRAP",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled CLI bounded memory/termination",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/MCP-PATH/story",
+   "role": "ordinary/declarations",
+   "context": "MCP-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "all three tools over MCP stdio",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/MCP-PATH/story/",
+   "role": "ordinary/declarations",
+   "context": "MCP-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "all three tools over MCP stdio",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/MCP-PATH/story/**/*.tw",
+   "role": "ordinary/declarations",
+   "context": "MCP-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "all three tools over MCP stdio",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/MCP-PATH/story/broken.tw",
+   "role": "ordinary/declarations",
+   "context": "MCP-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "all three tools over MCP stdio",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/MCP-PATH/story[1]",
+   "role": "ordinary/declarations",
+   "context": "MCP-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "all three tools over MCP stdio",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/MCP-PATH/empty",
+   "role": "ordinary/declarations",
+   "context": "MCP-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "all three tools over MCP stdio",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CONFIG-ENTRY/yaml",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled check null/wrong-shape configs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CONFIG-ENTRY/json",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "bundled check null/wrong-shape configs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CONFIG-ENTRY/mcp-rejected-config",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "controlled MCP error and recovery",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-lsp/CONFIG-ENTRY/rejected-initial-config",
+   "role": "ordinary/declarations",
+   "context": "CONFIG-ENTRY",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "initialize with invalid config preserves editor features",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-lsp/review-repairs",
+   "role": "ordinary/declarations",
+   "context": "repair contracts",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF",
+   "state": "public stdio/disk/reload",
+   "consumer": "initialize/rename/actions/completion/outline/signature/watched reload",
+   "status": "pass"
+  },
+  {
    "id": "I/completion/passage-names/lf/plain",
    "role": "ordinary",
    "context": "bracket target/label",
@@ -58248,7 +60768,7 @@
    "state": "project format/version",
    "consumer": "all",
    "status": "not-applicable",
-   "note": "The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.59.20 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release."
+   "note": "The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.60.0 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release."
   },
   {
    "id": "N/inlay-folding-symbols-actions",

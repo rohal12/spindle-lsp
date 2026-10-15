@@ -4,7 +4,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import type { ParameterDoc } from '../core/types.js';
 import { splitArgs } from '@rohal12/spindle/tooling';
-import { lexArguments, ArgType, type Arg } from '../core/parsing/argument-lexer.js';
+import { classifyArgument, type Arg } from '../core/parsing/argument-lexer.js';
 import { Parameters, type ParameterSlot } from '../core/parsing/parameter-validator.js';
 import { markupAt } from './markup-cursor.js';
 
@@ -86,11 +86,6 @@ function argumentsBeingTyped(argsBefore: string): string[] {
   return splitArgs(`${argsBefore}$next`);
 }
 
-/** What a completed argument is, for the schema slot that must accept it. */
-function lexArgument(text: string): Arg {
-  return lexArguments(text)[0] ?? { type: ArgType.Bareword, text, start: 0, end: text.length };
-}
-
 /** The slot an argument at `index` would occupy, with a trailing repeat covering the rest. */
 function slotAt(slots: ParameterSlot[], index: number): ParameterSlot | undefined {
   if (index < slots.length) return slots[index];
@@ -152,7 +147,7 @@ export function getSignatureHelp(
       macroInfo.parameterDocs,
     );
     if (described.length > 0) {
-      const completed = typing.slice(0, argument).map(lexArgument);
+      const completed = typing.slice(0, argument).map(text => classifyArgument(text));
       const activeSignature = pickSignature(described, completed, argument);
       const signatures = described.map(d => d.signature);
       const { parameters } = signatures[activeSignature];

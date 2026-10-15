@@ -9,6 +9,10 @@ import { DiagnosticCode, type SpindleDiagnostic } from '../core/diagnostic-codes
 import { findConfigFile } from '../core/workspace/config-loader.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
+import { passagePieces, type Piece } from '@rohal12/spindle/tooling';
+import { documentPassageRefs, encodeEnclosingMarkup } from '../core/markup/passage-refs.js';
+import { encodePassageRefName } from './rename.js';
+import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { buildLineStarts, positionToOffset } from '../core/text.js';
 
 // ---------------------------------------------------------------------------
@@ -64,7 +68,7 @@ export function computeCodeActions(
         actions.push(...fixUnclosedBlock(uri, diag));
         break;
       case DiagnosticCode.UnquotedPassageName:
-        actions.push(...fixUnquotedPassageName(uri, diag));
+        actions.push(...fixUnquotedPassageName(uri, diag, workspace));
         break;
       case DiagnosticCode.UndeclaredVariable:
         actions.push(...fixUndeclaredVariable(diag, workspace));
@@ -438,13 +442,15 @@ function fixUnclosedBlock(uri: string, diag: SpindleDiagnostic): CodeAction[] {
 // ---------------------------------------------------------------------------
 
 /** `{goto Kitchen}` is an expression, and throws a ReferenceError: the name is a quoted string. */
-function fixUnquotedPassageName(uri: string, diag: SpindleDiagnostic): CodeAction[] {
+function fixUnquotedPassageName(uri: string, diag: SpindleDiagnostic, workspace: WorkspaceModel): CodeAction[] {
   if (diag.data?.kind !== 'unquoted-passage-name') return [];
+  const edit = passageNameEdit(uri, diag, diag.data.name, workspace);
+  if (!edit) return [];
   return [{
     title: `Quote the passage name: ${JSON.stringify(diag.data.name)}`,
     kind: 'quickfix',
     diagnosticCodes: [DiagnosticCode.UnquotedPassageName],
-    edits: [{ uri, range: diag.range, newText: JSON.stringify(diag.data.name) }],
+    edits: [{ uri, ...edit }],
   }];
 }
 
@@ -459,18 +465,14 @@ function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: Workspac
   if (text === undefined) return [];
   const actions: CodeAction[] = [];
 
-  // The name is written as a quoted string, or as it is (a bracket link, the body of {dialog})
-  const lineStarts = buildLineStarts(text);
-  const written = text.slice(positionToOffset(diag.range.start, lineStarts), positionToOffset(diag.range.end, lineStarts));
-  const quote = written[0] === '"' || written[0] === "'" ? written[0] : undefined;
   for (const suggestion of suggestions) {
-    const spelled = quote ? spellQuoted(suggestion, quote) : spellBare(suggestion);
-    if (spelled === undefined) continue;
+    const edit = passageNameEdit(uri, diag, suggestion, workspace);
+    if (!edit) continue;
     actions.push({
       title: `Change to '${suggestion}'`,
       kind: 'quickfix',
       diagnosticCodes: [DiagnosticCode.BrokenPassageLink],
-      edits: [{ uri, range: diag.range, newText: spelled }],
+      edits: [{ uri, ...edit }],
     });
   }
 
@@ -488,15 +490,43 @@ function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: Workspac
   return actions;
 }
 
-/** `name` as a string literal with `quote`, or undefined if it cannot be written on a line. */
-function spellQuoted(name: string, quote: string): string | undefined {
-  if (/[\r\n]/.test(name)) return undefined;
-  return quote + name.replace(/[\\"']/g, (ch) => (ch === '\\' || ch === quote ? `\\${ch}` : ch)) + quote;
-}
+/** Edit a destination only when the runtime reads it back and keeps all other code intact. */
+function passageNameEdit(uri: string, diag: SpindleDiagnostic, name: string, workspace: WorkspaceModel): TextEdit | undefined {
+  const markup = workspace.markup.get(uri);
+  const passage = markup?.passageAt(diag.range.start);
+  if (!markup || !passage) return;
+  const start = passage.contentOffset(positionToOffset(diag.range.start, markup.lineStarts));
+  const end = passage.contentOffset(positionToOffset(diag.range.end, markup.lineStarts));
+  const ref = documentPassageRefs(markup).find(ref => ref.passage === passage && ref.start >= start && ref.end <= end);
+  const from = ref?.start ?? start;
+  const to = ref?.end ?? end;
+  const meaningful = (piece: Piece) => piece.kind !== 'text';
+  const before = passage.pieces.filter(meaningful);
+  const changed = before.findIndex(piece => piece.kind === 'passage' || piece.kind === 'code'
+    ? piece.offset >= start && piece.offset < end : false);
+  if (changed < 0) return;
+  const identity = (piece: Piece): string => {
+    if (piece.kind === 'passage') return `passage ${piece.macro} ${piece.name}`;
+    if (piece.kind === 'code') return `code ${piece.macro} ${piece.goal} ${piece.code}`;
+    return piece.kind;
+  };
+  const expected = before.map(identity);
+  const target = before[changed];
+  if (target.kind !== 'passage' && target.kind !== 'code') return;
+  expected[changed] = `passage ${target.macro} ${name}`;
 
-/** `name` as the target of a bracket link, or undefined if the link syntax would read it differently. */
-function spellBare(name: string): string | undefined {
-  return /[\r\n|\]]|->|<-/.test(name) ? undefined : name;
+  for (const quote of ['"', "'"] as const) {
+    let newText: string;
+    try {
+      newText = ref ? encodePassageRefName(ref, name)
+        : encodeEnclosingMarkup(passage, from, to, quote + encodeStringLiteralBody(name, quote) + quote);
+    } catch { continue; }
+    const rewritten = passage.content.slice(0, from) + newText + passage.content.slice(to);
+    const after = passagePieces(rewritten, markup.context.macros).filter(meaningful).map(identity);
+    if (after.length === expected.length && after.every((sig, index) => sig === expected[index])) {
+      return { range: passage.range(from, to), newText };
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

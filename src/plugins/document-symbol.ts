@@ -49,32 +49,15 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
       children: [],
     };
 
-    // Widget definitions inside [widget] passages
-    if (passage.tags?.includes('widget')) {
-      const contentStart = passage.range.start.line + 1;
-      const contentEnd = passage.range.end.line + 1;
-      const widgetDefRegex = /\{widget\s+["']?([^\s"'}]+)["']?[^}]*\}/gi;
-
-      for (let i = contentStart; i < contentEnd && i < lines.length; i++) {
-        widgetDefRegex.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        while ((match = widgetDefRegex.exec(lines[i])) !== null) {
-          const charStart = match.index;
-          const charEnd = charStart + match[0].length;
-          passageSymbol.children!.push({
-            name: match[1],
-            kind: SymbolKind.Function,
-            range: {
-              start: { line: i, character: charStart },
-              end: { line: i, character: charEnd },
-            },
-            selectionRange: {
-              start: { line: i, character: charStart },
-              end: { line: i, character: charEnd },
-            },
-          });
-        }
-      }
+    // Outline only definitions registered by the tooling API, including StoryInit.
+    for (const widget of workspace.widgets.getAllWidgets()) {
+      if (widget.uri !== uri || widget.range.start.line <= passage.range.start.line || widget.range.end.line > passage.range.end.line) continue;
+      passageSymbol.children!.push({
+        name: widget.name,
+        kind: SymbolKind.Function,
+        range: widget.range,
+        selectionRange: widget.nameRange,
+      });
     }
 
     // Variable declarations in StoryVariables

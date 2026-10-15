@@ -85,9 +85,12 @@ export function startServer(args: string[]): void {
       (params.rootUri ? uriToFsPath(params.rootUri) : undefined);
 
     // Load project config from disk if we have a workspace root
-    const projectConfig = workspaceRoot
-      ? loadConfigFromDisk(workspaceRoot)
-      : { macros: {} };
+    let projectConfig: ReturnType<typeof loadConfigFromDisk> = { macros: {} };
+    try {
+      if (workspaceRoot) projectConfig = loadConfigFromDisk(workspaceRoot);
+    } catch (error) {
+      console.error('[spindle-lsp] config load failed:', error);
+    }
 
     const config: SpindleConfig = {
       disabledPlugins: initOptions.disabledPlugins,
