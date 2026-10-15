@@ -12,7 +12,7 @@ A Claude Code plugin that connects Claude to the Spindle language server.
   [Play-testing while writing](#play-testing-while-writing)).
 
 Both run the latest `@rohal12/spindle-lsp` release through `npx`, so the
-plugin needs Node.js 18 or later on `PATH` and nothing else installed:
+plugin needs Node.js 22.17 or later on `PATH` and nothing else installed:
 `@rohal12/spindle`, which the play tools run stories on, comes with
 `@rohal12/spindle-lsp` as a dependency.
 

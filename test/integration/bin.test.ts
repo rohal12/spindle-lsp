@@ -94,7 +94,7 @@ describe('B76: public executable transport (#76)', () => {
     executable = join(directory, 'bin.mjs');
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
     await build({
-      entryPoints: ['src/bin.ts'], bundle: true, platform: 'node', target: 'node18', format: 'esm',
+      entryPoints: ['src/bin.ts'], bundle: true, platform: 'node', target: 'node22', format: 'esm',
       outfile: executable, external: ['prettier'],
       define: { SPINDLE_LSP_VERSION: JSON.stringify(pkg.version) },
       banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
