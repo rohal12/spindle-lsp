@@ -68,6 +68,9 @@ describe('spindle_play_* tools over MCP', () => {
       'spindle_play_stop',
       'spindle_play_vars',
     ]);
+    const step = tools.find(t => t.name === 'spindle_play_step')!;
+    const action = (step.inputSchema.properties as Record<string, { description?: string }>).action;
+    expect(action.description).toBe('Action id from the observation, e.g. link:Hall');
   });
 
   it('plays the fixture through every tool', async () => {

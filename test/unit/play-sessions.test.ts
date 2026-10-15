@@ -334,7 +334,10 @@ describe('loadPlay', () => {
       );
       writeFileSync(join(root, 'dist', 'pkg', 'package.json'), JSON.stringify({ type: 'module' }));
       const url = pathToFileURL(join(root, 'dist', 'pkg', 'play.js')).href;
-      const loaded = await loadPlay(async () => play, () => url);
+      const loaded = await loadPlay(
+        async () => play,
+        () => url,
+      );
       expect(loaded).toEqual({ ...play, version: '1.2.3' });
     } finally {
       rmSync(root, { recursive: true, force: true });

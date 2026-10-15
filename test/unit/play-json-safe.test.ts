@@ -14,6 +14,14 @@ describe('toJsonSafe', () => {
     expect(toJsonSafe(map)).toEqual({ sword: 1, '2': 'two', '{"id":1}': 'obj' });
   });
 
+  it('merges Map keys that stringify alike, keeping the later value', () => {
+    const map = new Map<unknown, unknown>([
+      [1, 'number'],
+      ['1', 'string'],
+    ]);
+    expect(toJsonSafe(map)).toEqual({ '1': 'string' });
+  });
+
   it('renders a Set and a typed array as arrays', () => {
     expect(toJsonSafe(new Set(['a', new Set([1])]))).toEqual(['a', [1]]);
     expect(toJsonSafe(new Uint8Array([1, 2]))).toEqual([1, 2]);

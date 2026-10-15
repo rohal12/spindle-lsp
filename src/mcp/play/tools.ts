@@ -7,16 +7,16 @@ import { formatObservation } from './format-observation.js';
 import { toJsonSafe } from './json-safe.js';
 import type { PlaySessions } from './sessions.js';
 
-/** A tool result: text for the agent and the raw object as JSON data. */
+/** A tool result: text for the agent and `data` (already JSON-safe) as structured content. */
 function result(text: string, data: unknown): CallToolResult {
   return {
     content: [{ type: 'text', text }],
-    structuredContent: toJsonSafe(data) as Record<string, unknown>,
+    structuredContent: data as Record<string, unknown>,
   };
 }
 
 function observationResult(observation: Observation): CallToolResult {
-  return result(formatObservation(observation), observation);
+  return result(formatObservation(observation), toJsonSafe(observation));
 }
 
 /** Run a handler, turning anything it throws into an MCP tool error. */
@@ -49,7 +49,8 @@ export function registerPlayTools(server: McpServer, sessions: PlaySessions): vo
           `Session: ${started.session}`,
           ...started.notes.map(note => `Note: ${note}`),
         ].join('\n');
-        return result(`${header}\n\n${formatObservation(started.observation)}`, started);
+        const text = `${header}\n\n${formatObservation(started.observation)}`;
+        return result(text, toJsonSafe(started));
       }),
   );
 
@@ -65,7 +66,7 @@ export function registerPlayTools(server: McpServer, sessions: PlaySessions): vo
     'Take an action (by id from the observation) in a play session.',
     {
       session: sessionId,
-      action: z.string().describe('Action id, e.g. link-0'),
+      action: z.string().describe('Action id from the observation, e.g. link:Hall'),
       value: z.unknown().optional().describe('Value for an input action (listbox, textbox, ...)'),
     },
     args =>

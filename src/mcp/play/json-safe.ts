@@ -5,6 +5,10 @@
  * entries, Sets and typed arrays arrays, Dates ISO strings, and a cycle the
  * string `"[circular]"`. As in JSON, an undefined property is left out and an
  * undefined array item becomes null.
+ *
+ * Map keys become strings (an object key its JSON), so keys that stringify
+ * alike collide: `1` and `"1"` end up as one property, holding the later
+ * entry's value.
  */
 export function toJsonSafe(value: unknown, ancestors: Set<object> = new Set()): unknown {
   if (value === undefined) return null;

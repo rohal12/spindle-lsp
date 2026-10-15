@@ -382,6 +382,7 @@ export async function startMcpServer(version: string): Promise<void> {
  */
 function closePlaySessionsOnShutdown(sessions: PlaySessions, transport: StdioServerTransport): void {
   const closeAll = () => void sessions.closeAll();
+  // server.connect() keeps this: the SDK's Protocol.connect chains a pre-set onclose.
   transport.onclose = closeAll;
   process.stdin.once('close', closeAll);
   process.once('exit', closeAll);
