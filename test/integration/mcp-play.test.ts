@@ -150,6 +150,10 @@ describe('spindle_play_* tools over MCP', () => {
         join(installed, 'package.json'),
         JSON.stringify({ name: '@rohal12/spindle', version: '0.60.0' }),
       );
+      writeFileSync(
+        join(directory, 'package.json'),
+        JSON.stringify({ name: 'story', dependencies: { '@rohal12/spindle': '0.60.0' } }),
+      );
       copyFileSync(fixture, join(directory, 'story.twee'));
       const { call } = await connect();
       const result = await call('spindle_play_start', { story: join(directory, 'story.twee') });

@@ -226,12 +226,22 @@ describe('PlaySessions', () => {
   });
 });
 
-/** A temporary directory with `@rohal12/spindle` of `version` installed in its node_modules. */
-function projectWithSpindle(version: string): string {
+/** The package.json of a project that depends on Spindle. */
+const DECLARES_SPINDLE = JSON.stringify({
+  name: 'story',
+  dependencies: { '@rohal12/spindle': '*' },
+});
+
+/**
+ * A temporary directory with `@rohal12/spindle` of `version` installed in its
+ * node_modules, and a package.json that declares it unless `declared` is false.
+ */
+function projectWithSpindle(version: string, declared = true): string {
   const root = mkdtempSync(join(tmpdir(), 'spindle-play-project-'));
   const pkg = join(root, 'node_modules', '@rohal12', 'spindle');
   mkdirSync(pkg, { recursive: true });
   writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@rohal12/spindle', version }));
+  if (declared) writeFileSync(join(root, 'package.json'), DECLARES_SPINDLE);
   mkdirSync(join(root, 'story'));
   return root;
 }
@@ -252,6 +262,7 @@ describe('PlaySessions runtime version note', () => {
   it('looks for the project Spindle from a story directory itself', async () => {
     root = projectWithSpindle('0.1.0');
     const story = join(root, 'story');
+    writeFileSync(join(story, 'package.json'), DECLARES_SPINDLE);
     mkdirSync(join(story, 'node_modules', '@rohal12', 'spindle'), { recursive: true });
     writeFileSync(
       join(story, 'node_modules', '@rohal12', 'spindle', 'package.json'),
@@ -260,6 +271,17 @@ describe('PlaySessions runtime version note', () => {
     const { sessions } = makeSessions({ version: '9.9.9' });
     const r = await sessions.start(story);
     expect(r.notes).toEqual(['n', note('0.2.0', '9.9.9')]);
+  });
+
+  it('adds no note for a Spindle the project does not declare (a hoisted copy)', async () => {
+    root = projectWithSpindle('0.1.0', false);
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'story', devDependencies: { '@rohal12/spindle-lsp': '*' } }),
+    );
+    const { sessions } = makeSessions({ version: '9.9.9' });
+    const r = await sessions.start(join(root, 'story', 'story.twee'));
+    expect(r.notes).toEqual(['n']);
   });
 
   it('adds no note when the versions match, none is installed or the runtime is unknown', async () => {

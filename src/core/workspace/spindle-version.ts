@@ -44,13 +44,36 @@ export const DEFAULT_TARGET: SpindleTarget = { version: undefined, source: 'defa
  * `node_modules/@rohal12/spindle/package.json` found in `startDir` or an
  * ancestor, the way Node resolves a package. This is the copy the project's
  * builtin macros are read from. Undefined if none is installed or readable.
+ *
+ * The copy is the project's only when a `package.json` in the directory that
+ * holds that `node_modules`, or in a directory between it and `startDir`,
+ * declares `@rohal12/spindle` (in any dependency field). Otherwise another
+ * package put it there, such as `npm i @rohal12/spindle-lsp`, whose own
+ * Spindle npm hoists into a project that has none: it says nothing about the
+ * Spindle the story runs on, and counts as not installed.
  */
 export function readInstalledSpindleVersion(startDir: string): string | undefined {
   const target = join('node_modules', '@rohal12', 'spindle', 'package.json');
+  let declared = false;
   return findUp(startDir, dir => {
+    declared ||= declaresSpindle(readPackageJson(join(dir, 'package.json')));
     const candidate = join(dir, target);
     if (!existsSync(candidate)) return undefined;
-    return { version: spindleVersionOf(readPackageJson(candidate)) };
+    return { version: declared ? spindleVersionOf(readPackageJson(candidate)) : undefined };
+  });
+}
+
+const DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+] as const;
+
+function declaresSpindle(pkg: PackageJson | undefined): boolean {
+  return DEPENDENCY_FIELDS.some(field => {
+    const deps = pkg?.[field];
+    return typeof deps === 'object' && deps !== null && Object.hasOwn(deps, '@rohal12/spindle');
   });
 }
 
@@ -87,9 +110,13 @@ function findUp(
   }
 }
 
-function readPackageJson(file: string): { name?: unknown; version?: unknown } | undefined {
+type PackageJson = { name?: unknown; version?: unknown } & {
+  [field in (typeof DEPENDENCY_FIELDS)[number]]?: unknown;
+};
+
+function readPackageJson(file: string): PackageJson | undefined {
   try {
-    return JSON.parse(readFileSync(file, 'utf-8')) as { name?: unknown; version?: unknown };
+    return JSON.parse(readFileSync(file, 'utf-8')) as PackageJson;
   } catch {
     return undefined;
   }

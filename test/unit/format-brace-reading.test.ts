@@ -69,6 +69,9 @@ describe('Q-format-entrypoints: one reading everywhere; the project\'s Spindle o
       const pkg = join(dir, 'node_modules', '@rohal12', 'spindle');
       mkdirSync(pkg, { recursive: true });
       writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@rohal12/spindle', version: installed }));
+      // The project's own Spindle: one hoisted by another package does not count
+      const manifest = { dependencies: { '@rohal12/spindle': installed } };
+      writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest));
     }
     const data = storyDataVersion
       ? `:: StoryData\n{"format": "Spindle", "format-version": "${storyDataVersion}"}\n\n` : '';
