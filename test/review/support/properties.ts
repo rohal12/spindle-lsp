@@ -15,7 +15,7 @@ import { formatDocument } from '../../../src/plugins/format.js';
 import { getHoverInfo } from '../../../src/plugins/hover.js';
 import { findPassageReferences, findWidgetReferences } from '../../../src/plugins/references.js';
 import {
-  build, buildFresh, cursorOffsets, doc, notApplicable, rangeProblem, snapshot, spanKey, sweep, texts, U,
+  build, buildFresh, cursorOffsets, doc, notApplicable, rangeProblem, root, snapshot, spanKey, sweep, texts, U,
   type Files, type Probe,
 } from './harness.js';
 import {
@@ -34,8 +34,8 @@ function allSweeps(model: WorkspaceModel) {
 
 // --- 1. every range any consumer returns is a valid range in its document ---
 
-export function propBounds(files: Files) {
-  const model = build(files);
+export function propBounds(files: Files, at = root) {
+  const model = build(files, undefined, at);
   // ranges are validated against the client's own text, not the model's copy
   const check = (what: string, uri: string, r: Range) => {
     const text = files[uri.replace('file:///', '')];
@@ -69,8 +69,8 @@ export function propBounds(files: Files) {
 
 // --- 2. references / definition / prepareRename agree on every span ---
 
-export function propNavigationAgree(files: Files) {
-  const model = build(files);
+export function propNavigationAgree(files: Files, at = root) {
+  const model = build(files, undefined, at);
   const sweeps = allSweeps(model);
   const byUri = new Map(sweeps.map(s => [s.uri, s.probes]));
   let any = false;
@@ -116,8 +116,8 @@ export function propNavigationAgree(files: Files) {
 
 // --- 3. runtime oracle: passage references across diagnostics/links/references/lenses ---
 
-export function propPassageOracle(files: Files) {
-  const model = build(files);
+export function propPassageOracle(files: Files, at = root) {
+  const model = build(files, undefined, at);
   const known = new Set<string>();
   const perDoc = new Map<string, ReturnType<typeof runtimePassageRefs>>();
   for (const uri of model.documents.getUris()) {
@@ -198,8 +198,8 @@ function isBlockWidget(files: Files, name: string): boolean {
 
 // --- 4. widget and macro heads: oracle for definitions, references, diagnostics, tokens ---
 
-export function propMacroHeadOracle(files: Files) {
-  const model = build(files);
+export function propMacroHeadOracle(files: Files, at = root) {
+  const model = build(files, undefined, at);
   for (const uri of model.documents.getUris()) {
     const text = model.documents.getText(uri)!;
     const heads = runtimeMacroHeads(text);
@@ -317,8 +317,8 @@ const codeMultiset = (model: WorkspaceModel) => {
   return out.sort();
 };
 
-export function propRename(files: Files) {
-  const model = build(files);
+export function propRename(files: Files, at = root) {
+  const model = build(files, undefined, at);
   const seen = new Set<string>();
   let renamed = 0;
   for (const { uri, probes } of allSweeps(model)) {
@@ -347,7 +347,7 @@ export function propRename(files: Files) {
         if (edits.size === 0) continue;
         renamed++;
         const after = applyAll(model, edits);
-        const next = build(after);
+        const next = build(after, undefined, at);
         // diagnostics identity: same codes on the same documents
         // Diagnostics that depend on whether a name resolves (missing/unused/unreachable passages, a link read
         // differently, a macro-looking text in an attribute) may change when a name changes; the rest may not.
@@ -395,8 +395,8 @@ export function propRename(files: Files) {
 
 // --- 6. formatting: idempotent, diagnostics and runtime payload unchanged ---
 
-export async function propFormat(files: Files) {
-  const model = build(files);
+export async function propFormat(files: Files, at = root) {
+  const model = build(files, undefined, at);
   const formatted: Files = {};
   let changed = false;
   for (const [name, text] of Object.entries(files)) {
@@ -410,7 +410,7 @@ export async function propFormat(files: Files) {
     if (once !== text) changed = true;
     formatted[name] = once;
   }
-  const next = build(formatted);
+  const next = build(formatted, undefined, at);
   const strip = (m: WorkspaceModel) => {
     const out: string[] = [];
     for (const uri of m.documents.getUris().sort()) for (const d of computeDiagnostics(uri, m)) if (d.code !== 'SP500') out.push(`${uri}|${d.code}|${d.message}`);
@@ -461,8 +461,8 @@ export async function propFormatDoLiterals(files: Files) {
 
 // --- 7. semantic tokens: valid, sorted, non-overlapping ---
 
-export function propTokens(files: Files) {
-  const model = build(files);
+export function propTokens(files: Files, at = root) {
+  const model = build(files, undefined, at);
   let n = 0;
   for (const uri of model.documents.getUris()) {
     const toks = computeSemanticTokensAbsolute(uri, model);
@@ -494,8 +494,8 @@ export function propTokens(files: Files) {
 
 // --- 7b. hover: only on what the semantic tokens and the runtime tokens say is a symbol ---
 
-export function propHover(files: Files) {
-  const model = build(files);
+export function propHover(files: Files, at = root) {
+  const model = build(files, undefined, at);
   let hovers = 0;
   for (const uri of model.documents.getUris()) {
     const text = model.documents.getText(uri)!;
@@ -528,35 +528,53 @@ export function propHover(files: Files) {
 
 // --- 8. state: incremental sequences equal a fresh build; order independence ---
 
-export function propStateOrder(files: Files) {
+export function propStateOrder(files: Files, at = root) {
   const names = Object.keys(files);
   if (names.length < 2) notApplicable('single document: file order cannot differ');
-  const a = snapshot(build(files, names));
-  const b = snapshot(build(files, [...names].reverse()));
+  const a = snapshot(build(files, names, at));
+  const b = snapshot(build(files, [...names].reverse(), at));
   expect(b, 'workspace initialization order changed consumer output').toEqual(a);
 }
 
-export function propStateIncremental(files: Files) {
+export function propStateIncremental(files: Files, at = root) {
   const names = Object.keys(files);
-  const fresh = snapshot(build(files));
+  const fresh = snapshot(build(files, undefined, at));
   // open documents one at a time, as an editor does
-  const m1 = buildFresh({}, []);
+  const m1 = buildFresh({}, [], at);
   for (const n of names) m1.documents.open(U(n), files[n]);
   expect(snapshot(m1), 'opening documents one by one differs from a fresh build').toEqual(fresh);
   // an unsaved edit, then its revert
   const first = names[0];
-  const m2 = buildFresh(files);
+  const m2 = buildFresh(files, undefined, at);
   m2.documents.update(U(first), files[first] + '\n:: Scratch Passage\n[[Nowhere At All]]\n');
   m2.documents.update(U(first), files[first]);
   expect(snapshot(m2), 'edit and revert leaves stale state').toEqual(fresh);
   // close and reopen each document
   for (const n of names) {
-    const m3 = buildFresh(files);
+    const m3 = buildFresh(files, undefined, at);
     m3.documents.close(U(n));
     const rest = { ...files }; delete rest[n];
-    expect(snapshot(m3), `closing ${n} differs from a workspace without it`).toEqual(snapshot(build(rest)));
+    expect(snapshot(m3), `closing ${n} differs from a workspace without it`).toEqual(snapshot(build(rest, undefined, at)));
     m3.documents.open(U(n), files[n]);
     expect(snapshot(m3), `reopening ${n} differs from a fresh build`).toEqual(fresh);
   }
   void uriOf;
+}
+
+// --- 9. the target Spindle: SP001 once, on the first story document in URI order, over its first header ---
+
+export function propVersion(files: Files, at: string, unsupported: boolean) {
+  const model = build(files, undefined, at);
+  expect(model.target.supported, `target ${JSON.stringify(model.target)}`).toBe(!unsupported);
+  const found = model.documents.getUris().sort().flatMap(uri =>
+    computeDiagnostics(uri, model).filter(d => d.code === 'SP001').map(d => ({ uri, range: d.range })));
+  if (!unsupported) {
+    expect(found, 'a supported target is not reported').toEqual([]);
+    return;
+  }
+  const owner = Object.keys(files).filter(n => !/\.(js|ts)$/.test(n) && splitPassages(files[n]).length > 0).sort()[0];
+  const lines = files[owner].split(/\r\n|\n/);
+  const header = lines.findIndex(l => /^\uFEFF?::/.test(l));
+  const range = { start: { line: header, character: 0 }, end: { line: header, character: lines[header].length } };
+  expect(found, 'SP001 once, on the first story document in URI order, over its first header line').toEqual([{ uri: U(owner), range }]);
 }

@@ -5,6 +5,7 @@
  * `support/shards.ts`.
  */
 import type { Dims, Files } from './harness.js';
+import { MINIMUM_SPINDLE_VERSION } from '../../../src/core/workspace/spindle-version.js';
 
 // ---------------------------------------------------------------------------
 // Fixture construction
@@ -36,6 +37,14 @@ export interface Scene {
   id: string;
   dims: Omit<Dims, 'consumer'>;
   files: Files;
+  /**
+   * The project's Spindle (harness `projectRoot`): the version it declares
+   * and has installed, or null for none (StoryData decides). Unset, the
+   * scene runs in the default project, on the oldest supported Spindle.
+   */
+  installed?: string | null;
+  /** Whether that project's target is below the minimum, so SP001 is reported (the [version] cell). */
+  sp001?: boolean;
 }
 
 const T = 'Target';
@@ -115,7 +124,7 @@ const CONTEXTS: Record<string, (t: string) => string> = {
 const WIDGET_FILE = ':: Widgets [widget]\n{widget "wid"}\ninside\n{/widget}\n\n:: BlockWidgets [widget]\n{widget "bw"}\n<b>{@children}</b>\n{/widget}\n';
 
 export const scenes: Scene[] = [];
-function scene(id: string, dims: Omit<Dims, 'consumer'>, files: Files) { scenes.push({ id, dims, files }); }
+function scene(id: string, dims: Omit<Dims, 'consumer'>, files: Files, project: Pick<Scene, 'installed' | 'sp001'> = {}) { scenes.push({ id, dims, files, ...project }); }
 export function files(story: string, extra: Files = {}): Files {
   // a story document that declares StoryData/StoryVariables/StoryTransients itself is the only declaration
   const own = (['StoryData', 'StoryVariables', 'StoryTransients'] as const).filter(n => story.includes(`:: ${n}\n`));
@@ -329,6 +338,30 @@ scene('F/do-control/single-line-in-container', { role: 'ordinary', context: 'do 
 scene('F/do-control/StoryInit', { role: 'StoryInit', context: 'do body: template', spelling: 'template-lf', boundary: 'eof-newline', state: 'multi-file' },
   files(inRole('StoryInit', '{do}\nout.push(`a\n  b`);\n{/do}')));
 
+// Family G: the target Spindle (SP001). The warning sits on the first header of the first story
+// document in URI order (base.tw here), so it must end within that line on CRLF and mixed line
+// endings, and must not move with the order documents are opened in (state cells). The project
+// declares a release below the minimum, or none (StoryData's 0.45.1 decides), or the minimum (control).
+const TARGET_SOURCES: Array<[string, string | null, boolean]> = [
+  ['installed-0.59.0', '0.59.0', true], ['story-data-0.45.1', null, true], ['installed-minimum', MINIMUM_SPINDLE_VERSION, false],
+];
+const TARGET_EOLS: Record<string, (text: string) => string> = {
+  'eof-newline': t => t,
+  crlf: t => t.replaceAll('\n', '\r\n'),
+  // the first line of every document (the reported header) ends in CRLF, the rest in LF
+  'mixed-eol': t => t.replace('\n', '\r\n'),
+};
+export const TARGET_SCENES: string[] = [];
+for (const [source, installed, sp001] of TARGET_SOURCES) {
+  for (const [bname, eol] of Object.entries(TARGET_EOLS)) {
+    const id = `G/${source}/${bname}`;
+    TARGET_SCENES.push(id);
+    const fs = files(`:: Start\n[[${T}]] {set $v = 1}{wid}\n`);
+    scene(id, { role: 'StoryData (first passage of the owner document)', context: 'target Spindle version (SP001)', spelling: source, boundary: bname, state: 'multi-file' },
+      Object.fromEntries(Object.entries(fs).map(([n, t]) => [n, eol(t)])), { installed, sp001 });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The matrix
 // ---------------------------------------------------------------------------
@@ -340,6 +373,7 @@ export const STATE_SUBSET = new Set([
   'D/crlf/bracket', 'D/astral-prefix/goto', 'D/incomplete-open-bracket/bracket', 'D/eof-no-newline/variable',
   'E/config-first/goto', 'E/single-file/bracket', 'E/js-source/goto', 'E/duplicate-passage/bracket',
   'E/two-stories/unicode-order', 'C/astral/bracket-plain', 'C/escaped-brackets-header/goto-double',
+  ...TARGET_SCENES,
 ]);
 
 // Cells that are named, and decided, but have nothing to execute. Each carries its justification in the results file.
@@ -351,7 +385,7 @@ export const NOT_APPLICABLE: Array<[string, Dims, string]> = [
   ['N/mcp-entrypoint', { role: 'any', context: 'any', spelling: 'any', boundary: 'any', state: 'multi-file', consumer: 'MCP tools' },
     'The MCP tools call the same computeDiagnostics/formatDocument as the CLI (src/mcp/server.ts) and are covered end to end by test/integration/mcp.test.ts and test/integration/format-entrypoints.test.ts; the corpus compares the CLI and LSP entrypoints with the in-process consumers.'],
   ['N/spindle-version-state', { role: 'any', context: 'any', spelling: 'any', boundary: 'any', state: 'project format/version', consumer: 'all' },
-    'The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.60.0 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release.'],
+    'The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.60.0 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release. The models are built in temporary projects (harness projectRoot), by default one with the minimum release installed, so the Spindle in the checkout decides nothing; family G covers the version diagnostic (SP001) in a project below the minimum, one that leaves the version to StoryData, and one on the minimum as control.'],
   ['N/inlay-folding-symbols-actions', { role: 'any', context: 'any', spelling: 'any', boundary: 'any', state: 'any', consumer: 'inlay hints, folding ranges, document/workspace symbols, code actions' },
     'Not in the selected consumer set. Their own contracts live in test/unit/inlay-hints.test.ts, folding-range.test.ts, document-symbol.test.ts, workspace-symbol.test.ts, code-actions.test.ts and code-actions-config.test.ts (code actions consume the variable and passage references the corpus checks; hover is a corpus property).'],
   ['N/semantic-token-overlap-negotiation', { role: 'any', context: 'any', spelling: 'any', boundary: 'any', state: 'any', consumer: 'semantic tokens' },

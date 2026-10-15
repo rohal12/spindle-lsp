@@ -15,12 +15,12 @@ import { afterAll, afterEach, it, inject } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  NotApplicable, disposeAll, disposeShared, notApplicable,
+  NotApplicable, disposeAll, disposeShared, notApplicable, projectRoot, root,
   type CellRecord, type Dims,
 } from './harness.js';
 import {
   propBounds, propFormat, propFormatDoLiterals, propHover, propMacroHeadOracle, propNavigationAgree, propPassageOracle,
-  propRename, propStateIncremental, propStateOrder, propTokens,
+  propRename, propStateIncremental, propStateOrder, propTokens, propVersion,
 } from './properties.js';
 import { registerRepairEntrypoints } from './repair-entrypoints.js';
 import { registerRepairContracts } from './repair-contracts.js';
@@ -83,19 +83,22 @@ export function registerShard(shard: string): void {
     scenes.forEach((s, index) => {
       const owner = `matrix-${(index % MATRIX_SHARDS) + 1}`;
       const d = (consumer: string): Dims => ({ ...s.dims, consumer });
-      cell(`${s.id} [bounds]`, d('all consumers: ranges within document and UTF-16 valid'), () => propBounds(s.files), owner);
-      cell(`${s.id} [navigation]`, d('references x definition x prepareRename'), () => propNavigationAgree(s.files), owner);
-      cell(`${s.id} [passage-oracle]`, d('diagnostics x references x document links x code lens vs runtime'), () => propPassageOracle(s.files), owner);
-      cell(`${s.id} [macro-oracle]`, d('diagnostics x semantic tokens x widget references vs runtime'), () => propMacroHeadOracle(s.files), owner);
-      cell(`${s.id} [rename]`, d('prepareRename/rename applied, rebuilt, re-diagnosed, reparsed'), () => propRename(s.files), owner);
-      cell(`${s.id} [format]`, d('formatting: idempotent, same diagnostics, same runtime payload'), () => propFormat(s.files), owner);
+      // the scene's own project, else the default one (harness `root`)
+      const at = () => (s.installed === undefined ? root : projectRoot(s.installed));
+      cell(`${s.id} [bounds]`, d('all consumers: ranges within document and UTF-16 valid'), () => propBounds(s.files, at()), owner);
+      cell(`${s.id} [navigation]`, d('references x definition x prepareRename'), () => propNavigationAgree(s.files, at()), owner);
+      cell(`${s.id} [passage-oracle]`, d('diagnostics x references x document links x code lens vs runtime'), () => propPassageOracle(s.files, at()), owner);
+      cell(`${s.id} [macro-oracle]`, d('diagnostics x semantic tokens x widget references vs runtime'), () => propMacroHeadOracle(s.files, at()), owner);
+      cell(`${s.id} [rename]`, d('prepareRename/rename applied, rebuilt, re-diagnosed, reparsed'), () => propRename(s.files, at()), owner);
+      cell(`${s.id} [format]`, d('formatting: idempotent, same diagnostics, same runtime payload'), () => propFormat(s.files, at()), owner);
       if (s.id.startsWith('F/')) cell(`${s.id} [do-literal]`, d('formatting: do-body JavaScript values identical, idempotent, unrelated text preserved'), () => propFormatDoLiterals(s.files), owner);
-      cell(`${s.id} [hover]`, d('hover: variables and macros agree with semantic tokens and runtime tokens'), () => propHover(s.files), owner);
-      cell(`${s.id} [tokens]`, d('semantic tokens validity and agreement'), () => propTokens(s.files), owner);
+      cell(`${s.id} [hover]`, d('hover: variables and macros agree with semantic tokens and runtime tokens'), () => propHover(s.files, at()), owner);
+      cell(`${s.id} [tokens]`, d('semantic tokens validity and agreement'), () => propTokens(s.files, at()), owner);
+      if (s.installed !== undefined) cell(`${s.id} [version]`, d('diagnostics: SP001 once, on the first story document in URI order, within its header line'), () => propVersion(s.files, at(), s.sp001 ?? false), owner);
       if (STATE_SUBSET.has(s.id)) {
         const stateOwner = `state-${(state++ % STATE_SHARDS) + 1}`;
-        cell(`${s.id} [state-order]`, { ...s.dims, state: 'initialization order permuted', consumer: 'all read-only consumers' }, () => propStateOrder(s.files), stateOwner);
-        cell(`${s.id} [state-incremental]`, { ...s.dims, state: 'open one by one / unsaved edit+revert / close+reopen', consumer: 'all read-only consumers' }, () => propStateIncremental(s.files), stateOwner);
+        cell(`${s.id} [state-order]`, { ...s.dims, state: 'initialization order permuted', consumer: 'all read-only consumers' }, () => propStateOrder(s.files, at()), stateOwner);
+        cell(`${s.id} [state-incremental]`, { ...s.dims, state: 'open one by one / unsaved edit+revert / close+reopen', consumer: 'all read-only consumers' }, () => propStateIncremental(s.files, at()), stateOwner);
       }
     });
   }

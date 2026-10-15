@@ -2,8 +2,8 @@
  "generated": "2026-10-06",
  "spindleVersion": "0.60.3",
  "summary": {
-  "total": 6284,
-  "pass": 6271,
+  "total": 6383,
+  "pass": 6370,
   "fail": 0,
   "not-run": 0,
   "not-applicable": 13
@@ -56877,6 +56877,996 @@
    "status": "pass"
   },
   {
+   "id": "G/installed-0.59.0/eof-newline [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/eof-newline [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "eof-newline",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/crlf [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "crlf",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-0.59.0/mixed-eol [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-0.59.0",
+   "boundary": "mixed-eol",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/eof-newline [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "eof-newline",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/crlf [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "crlf",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/story-data-0.45.1/mixed-eol [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "story-data-0.45.1",
+   "boundary": "mixed-eol",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/eof-newline [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "eof-newline",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/crlf [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "crlf",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [bounds]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "all consumers: ranges within document and UTF-16 valid",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [navigation]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "references x definition x prepareRename",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [passage-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics x references x document links x code lens vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [macro-oracle]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics x semantic tokens x widget references vs runtime",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [rename]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "prepareRename/rename applied, rebuilt, re-diagnosed, reparsed",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [format]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "formatting: idempotent, same diagnostics, same runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [hover]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "hover: variables and macros agree with semantic tokens and runtime tokens",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [tokens]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "semantic tokens validity and agreement",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [version]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "multi-file",
+   "consumer": "diagnostics: SP001 once, on the first story document in URI order, within its header line",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [state-order]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "initialization order permuted",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
+   "id": "G/installed-minimum/mixed-eol [state-incremental]",
+   "role": "StoryData (first passage of the owner document)",
+   "context": "target Spindle version (SP001)",
+   "spelling": "installed-minimum",
+   "boundary": "mixed-eol",
+   "state": "open one by one / unsaved edit+revert / close+reopen",
+   "consumer": "all read-only consumers",
+   "status": "pass"
+  },
+  {
    "id": "N/PRETTIER-CONFIG/json-root",
    "role": "ordinary/declarations",
    "context": "PRETTIER-CONFIG",
@@ -62838,7 +63828,7 @@
    "state": "project format/version",
    "consumer": "all",
    "status": "not-applicable",
-   "note": "The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.60.0 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release."
+   "note": "The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.60.0 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release. The models are built in temporary projects (harness projectRoot), by default one with the minimum release installed, so the Spindle in the checkout decides nothing; family G covers the version diagnostic (SP001) in a project below the minimum, one that leaves the version to StoryData, and one on the minimum as control."
   },
   {
    "id": "N/inlay-folding-symbols-actions",

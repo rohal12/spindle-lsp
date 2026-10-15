@@ -4,8 +4,12 @@
  * selection. Its status is pass / fail / not-run / not-applicable and is
  * written to docs/reviews/2026-10-06-cross-consumer-results.json.
  */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { expect } from 'vitest';
+import { MINIMUM_SPINDLE_VERSION } from '../../../src/core/workspace/spindle-version.js';
 import { WorkspaceModel } from '../../../src/core/workspace/workspace-model.js';
 import type { Position, Range } from '../../../src/core/types.js';
 import { computeDiagnostics } from '../../../src/plugins/diagnostics.js';
@@ -32,7 +36,41 @@ export function notApplicable(reason: string): never { throw new NotApplicable(r
 
 export const records: CellRecord[] = [];
 
-export const root = process.cwd();
+/**
+ * The workspace roots the models are built with. The root decides one thing,
+ * the project's installed Spindle (readInstalledSpindleVersion), so the matrix
+ * never reads it from the checkout's node_modules: each root is a temporary
+ * project of its own. `installed` is the version of the @rohal12/spindle the
+ * project declares and has installed; null is a project whose only copy is an
+ * undeclared, vendored one, so the lookup stops there and StoryData's
+ * `format-version` decides, as in a project without Spindle installed.
+ */
+const roots = new Map<string | null, string>();
+let rootsParent: string | undefined;
+export function projectRoot(installed: string | null): string {
+  let dir = roots.get(installed);
+  if (dir) return dir;
+  if (!rootsParent) {
+    rootsParent = mkdtempSync(join(tmpdir(), 'spindle-review-roots-'));
+    const parent = rootsParent;
+    process.once('exit', () => rmSync(parent, { recursive: true, force: true }));
+  }
+  dir = join(rootsParent, installed === null ? 'undeclared' : `spindle-${installed}`);
+  const pkg = join(dir, 'node_modules', '@rohal12', 'spindle');
+  mkdirSync(pkg, { recursive: true });
+  const dependencies = installed === null ? {} : { '@rohal12/spindle': installed };
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'review-story', private: true, dependencies }));
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@rohal12/spindle', version: installed ?? MINIMUM_SPINDLE_VERSION }));
+  roots.set(installed, dir);
+  return dir;
+}
+/**
+ * The root of every cell that does not choose one: a project with the oldest
+ * supported Spindle installed, so no cell's outcome depends on the Spindle in
+ * the checkout (the BASE fixture's StoryData names 0.45.1, which the installed
+ * version overrides, as it does in a real project).
+ */
+export const root = projectRoot(MINIMUM_SPINDLE_VERSION);
 export type Files = Record<string, string>;
 export const U = (name: string) => `file:///${name}`;
 
@@ -58,18 +96,18 @@ export function assertClientBasis(model: WorkspaceModel, files: Files, names: st
   }
 }
 
-function make(files: Files, order: string[]): WorkspaceModel {
-  const model = new WorkspaceModel({ workspaceRoot: root });
+function make(files: Files, order: string[], at: string): WorkspaceModel {
+  const model = new WorkspaceModel({ workspaceRoot: at });
   model.initialize(new Map(order.map(n => [U(n), files[n]] as [string, string])));
   assertClientBasis(model, files, order);
   return model;
 }
-/** A read-only workspace; the same `files` and `order` give the same model while it is recent. */
-export function build(files: Files, order: string[] = Object.keys(files)): WorkspaceModel {
-  const key = JSON.stringify([order, order.map(n => files[n])]);
+/** A read-only workspace; the same `files`, `order` and root give the same model while it is recent. */
+export function build(files: Files, order: string[] = Object.keys(files), at: string = root): WorkspaceModel {
+  const key = JSON.stringify([at, order, order.map(n => files[n])]);
   const hit = shared.get(key);
   if (hit) { shared.delete(key); shared.set(key, hit); return hit; }
-  const model = make(files, order);
+  const model = make(files, order, at);
   shared.set(key, model);
   if (shared.size > SHARED_LIMIT) {
     const [oldKey, oldModel] = shared.entries().next().value as [string, WorkspaceModel];
@@ -79,8 +117,8 @@ export function build(files: Files, order: string[] = Object.keys(files)): Works
   return model;
 }
 /** A workspace of the caller's own, disposed after the test; for properties that change it. */
-export function buildFresh(files: Files, order: string[] = Object.keys(files)): WorkspaceModel {
-  const model = make(files, order);
+export function buildFresh(files: Files, order: string[] = Object.keys(files), at: string = root): WorkspaceModel {
+  const model = make(files, order, at);
   live.push(model);
   return model;
 }
