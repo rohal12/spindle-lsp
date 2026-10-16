@@ -100,4 +100,10 @@ describe('getDefinition', () => {
     expect(result).not.toBeNull();
     expect(result!.range.start.line).toBe(3);
   });
+
+  it('points at the header without its CR on a CRLF document', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\r\n[[Next]]\r\n\r\n:: Next\r\nHello\r\n' });
+    const result = getDefinition('file:///test.tw', { line: 1, character: 3 }, ws);
+    expect(result!.range).toEqual({ start: { line: 3, character: 0 }, end: { line: 3, character: 7 } });
+  });
 });

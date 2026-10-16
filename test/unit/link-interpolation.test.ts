@@ -12,7 +12,7 @@
  * `interpolate: true`), and so are HTML attribute values and the labels of
  * `{button}`, `{dialog}` and `{meter}`. A string in any other macro's
  * arguments is JavaScript, not a template. (Up to 0.51.3 the link macro
- * printed its text as written; see docs/reviews/2026-10-10-tooling-migration.md.)
+ * printed its text as written.)
  *
  * Q-source pins that reading to the installed runtime's macro metadata;
  * Q-differential compares the variable usages the LSP records with what the

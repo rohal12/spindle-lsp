@@ -24,10 +24,22 @@ import { INSTALLED_SPINDLE_VERSION } from '../helpers/spindle-version.js';
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
-/** A project directory with `version` of Spindle "installed" (or none). */
-function project(version?: string, nested = false): string {
+/** The package.json of a project that depends on Spindle. */
+const DECLARES_SPINDLE = { name: 'story', dependencies: { '@rohal12/spindle': '*' } };
+
+/**
+ * A project directory with `version` of Spindle "installed" (or none). Its
+ * package.json is `manifest` (none when null); by default it declares
+ * Spindle, so the installed copy is the project's own.
+ */
+function project(
+  version?: string,
+  nested = false,
+  manifest: object | null = DECLARES_SPINDLE,
+): string {
   const root = mkdtempSync(join(tmpdir(), 'spindle-target-'));
   roots.push(root);
+  if (manifest !== null) writeFileSync(join(root, 'package.json'), JSON.stringify(manifest));
   if (version !== undefined) {
     const pkg = join(root, 'node_modules', '@rohal12', 'spindle');
     mkdirSync(pkg, { recursive: true });
@@ -74,6 +86,62 @@ describe('Spindle target', () => {
     mkdirSync(join(broken, 'node_modules', '@rohal12', 'spindle'), { recursive: true });
     writeFileSync(join(broken, 'node_modules', '@rohal12', 'spindle', 'package.json'), '{');
     expect(readInstalledSpindleVersion(broken)).toBeUndefined();
+  });
+
+  it('counts an installed copy only when the project declares @rohal12/spindle', () => {
+    // A copy hoisted by another package (spindle-lsp's own dependency) is not the project's
+    const lspOnly = { name: 'story', dependencies: { '@rohal12/spindle-lsp': '*' } };
+    expect(readInstalledSpindleVersion(project('0.70.0', false, lspOnly))).toBeUndefined();
+    expect(readInstalledSpindleVersion(project('0.70.0', true, { name: 'story' }))).toBeUndefined();
+    expect(readInstalledSpindleVersion(project('0.70.0', false, null))).toBeUndefined();
+    const fields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+    for (const field of fields) {
+      const manifest = { name: 'story', [field]: { '@rohal12/spindle': '^0.70.0' } };
+      expect(readInstalledSpindleVersion(project('0.70.0', true, manifest)), field).toBe('0.70.0');
+    }
+  });
+
+  it('accepts a declaration between the story and the node_modules, as in a workspace', () => {
+    // Root package.json declares nothing; the workspace package that holds the story does,
+    // and npm hoisted its Spindle to the root node_modules.
+    const root = project('0.70.0', false, { name: 'monorepo', workspaces: ['story'] });
+    const story = join(root, 'story');
+    mkdirSync(join(story, 'src'), { recursive: true });
+    writeFileSync(join(story, 'package.json'), JSON.stringify(DECLARES_SPINDLE));
+    expect(readInstalledSpindleVersion(join(story, 'src'))).toBe('0.70.0');
+    // A declaration above the node_modules does not adopt it
+    const outer = project(undefined, false, DECLARES_SPINDLE);
+    const inner = join(outer, 'inner');
+    mkdirSync(join(inner, 'node_modules', '@rohal12', 'spindle'), { recursive: true });
+    writeFileSync(join(inner, 'package.json'), JSON.stringify({ name: 'inner' }));
+    writeFileSync(
+      join(inner, 'node_modules', '@rohal12', 'spindle', 'package.json'),
+      JSON.stringify({ name: '@rohal12/spindle', version: '0.70.0' }),
+    );
+    expect(readInstalledSpindleVersion(inner)).toBeUndefined();
+  });
+
+  it('accepts a declaring workspace member when the lookup starts at the monorepo root', () => {
+    /** A monorepo root with Spindle hoisted to its node_modules and `members` (path -> package.json). */
+    const monorepo = (workspaces: unknown, members: Record<string, object>) => {
+      const root = project('0.70.0', false, { name: 'monorepo', workspaces });
+      for (const [path, manifest] of Object.entries(members)) {
+        mkdirSync(join(root, path), { recursive: true });
+        writeFileSync(join(root, path, 'package.json'), JSON.stringify(manifest));
+      }
+      return root;
+    };
+    // npm/yarn array form and the yarn { packages } form, with globs
+    expect(readInstalledSpindleVersion(monorepo(['story'], { story: DECLARES_SPINDLE }))).toBe('0.70.0');
+    expect(readInstalledSpindleVersion(monorepo(['packages/*'], { 'packages/story': DECLARES_SPINDLE, 'packages/tools': { name: 'tools' } }))).toBe('0.70.0');
+    expect(readInstalledSpindleVersion(monorepo({ packages: ['packages/*'] }, { 'packages/story': DECLARES_SPINDLE }))).toBe('0.70.0');
+    // only a member that declares Spindle counts
+    expect(readInstalledSpindleVersion(monorepo(['packages/*'], { 'packages/tools': { name: 'tools' } }))).toBeUndefined();
+    // a declaring package.json outside the workspace globs, or excluded by one, is not a member
+    expect(readInstalledSpindleVersion(monorepo(['packages/*'], { 'vendor/story': DECLARES_SPINDLE }))).toBeUndefined();
+    expect(readInstalledSpindleVersion(monorepo(['packages/*', '!packages/old'], { 'packages/old': DECLARES_SPINDLE }))).toBeUndefined();
+    // without `workspaces`, a declaring subdirectory is not the root's
+    expect(readInstalledSpindleVersion(monorepo(undefined, { story: DECLARES_SPINDLE }))).toBeUndefined();
   });
 
   it('prefers the installed version, then StoryData format-version, then the default', () => {
@@ -128,9 +196,45 @@ describe('SP001: Spindle older than the supported minimum', () => {
     expect(found.map(d => d.severity)).toContain('warning');
   });
 
+  it('follows StoryData when the installed Spindle is not the project\'s own', () => {
+    // `npm i @rohal12/spindle-lsp` hoists spindle-lsp's Spindle into a project that has none
+    const data = ':: StoryData\n{"ifid": "A", "format": "Spindle", "format-version": "0.50.0"}\n';
+    const manifest = { name: 'story', devDependencies: { '@rohal12/spindle-lsp': '*' } };
+    const root = project('0.70.0', false, manifest);
+    const { workspace, diagnostics } = diagnose(root, data + text);
+    expect(workspace.target).toMatchObject({
+      version: '0.50.0',
+      source: 'story-data',
+      supported: false,
+    });
+    expect(diagnostics.filter(d => d.code === 'SP001').map(d => d.severity)).toEqual(['warning']);
+  });
+
   it('prefers the installed Spindle over the StoryData format-version', () => {
     const data = ':: StoryData\n{"ifid": "A", "format": "Spindle", "format-version": "0.38.0"}\n';
     // The installed copy is the runtime the story builds with: it wins over StoryData
     expect(diagnose(project('0.60.3'), data + text).diagnostics.filter(d => d.code === 'SP001')).toEqual([]);
+  });
+
+  it('ends at the first header, not past its line, on CRLF and mixed line endings', () => {
+    const root = project('0.59.19');
+    for (const [eol, source] of [
+      ['crlf', text.replaceAll('\n', '\r\n')],
+      ['mixed', ':: StoryVariables\r\n$x = 1\n:: Start\r\n{$x}\n'],
+    ]) {
+      const found = diagnose(root, source).diagnostics.filter(d => d.code === 'SP001');
+      expect(found.map(d => d.range), eol).toEqual([{ start: { line: 0, character: 0 }, end: { line: 0, character: 17 } }]);
+    }
+  });
+
+  it('stays on the same document whatever order documents open in', () => {
+    const root = project('0.59.19');
+    const files: Array<[string, string]> = [['file:///b.tw', ':: Other\nx\n'], ['file:///a.tw', text]];
+    for (const order of [files, [...files].reverse()]) {
+      const workspace = new WorkspaceModel({ workspaceRoot: root });
+      workspace.initialize(new Map(order));
+      const owners = order.filter(([u]) => computeDiagnostics(u, workspace).some(d => d.code === 'SP001')).map(([u]) => u);
+      expect(owners, order.map(([u]) => u).join()).toEqual(['file:///a.tw']);
+    }
   });
 });

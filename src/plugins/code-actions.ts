@@ -337,14 +337,15 @@ function insertLinesAt(text: string, line: number, body: string, eol: string): {
 /**
  * The line ending to write into document `uri`: its own when it has a line
  * break (CRLF if it uses any), otherwise (empty or header-only, nothing to
- * detect) that of the first other story document that has one, otherwise LF.
+ * detect) that of the first other story document, in sorted URI order, that
+ * has one, otherwise LF.
  */
 function lineEndingFor(workspace: WorkspaceModel, uri: string): string {
   const own = workspace.documents.getText(uri) ?? '';
   const detect = (text: string) => (text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : undefined);
   const fromOwn = detect(own);
   if (fromOwn) return fromOwn;
-  for (const other of workspace.documents.getUris()) {
+  for (const other of [...workspace.documents.getUris()].sort()) {
     if (other === uri || isMacroSource(other)) continue;
     const found = detect(workspace.documents.getText(other) ?? '');
     if (found) return found;

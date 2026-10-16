@@ -10,11 +10,15 @@ await build({
   entryPoints: ['src/bin.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node18',
+  target: 'node22',
   format: 'esm',
   outfile,
   external: [
     'prettier',
+    // Loaded lazily by the play tools; bundling would break spindle/play's worker URLs.
+    '@rohal12/spindle/play',
+    'happy-dom',
+    '@rohal12/twee-ts',
   ],
   define: {
     'SPINDLE_LSP_VERSION': JSON.stringify(pkg.version),

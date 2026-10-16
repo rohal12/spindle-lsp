@@ -1,4 +1,5 @@
 import type { Range } from '../core/types.js';
+import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { SymbolKind } from 'vscode-languageserver';
@@ -31,7 +32,7 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
   if (passages.length === 0) return [];
 
   const storyVarsPassage = workspace.passages.getStoryVariables();
-  const lines = text.split('\n');
+  const lines = splitLines(text);
   const symbols: DocSymbol[] = [];
 
   for (const passage of passages) {

@@ -1,8 +1,6 @@
 /**
  * #67 (residual): a passage rename spells the new name for the consumer that
- * reads each reference. Case IDs R67-*; the matrix cells for the same
- * contract are the passage-rename names in test/review/support/properties.ts
- * (RENAMES.passage) over the goto/include contexts of corpus.ts.
+ * reads each reference. Case IDs R67-*.
  * Runtime evaluation is limited to fixed benign literals written here.
  *
  * Spindle 0.59 reads the `passage` argument of {goto}, {include} and {link}
@@ -12,13 +10,19 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { splitIncludeFlag } from '@rohal12/spindle/tooling';
 import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../src/core/types.js';
 import { computeRename, encodePassageRefName, RenameError } from '../../src/plugins/rename.js';
 import { documentPassageRefs } from '../../src/core/markup/passage-refs.js';
-import { gotoTarget } from '../review/support/oracle.js';
 import { runtimeGotoTarget } from '../helpers/expression-oracle.js';
+
+/** The passage the runtime navigates to for a macro's raw arguments. */
+function gotoTarget(rawArgs: string, include = false): string | null {
+  const passage = include ? splitIncludeFlag(rawArgs).passage : rawArgs;
+  return passage === undefined ? null : runtimeGotoTarget(passage);
+}
 
 const uri = 'file:///story.tw';
 const models: WorkspaceModel[] = [];

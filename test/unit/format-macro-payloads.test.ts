@@ -1,6 +1,5 @@
 /**
  * Contract F66 / C-F66 (#66): formatting preserves runtime macro payloads.
- * Moved from test/review/convergence.review.ts once the contract passed.
  */
 import { describe, expect, it } from 'vitest';
 import { tokenize } from '../helpers/tooling.js';

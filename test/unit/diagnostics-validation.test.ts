@@ -177,4 +177,15 @@ describe('SP500: line length', () => {
     expect(sp500).toHaveLength(1);
     expect(sp500[0].range.start.line).toBe(5);
   });
+
+  it('does not count the CR of a CRLF line ending', () => {
+    const lf = [':: Start', '0123456789', '0123456789ab', ''].join('\n');
+    const crlf = lf.replaceAll('\n', '\r\n');
+    const mixed = ':: Start\r\n0123456789\n0123456789ab\r\n';
+    for (const text of [crlf, mixed]) {
+      const sp500 = codes(text, 'SP500', { maxLineLength: 10 });
+      expect(sp500.map(d => d.range), JSON.stringify(text)).toEqual(codes(lf, 'SP500', { maxLineLength: 10 }).map(d => d.range));
+      expect(sp500.map(d => d.message)).toEqual(['Line exceeds 10 characters (12)']);
+    }
+  });
 });

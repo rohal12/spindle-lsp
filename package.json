@@ -8,29 +8,28 @@
   },
   "scripts": {
     "build": "node esbuild.config.ts",
-    "test": "vitest run && npm run review:convergence",
+    "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "review:convergence": "vitest run --config vitest.review.config.ts",
     "typecheck": "tsc --noEmit",
     "duplication": "node scripts/duplication.ts jscpd && node scripts/duplication.ts cpd && node scripts/duplication.ts fallow",
+    "smoke:pack": "node scripts/smoke-pack.ts",
     "lint": "tsc --noEmit && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "@rohal12/spindle": ">=0.61.0",
+    "@rohal12/twee-ts": "^1.18.2",
     "glob": "^13.0.6",
+    "happy-dom": "^20.14.6",
     "vscode-languageserver": "^10.1.2",
     "vscode-languageserver-textdocument": "^1.0.15",
     "yaml": "^2.9.1"
-  },
-  "peerDependencies": {
-    "@rohal12/spindle": ">=0.60.0"
   },
   "optionalDependencies": {
     "prettier": "^3.9.9"
   },
   "devDependencies": {
-    "@rohal12/spindle": "0.60.3",
     "@types/node": "^26.6.5",
     "esbuild": "^0.28.2",
     "fallow": "3.33.1",
@@ -45,17 +44,12 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.17"
   },
   "license": "Unlicense",
   "author": "Rohal12",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rohal12/spindle-lsp.git"
-  },
-  "peerDependenciesMeta": {
-    "@rohal12/spindle": {
-      "optional": true
-    }
   }
 }

@@ -232,4 +232,38 @@ describe('computeCodeActions on the diagnostics of the tooling API', () => {
     }
     expect(change.documents.getText(uri)).toBe(':: Start\n[[Hall]] {goto "Hall"} {link "x" \'Hall\'}y{/link}\n:: Hall\nx\n');
   });
+
+  it('puts SP202 and its quick fix in the same document whatever order documents open in', () => {
+    // The owner is header-only, so the fix also borrows another document's line ending
+    const files: Array<[string, string]> = [
+      ['file:///c.tw', ':: C\r\n{set $x = 1}\r\n'],
+      ['file:///a.tw', ':: Start'],
+      ['file:///b.tw', ':: B\nlf\n'],
+    ];
+    const outcome = (order: Array<[string, string]>) => {
+      const ws = new WorkspaceModel();
+      ws.initialize(new Map(order));
+      const owners = order.map(([u]) => u).filter(u => computeDiagnostics(u, ws).some(d => d.code === 'SP202'));
+      const sp202 = computeDiagnostics(owners[0], ws).filter(d => d.code === 'SP202');
+      const fix = computeCodeActions(owners[0], sp202, ws).find(a => a.title === 'Create StoryVariables passage')!;
+      return { owners, edits: fix.edits };
+    };
+    const first = outcome(files);
+    expect(first.owners).toEqual(['file:///a.tw']);
+    expect(first.edits.map(e => e.uri)).toEqual(['file:///a.tw']);
+    for (const order of [[...files].reverse(), [files[1], files[2], files[0]], [files[2], files[0], files[1]]]) {
+      expect(outcome(order), order.map(([u]) => u).join()).toEqual(first);
+    }
+  });
+
+  it('keeps the SP202 owner when a document closes and reopens', () => {
+    const ws = new WorkspaceModel();
+    ws.initialize(new Map([['file:///a.tw', ':: A\nx\n'], ['file:///b.tw', ':: B\n{set $y = 1}\n']]));
+    const owner = () => ['file:///a.tw', 'file:///b.tw'].filter(u => computeDiagnostics(u, ws).some(d => d.code === 'SP202'));
+    expect(owner()).toEqual(['file:///a.tw']);
+    ws.documents.close('file:///a.tw');
+    expect(owner()).toEqual(['file:///b.tw']);
+    ws.documents.open('file:///a.tw', ':: A\nx\n');
+    expect(owner()).toEqual(['file:///a.tw']);
+  });
 });

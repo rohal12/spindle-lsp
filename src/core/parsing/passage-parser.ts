@@ -1,4 +1,5 @@
 import type { Range } from '../types.js';
+import { withoutCr } from '../text.js';
 
 export interface ParsedPassageHeader {
   name: string;
@@ -24,7 +25,9 @@ const SPECIAL_PASSAGES = new Set([
  * Parse a single line as a passage header.
  * Returns null if the line is not a valid passage header.
  */
-export function parsePassageHeader(line: string, lineNumber: number): ParsedPassageHeader | null {
+export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedPassageHeader | null {
+  // A line split at LF keeps a CRLF's CR: it ends the line and is not header text
+  const line = withoutCr(rawLine);
   // Run regex against escaped version (neutralize backslash sequences for matching)
   // A document's leading U+FEFF is its byte order mark: the header sits behind
   // it, and every column stays in the client's own coordinates.

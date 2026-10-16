@@ -17,6 +17,7 @@ import {
   type WidgetDefinition,
 } from '@rohal12/spindle/tooling';
 import type { Range } from '../core/types.js';
+import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
@@ -372,7 +373,7 @@ function storyVariablesDiagnostics(uri: string, doc: DocumentMarkup, story: Stor
   const diagnostics: SpindleDiagnostic[] = [];
 
   // SP202: Spindle refuses to start without a StoryVariables passage, whether
-  // or not any variable is used. Reported once, on the first story document.
+  // or not any variable is used. Reported once, on missingStoryVariablesOwner.
   // A project that does not declare its story format is still being edited,
   // so there it requires a variable usage and stays informational; a declared
   // Spindle story gets an error, since it cannot start.
@@ -445,7 +446,8 @@ function arrayMemberDiagnostics(uri: string, workspace: WorkspaceModel): Spindle
 
 /**
  * SP001: the detected Spindle is older than the oldest one supported. Reported
- * once per workspace, on the first story document. An undetectable version
+ * once per workspace, on the first story document in sorted URI order
+ * (missingStoryVariablesOwner). An undetectable version
  * raises nothing.
  */
 function versionDiagnostics(uri: string, doc: DocumentMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
@@ -914,7 +916,7 @@ function lineLengthDiagnostics(doc: DocumentMarkup, maxLength: number): SpindleD
   }
 
   const diagnostics: SpindleDiagnostic[] = [];
-  const lines = doc.text.split('\n');
+  const lines = splitLines(doc.text);
   for (let i = 0; i < lines.length; i++) {
     if (excludedLines.has(i)) continue;
     const line = lines[i];

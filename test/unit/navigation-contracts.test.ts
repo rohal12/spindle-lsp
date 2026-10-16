@@ -1,6 +1,5 @@
 /**
- * Convergence contracts V73 (#73) and W74 (#74), moved from
- * test/review/convergence.review.ts once they passed.
+ * Navigation contracts V73 (#73) and W74 (#74).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';

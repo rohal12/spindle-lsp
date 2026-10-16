@@ -1,0 +1,23 @@
+:: StoryData
+{"ifid": "7E95B777-0E72-4603-AA57-049388D05756", "format": "spindle"}
+
+:: StoryTitle
+Play fixture
+
+:: StoryVariables
+$name = "?"
+$hp = 0
+
+:: StoryInit
+{set $name = "?"}{set $hp = 3}
+
+:: StoryContext
+HP: {$hp}
+
+:: Start
+The start.
+[[Hall]]
+
+:: Hall
+A hall.
+[[Start]]
