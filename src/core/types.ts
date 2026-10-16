@@ -77,6 +77,8 @@ export interface DeclaredVariable {
 }
 
 export interface WidgetDef {
+  /** Complete runtime definition, including parameter roles unknown to older public type declarations. */
+  tooling: import('@rohal12/spindle/tooling').WidgetDefinition;
   name: string;
   /** Declared parameters including their sigil, e.g. `@name`, `$x`, `_y`. */
   params: string[];

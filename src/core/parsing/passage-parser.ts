@@ -8,15 +8,6 @@ export interface ParsedPassageHeader {
   nameRange: Range;
 }
 
-/**
- * Regex for matching passage headers.
- * Captures: (1) `::` and optional whitespace, (2) passage name, (3) optional `[tags]`, (4) optional `{meta}`
- *
- * Derived from the reference in twee3-language-tools/src/parse-text.ts:
- *   /(^::\s*)(.*?)(\[.*?\]\s*)?(\{.*?\}\s*)?\r?$/
- */
-const passageHeaderRegex = /^(::\s*)(.*?)(\[.*?\]\s*)?(\{.*?\}\s*)?\r?$/;
-
 const SPECIAL_PASSAGES = new Set([
   'StoryVariables',
   'StoryInit',
@@ -38,45 +29,38 @@ export function parsePassageHeader(line: string, lineNumber: number): ParsedPass
   // A document's leading U+FEFF is its byte order mark: the header sits behind
   // it, and every column stays in the client's own coordinates.
   const bomLength = lineNumber === 0 && line.charCodeAt(0) === 0xfeff ? 1 : 0;
-  const escaped = line.slice(bomLength).replace(/\\./g, 'ec');
-  const match = passageHeaderRegex.exec(escaped);
-  if (!match) return null;
+  const escaped = line.replace(/\\./g, 'ec');
+  const prefix = /^::\s*/.exec(escaped.slice(bomLength));
+  if (!prefix) return null;
 
-  const prefix = line.slice(0, bomLength) + (match[1] ?? ''); // "\uFEFF:: "
-  const rawName = match[2] ?? '';      // everything between prefix and tags/meta
-  const rawTags = match[3] ?? '';      // "[tag1 tag2] " or ""
-  const rawMeta = match[4] ?? '';      // '{"key":"val"} ' or ""
-
-  // Extract the actual name from the original line (not escaped)
-  const nameStart = prefix.length;
-  const nameEnd = nameStart + rawName.length;
-  const name = line.substring(nameStart, nameEnd).trim();
-
+  // A valid name contains no unescaped delimiters. Consume each section
+  // once instead of retrying optional groups at every possible name boundary.
+  const nameStart = bomLength + prefix[0].length;
+  const delimiter = /[\[\]{}]/g;
+  delimiter.lastIndex = nameStart;
+  const first = delimiter.exec(escaped);
+  const nameEnd = first?.index ?? line.length;
+  const name = line.slice(nameStart, nameEnd).trim();
   if (!name) return null;
 
-  // Reject names with unescaped meta characters
-  const escapedName = name.replace(/\\./g, 'ec');
-  if (/[\[\]\{\}]/.test(escapedName)) return null;
-
-  // Parse tags
-  const tagsStr = line.slice(nameEnd, nameEnd + rawTags.length).trim();
+  let rest = nameEnd;
   let tags: string[] = [];
-  if (tagsStr) {
-    const inner = tagsStr.substring(1, tagsStr.length - 1);
-    // Reject unescaped meta characters inside tags
-    if (/[\[\]\{\}]/.test(inner.replace(/\\./g, 'ec'))) return null;
-    const decoded = inner.replace(/\\(.)/g, '$1').trim();
+  if (escaped[rest] === '[') {
+    const end = escaped.indexOf(']', rest + 1);
+    if (end === -1 || /[\[{}]/.test(escaped.slice(rest + 1, end))) return null;
+    const decoded = line.slice(rest + 1, end).replace(/\\(.)/g, '$1').trim();
     tags = decoded ? decoded.split(/\s+/) : [];
+    rest = end + 1;
+    while (rest < line.length && /\s/.test(escaped[rest])) rest++;
   }
 
-  // Parse meta JSON
   let meta: Record<string, unknown> | undefined;
-  const metaStr = rawMeta.trim();
-  if (metaStr) {
+  if (rest < line.length) {
+    const raw = line.slice(rest).trim();
+    if (escaped[rest] !== '{' || !raw.endsWith('}')) return null;
     try {
-      meta = JSON.parse(line.substring(nameStart + rawName.length + rawTags.length, nameStart + rawName.length + rawTags.length + rawMeta.length).trim());
+      meta = JSON.parse(raw);
     } catch {
-      // Invalid JSON — treat the entire line as not a valid passage header
       return null;
     }
   }

@@ -98,7 +98,7 @@ export class WorkspaceModel extends EventEmitter {
       text: (uri) => this.documents.getText(uri),
       passages: (uri) => this.passages.getPassagesInDocument(uri),
       context: () => ({
-        macros: this.macros.toolingMacros(),
+        macros: this.toolingMacros(),
         isBlock: (name) => this.isContainer(name),
       }),
     });
@@ -322,70 +322,51 @@ export class WorkspaceModel extends EventEmitter {
     this.declaredVersion = storyDataFormatVersion(this.passages.getAllPassages(), (uri) => this.documents.getText(uri));
     this.target = resolveSpindleTarget(this.installedVersion, this.declaredVersion);
 
-    // Rescan StoryVariables
-    const storyVars = this.passages.getStoryVariables();
-    if (storyVars) {
-      const text = this.documents.getText(storyVars.uri);
-      if (text) {
-        const lines = text.split('\n');
-        const contentStart = storyVars.headerEnd.end.line + 1;
-        // Find end of this passage
-        let contentEnd = lines.length;
-        for (let i = contentStart; i < lines.length; i++) {
-          if (/^\uFEFF?::\s+/.test(lines[i])) {
-            contentEnd = i;
-            break;
-          }
-        }
-        const content = lines.slice(contentStart, contentEnd).join('\n');
-        this.variables.parseStoryVariables(content, contentStart, storyVars.uri);
-      }
-    } else {
-      this.variables.clearStoryVariables();
-    }
-
-    // Rescan StoryTransients
-    const storyTransients = this.passages.getStoryTransients();
-    if (storyTransients) {
-      const text = this.documents.getText(storyTransients.uri);
-      if (text) {
-        const lines = text.split('\n');
-        const contentStart = storyTransients.headerEnd.end.line + 1;
-        let contentEnd = lines.length;
-        for (let i = contentStart; i < lines.length; i++) {
-          if (/^\uFEFF?::\s+/.test(lines[i])) {
-            contentEnd = i;
-            break;
-          }
-        }
-        const content = lines.slice(contentStart, contentEnd).join('\n');
-        this.variables.parseStoryTransients(content, contentStart, storyTransients.uri);
-      }
-    } else {
-      this.variables.clearStoryTransients();
-    }
+    // Declarations use the indexed passage body, including compact boundaries.
+    const declarations = (name: string) => {
+      const passage = this.passages.getPassage(name);
+      return passage ? this.markup.get(passage.uri)?.passages.find(p => p.passage === passage) : undefined;
+    };
+    const variables = declarations('StoryVariables');
+    if (variables) this.variables.parseStoryVariables(variables.content, variables.passage.headerEnd.end.line + 1, variables.doc.uri);
+    else this.variables.clearStoryVariables();
+    const transients = declarations('StoryTransients');
+    if (transients) this.variables.parseStoryTransients(transients.content, transients.passage.headerEnd.end.line + 1, transients.doc.uri);
+    else this.variables.clearStoryTransients();
 
     // The markup of the story documents (JS/TS macro sources hold no passages)
-    const documents = this.documents.getUris().flatMap((uri) => {
+    const readDocuments = () => this.documents.getUris().flatMap((uri) => {
       const markup = isMacroSource(uri) ? undefined : this.markup.get(uri);
       return markup ? [markup] : [];
     });
 
     // Rescan widgets: the markup pairs its tags with them once they are known
     const markups = new Map<Passage, PassageMarkup>();
-    for (const doc of documents) for (const passage of doc.passages) markups.set(passage.passage, passage);
+    for (const doc of readDocuments()) for (const passage of doc.passages) markups.set(passage.passage, passage);
     this.widgets.scan(
       this.passages.getAllPassages().flatMap((passage) => markups.get(passage) ?? []),
       this.macros.toolingMacros(),
     );
 
+    // Discard the discovery context (which can contain definitions from the
+    // previous scan) before any usage/code/pairing analysis is cached.
+    this.markup.invalidate();
+
     // Rescan variable usages and widget invocations across all story documents
     // (empty documents are scanned too, dropping their previous usages)
     this.widgets.clearInvocations();
-    for (const doc of documents) {
+    for (const doc of readDocuments()) {
       this.variables.scanDocument(doc.uri, doc.text, doc);
       this.widgets.recordInvocations(doc.uri, doc.passages);
     }
+  }
+
+  /** All runtime metadata, with real macros taking precedence over widgets. */
+  private toolingMacros() {
+    const macros = this.macros.toolingMacros();
+    return [...macros, ...this.widgets.getAllWidgets()
+      .filter(widget => !this.macros.getMacro(widget.name))
+      .map(widget => ({ name: widget.name, block: widget.block, subMacros: [], widget: widget.tooling }))];
   }
 
   /** Debounce modelReady emission. */
