@@ -1,7 +1,6 @@
-import { readFileSync, writeFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { glob } from 'glob';
+import { resolveFiles, readFileContents } from '../core/workspace/file-inputs.js';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -33,44 +32,9 @@ function filterBySeverity(
   });
 }
 
-/**
- * Resolve glob patterns to absolute file paths.
- */
-async function resolveFiles(pattern: string, cwd: string): Promise<string[]> {
-  let input = pattern;
-  let directory = cwd;
-  try {
-    const literal = resolve(cwd, pattern);
-    const stat = statSync(literal);
-    if (stat.isFile()) return [literal];
-    if (stat.isDirectory()) {
-      directory = literal;
-      input = '**/*.{tw,twee}';
-    }
-  } catch {
-    // A glob is not a literal filesystem path.
-  }
-  const matches = await glob(input, {
-    cwd: directory,
-    absolute: true,
-    nodir: true,
-  });
-  return [...new Set(matches)];
-}
-
-/** Read the given files (file URI to text), skipping unreadable ones. */
+/** Read the batch atomically before analysis; the SDK reports thrown I/O errors as tool errors. */
 function readFiles(files: string[]): Map<string, string> {
-  const fileContents = new Map<string, string>();
-  for (const filePath of files) {
-    try {
-      const text = readFileSync(filePath, 'utf-8');
-      const uri = pathToFileURL(filePath).toString();
-      fileContents.set(uri, text);
-    } catch {
-      // Skip unreadable files
-    }
-  }
-  return fileContents;
+  return new Map([...readFileContents(files)].map(([path, text]) => [pathToFileURL(path).toString(), text]));
 }
 
 /**
@@ -166,8 +130,6 @@ export async function checkProject(
 
     for (const filePath of files) {
       const uri = pathToFileURL(filePath).toString();
-      // Unreadable files were skipped
-      if (!workspace.documents.has(uri)) continue;
       let diags = computeDiagnostics(uri, workspace);
 
       if (severity) {
@@ -240,8 +202,8 @@ export async function formatFiles(pattern: string, cwd: string = process.cwd()):
       } else {
         unchanged++;
       }
-    } catch {
-      // Skip unwritable files
+    } catch (error) {
+      throw new Error(`${filePath}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
   }
 
@@ -282,8 +244,8 @@ export async function checkFormatting(
     try {
       const result = await formatDocument(text, { filePath });
       (result !== text ? needsFormatting : alreadyFormatted).push(relativeTo(cwd, filePath));
-    } catch {
-      // Skip files the formatter fails on
+    } catch (error) {
+      throw new Error(`${filePath}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
   }
 

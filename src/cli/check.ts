@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { glob } from 'glob';
+import { resolveInputs, readFileContents } from '../core/workspace/file-inputs.js';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../plugins/diagnostics.js';
@@ -133,19 +132,15 @@ export async function runCheck(args: string[]): Promise<number> {
     }
   }
 
-  // Resolve files via glob
-  const files: string[] = [];
-  for (const pattern of options.patterns) {
-    const matches = await glob(pattern, {
-      cwd,
-      absolute: true,
-      nodir: true,
-    });
-    files.push(...matches);
+  let uniqueFiles: string[];
+  let contents: Map<string, string>;
+  try {
+    uniqueFiles = await resolveInputs(options.patterns, cwd);
+    contents = readFileContents(uniqueFiles);
+  } catch (error) {
+    console.error(`spindle-lsp check: ${error instanceof Error ? error.message : String(error)}`);
+    return 2;
   }
-
-  // Deduplicate
-  const uniqueFiles = [...new Set(files)];
 
   if (uniqueFiles.length === 0) {
     if (options.format === 'pretty') {
@@ -179,16 +174,7 @@ export async function runCheck(args: string[]): Promise<number> {
   }
 
   // Load files
-  const fileContents = new Map<string, string>();
-  for (const filePath of uniqueFiles) {
-    try {
-      const text = readFileSync(filePath, 'utf-8');
-      const uri = pathToFileURL(filePath).toString();
-      fileContents.set(uri, text);
-    } catch {
-      // Skip unreadable files
-    }
-  }
+  const fileContents = new Map([...contents].map(([path, text]) => [pathToFileURL(path).toString(), text]));
 
   // Spindle's rules do not apply to a story in another format: report
   // nothing (the reporters still print their empty output) and say why.

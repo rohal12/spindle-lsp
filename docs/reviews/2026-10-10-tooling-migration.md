@@ -592,3 +592,20 @@ change. The normal gate passes 2,089 unit/integration tests and 6,077 matrix
 cells; typecheck, build and all three duplication checks pass. See the
 [published-release verification](2026-10-15-review-repairs.md#published-release-and-merge-verification--2026-10-15)
 for release provenance and exact corpus changes.
+
+## October 16 audit follow-up — needs upstream read/write roles
+
+The [October 16 repair ledger](2026-10-16-audit-contract-repairs.md) records six
+LSP-owned repairs using bundled Spindle 0.60.3. Widget parameter roles are
+forwarded as complete runtime definitions; no annotation parser is added.
+
+The seventh finding, spindle-lsp #107, needs an upstream API: public `lexJs`
+reports variable occurrences without distinguishing write-only destructuring
+targets from reads in defaults or computed keys. Filed
+[rohal12/spindle#574](https://github.com/rohal12/spindle/issues/574) for public
+read/write roles with source spans and the omitted widget metadata types.
+No local scanner or internal parser import works around this gap. The
+write-only array/object SP205 false positive remains unresolved; existing
+true-read, accumulator and lexical-exclusion controls remain enabled. Once
+released, the API must be consumed and the desired destructuring/default/key
+variants retained in `TEMP-LOOP` before #107 can close.

@@ -2,8 +2,8 @@
  "generated": "2026-10-06",
  "spindleVersion": "0.60.3",
  "summary": {
-  "total": 6284,
-  "pass": 6271,
+  "total": 6482,
+  "pass": 6469,
   "fail": 0,
   "not-run": 0,
   "not-applicable": 13
@@ -56877,6 +56877,1296 @@
    "status": "pass"
   },
   {
+   "id": "N/FORMAT-ROLE/StoryVariables/wrapping/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryVariables/wrapping/1",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/StoryVariables/wrapping/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryVariables/wrapping/2",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/StoryTransients/wrapping/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryTransients/wrapping/1",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/StoryTransients/wrapping/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryTransients/wrapping/2",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/StoryData/wrapping/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryData/wrapping/1",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/StoryData/wrapping/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryData/wrapping/2",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/SaveTitle/wrapping/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "SaveTitle/wrapping/1",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/SaveTitle/wrapping/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "SaveTitle/wrapping/2",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/StoryTitle/wrapping/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryTitle/wrapping/1",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/FORMAT-ROLE/StoryTitle/wrapping/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "StoryTitle/wrapping/2",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "runtime payload preservation and idempotence",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/2/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/2/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/2/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/2/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/2/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/2/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/2/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/2/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/2/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/2/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/3/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/3/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/3/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/3/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/3/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/3/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/3/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/3/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/1/3/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/1/3/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/2/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/2/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/2/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/2/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/2/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/2/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/2/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/2/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/2/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/2/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/3/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/3/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/3/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/3/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/3/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/3/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/3/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/3/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-$/2/3/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-$/2/3/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/2/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/2/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/2/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/2/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/2/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/2/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/2/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/2/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/2/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/2/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/3/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/3/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/3/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/3/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/3/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/3/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/3/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/3/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/1/3/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/1/3/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/2/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/2/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/2/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/2/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/2/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/2/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/2/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/2/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/2/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/2/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/3/same",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/3/same",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/3/other",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/3/other",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/3/eof",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/3/eof",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/3/header-only",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/3/header-only",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/declare-%/2/3/adjacent",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "declare-%/2/3/adjacent",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "applied quick fix, runtime declaration and unchanged following passage",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/top-level/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/top-level/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/top-level/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/top-level/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/top-level/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/top-level/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/top-level/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/top-level/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/label/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/label/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/label/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/label/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/label/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/label/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/label/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/label/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/attribute/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/attribute/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/attribute/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/attribute/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/attribute/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/attribute/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/passage/attribute/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "passage/attribute/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/top-level/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/top-level/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/top-level/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/top-level/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/top-level/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/top-level/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/top-level/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/top-level/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/label/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/label/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/label/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/label/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/label/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/label/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/label/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/label/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/attribute/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/attribute/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/attribute/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/attribute/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/attribute/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/attribute/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/expression/attribute/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "expression/attribute/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/top-level/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/top-level/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/top-level/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/top-level/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/top-level/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/top-level/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/top-level/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/top-level/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/label/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/label/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/label/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/label/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/label/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/label/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/label/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/label/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/attribute/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/attribute/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/attribute/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/attribute/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/attribute/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/attribute/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/statements/attribute/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "statements/attribute/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/top-level/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/top-level/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/top-level/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/top-level/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/top-level/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/top-level/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/top-level/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/top-level/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/label/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/label/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/label/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/label/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/label/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/label/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/label/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/label/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/attribute/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/attribute/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/attribute/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/attribute/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/attribute/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/attribute/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/markup/attribute/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "markup/attribute/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/top-level/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/top-level/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/top-level/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/top-level/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/top-level/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/top-level/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/top-level/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/top-level/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/label/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/label/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/label/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/label/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/label/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/label/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/label/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/label/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/attribute/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/attribute/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/attribute/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/attribute/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/attribute/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/attribute/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/text/attribute/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "text/attribute/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/top-level/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/top-level/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/top-level/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/top-level/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/top-level/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/top-level/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/top-level/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/top-level/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/label/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/label/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/label/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/label/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/label/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/label/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/label/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/label/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/attribute/same-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/attribute/same-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/attribute/same-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/attribute/same-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/attribute/cross-file/$",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/attribute/cross-file/$",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/unannotated/attribute/cross-file/%",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "unannotated/attribute/cross-file/%",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "diagnostics/navigation/references/lenses/applied rename/runtime pieces",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/state/:passage",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "state/:passage",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "widget annotation edit/removal and macro precedence invalidate every consumer",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/state/:expression",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "state/:expression",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "widget annotation edit/removal and macro precedence invalidate every consumer",
+   "status": "pass"
+  },
+  {
+   "id": "N/WIDGET-HOLDS/state/:text",
+   "role": "ordinary/declarations/widgets",
+   "context": "WIDGET-HOLDS",
+   "spelling": "state/:text",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "widget annotation edit/removal and macro precedence invalidate every consumer",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/delimiter-control/ [widget]",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "delimiter-control/ [widget]",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "escape-aware tags/meta/names and UTF-16 ranges",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/delimiter-control/ {\"key\":{\"value\":\"[x]\"}}",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "delimiter-control/ {\"key\":{\"value\":\"[x]\"}}",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "escape-aware tags/meta/names and UTF-16 ranges",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/delimiter-control/ [a\\[b\\]] {\"key\":1}",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "delimiter-control/ [a\\[b\\]] {\"key\":1}",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "escape-aware tags/meta/names and UTF-16 ranges",
+   "status": "pass"
+  },
+  {
+   "id": "N/HEADER/delimiter-control/",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "delimiter-control/",
+   "boundary": "LF/CRLF",
+   "state": "same-file/cross-file/rebuilt",
+   "consumer": "escape-aware tags/meta/names and UTF-16 ranges",
+   "status": "pass"
+  },
+  {
    "id": "N/PRETTIER-CONFIG/json-root",
    "role": "ordinary/declarations",
    "context": "PRETTIER-CONFIG",
@@ -61114,6 +62404,696 @@
    "boundary": "LF",
    "state": "multi-file/rebuilt",
    "consumer": "references/definition/rename existing contract control",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/brackets/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/brackets/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/directory-brackets/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/directory-brackets/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/ordinary/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/ordinary/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/glob/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/glob/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/overlap/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/check/overlap/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/brackets/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/brackets/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/directory-brackets/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/directory-brackets/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/ordinary/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/ordinary/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/glob/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/glob/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/overlap/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format-check/overlap/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/brackets/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/brackets/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/directory-brackets/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/directory-brackets/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/ordinary/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/ordinary/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/glob/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/glob/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/overlap/absolute",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/CLI-PATH/format/overlap/relative",
+   "role": "ordinary/declarations/widgets",
+   "context": "CLI-PATH",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "literal path precedence, real glob and deduplicated inputs",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/check/read-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/check/success",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/check/no-files",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/format/read-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/format/write-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/format/success",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/format/no-files",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/format-check/read-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/format-check/success",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/cli/format-check/no-files",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/check/read-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/check/success",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/check/no-files",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/format/read-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/format/write-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/format/success",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/format/no-files",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/format-check/read-denied",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/format-check/success",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FILE-IO/mcp/format-check/no-files",
+   "role": "ordinary/declarations/widgets",
+   "context": "FILE-IO",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "public nonzero/tool-error results on real filesystem failures",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/StoryVariables/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/StoryVariables/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/StoryTransients/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/StoryTransients/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/StoryData/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/StoryData/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/SaveTitle/1",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/FORMAT-ROLE/SaveTitle/2",
+   "role": "ordinary/declarations/widgets",
+   "context": "FORMAT-ROLE",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "CLI width option preserves runtime payload",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-tags/40000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-tags/160000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-metadata/40000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-metadata/160000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-mixed/40000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-mixed/160000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-ordinary/40000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-ordinary/160000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-escaped/40000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-cli/HEADER/adversarial-escaped/160000",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "bounded subprocess parsing and ordinary/escaped controls",
+   "status": "pass"
+  },
+  {
+   "id": "I/entry-lsp/HEADER-WIDGET-HOLDS",
+   "role": "ordinary/declarations/widgets",
+   "context": "HEADER/WIDGET-HOLDS",
+   "spelling": "ticket reproduction/control",
+   "boundary": "LF/CRLF",
+   "state": "disk/public stdio",
+   "consumer": "framed LSP responsiveness, references/definition/rename and applied declaration fix",
    "status": "pass"
   },
   {
