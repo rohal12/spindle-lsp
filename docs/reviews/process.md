@@ -62,7 +62,7 @@ done by the compiler, such as CRLF to LF. Upstream main is additional
 evidence, not a replacement for the installed dependency.
 
 The supported range is `>=0.60.0` (`MINIMUM_SPINDLE_VERSION`); the
-devDependency is the oracle and the suite is not run against other releases.
+dependency is the oracle and the suite is not run against other releases.
 There is no per-release behavior to gate: a release below the minimum is
 reported to the user, not emulated. What the oracle layer needs from Spindle
 and does not get from the public API is listed as "needs upstream API" in

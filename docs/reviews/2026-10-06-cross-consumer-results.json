@@ -1,6 +1,6 @@
 {
  "generated": "2026-10-06",
- "spindleVersion": "0.60.3",
+ "spindleVersion": "0.61.0",
  "summary": {
   "total": 6383,
   "pass": 6370,
@@ -63828,7 +63828,7 @@
    "state": "project format/version",
    "consumer": "all",
    "status": "not-applicable",
-   "note": "The oracle is the installed Spindle (the devDependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.60.0 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release. The models are built in temporary projects (harness projectRoot), by default one with the minimum release installed, so the Spindle in the checkout decides nothing; family G covers the version diagnostic (SP001) in a project below the minimum, one that leaves the version to StoryData, and one on the minimum as control."
+   "note": "The oracle is the installed Spindle (the dependency, see spindleVersion), through its public @rohal12/spindle/tooling API. The minimum supported release is 0.60.0 (src/core/workspace/spindle-version.ts) and releases below it are reported, not emulated: the corpus is no longer run against other releases, and no expectation depends on the release. The models are built in temporary projects (harness projectRoot), by default one with the minimum release installed, so the Spindle in the checkout decides nothing; family G covers the version diagnostic (SP001) in a project below the minimum, one that leaves the version to StoryData, and one on the minimum as control."
   },
   {
    "id": "N/inlay-folding-symbols-actions",
