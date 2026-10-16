@@ -46,9 +46,7 @@ linked Spindle checkout must already be built; it is packed with its scripts
 off. The project goes under `SMOKE_PACK_DIR`, else the system temp directory,
 and the script refuses a directory with a `node_modules`, `package.json` or
 `.git` above it (on a machine with a stray `/tmp/node_modules`, set
-`SMOKE_PACK_DIR`). CI does not run it yet: `npm ci` there cannot install the
-`file:` link to a sibling Spindle checkout. Once the dependency is a
-registry version, add it to the CI workflow.
+`SMOKE_PACK_DIR`). CI runs it after the build.
 
 The Claude Code plugin is `plugins/spindle-lsp`, listed by the repository's
 marketplace (`.claude-plugin/marketplace.json`). It runs the latest npm release
