@@ -1,7 +1,6 @@
 /**
- * Literal and source-context contracts promoted from the convergence corpus
- * (docs/reviews/process.md): X70/C-X70 (#70), R67/C-R67 (#67), L77 (#77).
- * Case IDs match test/review history. Runtime evaluation is restricted to
+ * Literal and source-context contracts: X70/C-X70 (#70), R67/C-R67 (#67),
+ * L77 (#77). Runtime evaluation is restricted to
  * literals constructed by these tests.
  *
  * Spindle 0.59 reads the `passage` argument of {goto}, {include} and {link}

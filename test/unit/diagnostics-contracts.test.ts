@@ -1,6 +1,6 @@
 /**
- * Diagnostics source-context contracts moved from the convergence corpus
- * (X71 #71, X72/C-X72 #72, D78/C-D78 #78). See docs/reviews/process.md.
+ * Diagnostics source-context contracts
+ * (X71 #71, X72/C-X72 #72, D78/C-D78 #78).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';

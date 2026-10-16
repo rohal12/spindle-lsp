@@ -1,5 +1,5 @@
 /**
- * Applied-edit contracts moved from test/review/convergence.review.ts:
+ * Applied-edit contracts:
  * Q68 (#68), Q69 (#69), E75 (#75). Edits are applied with
  * TextDocument.applyEdits and the result is re-parsed.
  */

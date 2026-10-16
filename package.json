@@ -8,10 +8,9 @@
   },
   "scripts": {
     "build": "node esbuild.config.ts",
-    "test": "vitest run && npm run review:convergence",
+    "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "review:convergence": "vitest run --config vitest.review.config.ts",
     "typecheck": "tsc --noEmit",
     "duplication": "node scripts/duplication.ts jscpd && node scripts/duplication.ts cpd && node scripts/duplication.ts fallow",
     "smoke:pack": "node scripts/smoke-pack.ts",
