@@ -30,6 +30,7 @@ export class WidgetRegistry {
       const { name, tags } = markup.passage;
       for (const definition of widgetDefinitions([{ name, tags, content: markup.content }], known)) {
         this.widgets.set(definition.name.toLowerCase(), {
+          tooling: definition,
           name: definition.name,
           params: definition.params,
           uri: markup.passage.uri,

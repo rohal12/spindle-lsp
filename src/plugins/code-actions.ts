@@ -353,26 +353,6 @@ function lineEndingFor(workspace: WorkspaceModel, uri: string): string {
   return '\n';
 }
 
-/** Line index where the declaration passage content ends (or `lines.length`). */
-function declarationInsertEdit(
-  text: string,
-  headerLine: number,
-  declaration: string,
-  eol: string,
-): { range: Range; newText: string } {
-  const lines = text.split('\n');
-  let contentEnd = lines.length;
-  for (let i = headerLine + 1; i < lines.length; i++) {
-    if (/^\uFEFF?::\s+/.test(lines[i])) {
-      contentEnd = i;
-      break;
-    }
-  }
-  // A trailing newline yields an empty final "line" that is not content.
-  if (contentEnd === lines.length && text.endsWith('\n')) contentEnd = lines.length;
-  return insertLinesAt(text, contentEnd, declaration, eol);
-}
-
 // ---------------------------------------------------------------------------
 // Quick fix: SP200, SP203 — Declare a variable in StoryVariables or StoryTransients
 // ---------------------------------------------------------------------------
@@ -386,7 +366,10 @@ function declareVariable(diag: SpindleDiagnostic, workspace: WorkspaceModel, sig
   const text = workspace.documents.getText(passage.uri);
   if (text === undefined) return [];
 
-  const edit = declarationInsertEdit(text, passage.headerEnd.end.line, `${sigil}${name} = 0\n`, lineEndingFor(workspace, passage.uri));
+  const markup = workspace.markup.get(passage.uri)?.passages.find(p => p.passage === passage);
+  if (!markup) return [];
+  const boundary = markup.bodyEnd === text.length ? text.split('\n').length : markup.position(markup.content.length).line;
+  const edit = insertLinesAt(text, boundary, `${sigil}${name} = 0\n`, lineEndingFor(workspace, passage.uri));
   return [{
     title: `Declare '${sigil}${name}' in ${sigil === '$' ? 'StoryVariables' : 'StoryTransients'}`,
     kind: 'quickfix',

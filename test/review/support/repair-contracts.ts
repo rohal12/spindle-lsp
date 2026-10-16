@@ -1,4 +1,5 @@
 /** Ticket-owned behavior tables shared by unit tests and retained named cells. */
+import { registerAuditContracts } from './audit-contracts.js';
 import { afterEach, expect } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -39,6 +40,7 @@ function doc(text: string) { return TextDocument.create(uri, 'twee', 0, text); }
 function applied(text: string, edits: Parameters<typeof TextDocument.applyEdits>[1]) { return TextDocument.applyEdits(doc(text), edits); }
 
 export function registerRepairContracts(cell: Cell): void {
+  registerAuditContracts(cell);
   afterEach(() => {
     for (const model of models.splice(0)) model.dispose();
     for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });

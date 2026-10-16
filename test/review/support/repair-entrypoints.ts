@@ -1,4 +1,5 @@
 /** Public transport coverage for the ticket-owned repair tables. */
+import { registerAuditEntrypoints } from './audit-entrypoints.js';
 import { expect } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,6 +26,7 @@ function project(files: Record<string, string>) {
 const dims = (contract: string, consumer: string): Dims => ({ role: 'ordinary/declarations', context: contract, spelling: 'ticket reproduction/control', boundary: 'LF', state: 'public stdio/disk/reload', consumer });
 
 export function registerRepairEntrypoints(cell: Cell, executable: () => string): void {
+  registerAuditEntrypoints(cell, executable);
   const octoberDefinitions = 'Story.defineMacro({name:"textbox",parameters:[{name:"label",type:"string"}],render(){return null;}});\nStory.defineMacro({name:"switch",block:true,render(){return null;}});\nStory.defineMacro({name:"custom",parameters:[{name:"p",type:"passage"}],render(){return null;}});';
   const octoberConfig = 'macros:\n  custom:\n    parameters: ["passage"]\n';
   const octoberStory = (unclosed: boolean) => `::StoryVariables\n$x = {hp:1}\n::W [widget]\n{widget "wid" @label @count}{@label}{/widget}\n::Target\nx\n::Start\n{button "{$\\u0078.hp}"}ok{/button}\n{button ${JSON.stringify('{wid "two words" 2}')}}ok{/button}\n{textbox "$x"}\n{switch}x{/switch}\n{custom "\\u0054arget"}\n{for @n of [1,2]}{set _x = @n}<!-- _x -->{/for}\n${unclosed ? '{button "{if true}hello"}x{/button}\n' : ''}::Code [scri\\pt]\nif(true){console.log("hello");}\n::Prose [Script]\nfoo( 1 );\n`;

@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { glob } from 'glob';
+import { writeFileSync } from 'node:fs';
+import { resolveInputs, readFileContents } from '../core/workspace/file-inputs.js';
 
 import { formatDocument } from '../plugins/format.js';
 import { commonDirectory } from '../core/workspace/macro-sources.js';
@@ -61,18 +61,15 @@ export async function runFormat(args: string[]): Promise<number> {
   const options = parseArgs(args);
   const cwd = process.cwd();
 
-  // Resolve files via glob
-  const files: string[] = [];
-  for (const pattern of options.patterns) {
-    const matches = await glob(pattern, {
-      cwd,
-      absolute: true,
-      nodir: true,
-    });
-    files.push(...matches);
+  let uniqueFiles: string[];
+  let texts: Map<string, string>;
+  try {
+    uniqueFiles = await resolveInputs(options.patterns, cwd);
+    texts = readFileContents(uniqueFiles);
+  } catch (error) {
+    console.error(`spindle-lsp format: ${error instanceof Error ? error.message : String(error)}`);
+    return 2;
   }
-
-  const uniqueFiles = [...new Set(files)];
 
   if (uniqueFiles.length === 0) {
     console.log('No files found');
@@ -81,14 +78,6 @@ export async function runFormat(args: string[]): Promise<number> {
 
   // Leave a story in another format alone: Spindle's formatting rules
   // could corrupt it. Its StoryData is among the files or in their project.
-  const texts = new Map<string, string>();
-  for (const filePath of uniqueFiles) {
-    try {
-      texts.set(filePath, readFileSync(filePath, 'utf-8'));
-    } catch {
-      // Skip unreadable files
-    }
-  }
   const storyFormat = await findStoryFormat(texts.values(), commonDirectory(uniqueFiles));
   if (!storyFormat.isSpindle) {
     console.error(skippedFormatNote(storyFormat));
@@ -106,6 +95,7 @@ export async function runFormat(args: string[]): Promise<number> {
   }
 
   const unformatted: string[] = [];
+  let failed = false;
 
   for (const [filePath, text] of texts) {
     try {
@@ -121,10 +111,13 @@ export async function runFormat(args: string[]): Promise<number> {
           writeFileSync(filePath, formatted, 'utf-8');
         }
       }
-    } catch {
-      // Skip unwritable files
+    } catch (error) {
+      failed = true;
+      console.error(`spindle-lsp format: ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+
+  if (failed) return 2;
 
   if (options.check) {
     if (unformatted.length > 0) {
