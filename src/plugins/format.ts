@@ -24,8 +24,6 @@ export interface FormatOptions {
 // Patterns
 // ---------------------------------------------------------------------------
 
-const PASSAGE_HEADER_REGEX = /^(::)\s*/;
-
 /** Default dedenting sub-macros. */
 const DEFAULT_DEDENTING = new Set(['else', 'elseif', 'next', 'case', 'default']);
 
@@ -112,10 +110,7 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
 
     // Normalize and emit passage header
     if (passage.header) {
-      const header = PASSAGE_HEADER_REGEX.test(passage.header)
-        ? normalizePassageHeader(passage.header)
-        : passage.header;
-      resultLines.push(header.replace(/\s+$/, ''));
+      resultLines.push(normalizePassageHeader(passage.header));
     }
 
     if (passage.body === '') continue;
@@ -152,30 +147,12 @@ export async function formatRange(text: string, _range: Range, options?: FormatO
 // ---------------------------------------------------------------------------
 
 function normalizePassageHeader(line: string): string {
-  const headerMatch = line.match(/^::\s*(.*)/);
-  if (!headerMatch) return line;
-
-  const rest = headerMatch[1];
-  // Neutralize backslash escapes (keeping offsets) the way the passage parser
-  // does, so an escaped `\[` or `\{` in the name does not start tags/metadata.
-  const unescaped = rest.replace(/\\./g, 'ec');
-  const bracketIdx = unescaped.indexOf('[');
-  const braceIdx = unescaped.indexOf('{');
-
-  let name: string;
-  let suffix = '';
-
-  if (bracketIdx !== -1 && (braceIdx === -1 || bracketIdx < braceIdx)) {
-    name = rest.substring(0, bracketIdx).trim();
-    suffix = ' ' + rest.substring(bracketIdx).trim();
-  } else if (braceIdx !== -1) {
-    name = rest.substring(0, braceIdx).trim();
-    suffix = ' ' + rest.substring(braceIdx).trim();
-  } else {
-    name = rest.trim();
-  }
-
-  return `:: ${name}${suffix}`;
+  const header = parsePassageHeader(line, 0);
+  if (!header) return line;
+  const { start, end } = header.nameRange;
+  const name = line.slice(start.character, end.character);
+  const suffix = line.slice(end.character).trim();
+  return `:: ${name}${suffix ? ` ${suffix}` : ''}`;
 }
 
 // ---------------------------------------------------------------------------

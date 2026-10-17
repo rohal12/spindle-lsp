@@ -1,6 +1,7 @@
 import {
   builtinMacros,
   lexJs,
+  pairMarkup,
   pieceOffset,
   splitArgs,
   validateStoryMarkup,
@@ -509,6 +510,12 @@ function structureDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel)
     }
   };
   visit(passage.pairing.nodes, []);
+  for (const piece of passage.pieces) {
+    if (piece.kind !== 'text') continue;
+    // Each evaluated label/attribute is a separate markup region: its
+    // ancestors do not include containers surrounding the source string.
+    visit(pairMarkup(piece.tokens, { isBlock: name => workspace.isContainer(name) }).nodes, []);
+  }
   return diagnostics;
 }
 

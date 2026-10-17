@@ -42,11 +42,14 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   const delimiter = /[\[\]{}]/g;
   delimiter.lastIndex = nameStart;
   const first = delimiter.exec(escaped);
-  const nameEnd = first?.index ?? line.length;
-  const name = line.slice(nameStart, nameEnd).trim();
+  const boundary = first?.index ?? line.length;
+  // Trim structural whitespace in the masked source so an escaped trailing
+  // space stays in the edit range. The compiler trims the decoded name.
+  const nameEnd = escaped.slice(0, boundary).trimEnd().length;
+  const name = line.slice(nameStart, nameEnd).replace(/\\(.)/g, '$1').trim();
   if (!name) return null;
 
-  let rest = nameEnd;
+  let rest = boundary;
   let tags: string[] = [];
   if (escaped[rest] === '[') {
     const end = escaped.indexOf(']', rest + 1);
@@ -77,7 +80,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   // The name starts right after the prefix, but the prefix may include extra whitespace.
   // We need to find where the actual name text starts (after ":: " which is the prefix).
   const nameCharStart = nameStart;
-  const nameCharEnd = nameCharStart + name.length;
+  const nameCharEnd = nameEnd;
 
   const nameRange: Range = {
     start: { line: lineNumber, character: nameCharStart },
@@ -85,7 +88,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   };
 
   return {
-    name: name.replace(/\\(.)/g, '$1'), // unescape
+    name,
     tags,
     meta,
     headerRange,

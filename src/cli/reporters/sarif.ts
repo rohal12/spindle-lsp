@@ -1,4 +1,5 @@
 import type { Diagnostic } from '../../core/types.js';
+import { VERSION } from '../../version.js';
 
 /**
  * SARIF 2.1.0 severity mapping.
@@ -59,7 +60,7 @@ export function formatSarif(
         tool: {
           driver: {
             name: 'spindle-lsp',
-            version: '0.1.0',
+            version: VERSION,
             rules: Array.from(ruleIds).map(id => ({
               id,
               shortDescription: { text: `Spindle diagnostic ${id}` },

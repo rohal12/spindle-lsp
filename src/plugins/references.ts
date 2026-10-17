@@ -53,6 +53,9 @@ export function findReferences(
   }
 
   // --- Widget ---
+  const declaration = workspace.widgets.definitionAt(uri, position);
+  if (declaration) return findWidgetReferences(declaration.name, workspace, includeDeclaration);
+
   const doc = workspace.markup.get(uri);
   const head = doc && macroHeadAt(doc, position);
   if (head) {
@@ -210,6 +213,10 @@ export function findWidgetReferences(
   if (includeDeclaration && widget) {
     locations.push({ uri: widget.uri, range: widget.range });
   }
+
+  // Macros take precedence over widgets, including when the request starts
+  // at a shadowed widget's declaration. Only that declaration belongs to it.
+  if (workspace.macros.getMacro(widgetName)) return locations;
 
   // Every call of the widget the runtime runs (case-insensitive, like Spindle):
   // the macros of the paired markup, those in labels and attribute values

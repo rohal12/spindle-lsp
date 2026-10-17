@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { Parameters } from '../../src/core/parsing/parameter-validator.js';
-import { getSignatureHelp } from '../../src/plugins/signature.js';
+import { getSignatureHelp, signaturePlugin } from '../../src/plugins/signature.js';
+import type { ParameterDef } from '@rohal12/spindle/tooling';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -12,6 +13,43 @@ function createWorkspace(...files: Array<{ name: string; content: string }>): Wo
   ws.initialize(contents);
   return ws;
 }
+
+describe('discovered runtime signature boundaries', () => {
+  const layouts: Array<[string, ParameterDef[], string]> = [
+    ['expression', [{ name: 'label', type: 'string', required: true }, { name: 'value', type: 'expression', required: true }], '"label" 1 + 2 '],
+    ['text', [{ name: 'value', type: 'text', required: true }], 'several words '],
+    ['flag', [{ name: 'label', type: 'string', required: true }, { name: 'once', type: 'flag' }], 'once "label"'],
+    ['separator', [{ name: 'names', type: 'names', required: true }, { name: 'of', type: 'separator' }, { name: 'value', type: 'expression', required: true }], '@x, @i of [1, 2] '],
+    ['options', [{ name: 'options', type: 'options', parameters: [{ name: 'caption', type: 'string' }] }], 'caption "hello" '],
+    ['excess-values', [{ name: 'value', type: 'number', required: true }], '1 2 '],
+  ];
+  it.each(layouts)('shows static help for %s without highlighting an unrelated parameter', (_name, parameters, args) => {
+    const body = `{custom ${args}`;
+    const ws = createWorkspace(
+      { name: 'story.tw', content: `:: Start\n${body}}\n` },
+      { name: 'macros.js', content: `Story.defineMacro({name:"custom",description:"Custom help",parameters:${JSON.stringify(parameters)},render(){return null;}});` },
+    );
+    try {
+      const position = { line: 1, character: body.length };
+      const help = getSignatureHelp('file:///story.tw', position, ws)!;
+      expect(help).not.toBeNull();
+      expect(help.signatures[0].label).toContain(parameters[0].name);
+      expect(help.signatures[0].documentation).toContain('Custom help');
+      for (const p of parameters) {
+        expect(help.signatures[0].documentation).toContain(p.name);
+        expect(help.signatures[0].documentation).toContain(`Type: ${p.type}`);
+      }
+      expect(help.signatures[0].parameters).toEqual([]);
+      let handler: (params: any) => any;
+      signaturePlugin.initialize({ connection: { onSignatureHelp: (h: any) => { handler = h; } }, workspace: ws } as any);
+      const wire = handler!({ textDocument: { uri: 'file:///story.tw' }, position });
+      expect(wire.signatures[0].parameters).toEqual([]);
+      expect(wire.signatures[0].documentation).toBe(help.signatures[0].documentation);
+    } finally {
+      ws.dispose();
+    }
+  });
+});
 
 describe('getSignatureHelp', () => {
   it('returns signature help for a known macro with parameters', () => {

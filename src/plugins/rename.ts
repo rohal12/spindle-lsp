@@ -360,17 +360,8 @@ function resolveSymbolAtCursor(
   }
 
   // --- Widget definition: {widget "name" ...} ---
-  for (const widget of workspace.widgets.getAllWidgets()) {
-    const { start, end } = widget.nameRange;
-    if (
-      widget.uri === uri &&
-      position.line === start.line &&
-      position.character >= start.character &&
-      position.character <= end.character
-    ) {
-      return { kind: 'widget', name: widget.name, range: widget.nameRange };
-    }
-  }
+  const declaration = workspace.widgets.definitionAt(uri, position);
+  if (declaration) return { kind: 'widget', name: declaration.name, range: declaration.nameRange };
 
   // --- Widget invocation: {widgetName ...} or block widget closing tag {/widgetName} ---
   const doc = workspace.markup.get(uri);

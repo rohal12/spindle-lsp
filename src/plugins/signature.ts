@@ -158,6 +158,37 @@ export function getSignatureHelp(
     }
   }
 
+  // Explicit legacy schemas keep precedence. Runtime definitions already
+  // carry positional names, optionality and documentation; present them
+  // directly rather than translating them into the legacy schema grammar.
+  if (macroInfo) {
+    const definitions = macroInfo.parameters === undefined ? macroInfo.parameterDefs : undefined;
+    if (!definitions?.length) return null;
+    const parameters = definitions.map(parameter => ({
+      label: parameter.required ? parameter.name : `[${parameter.name}]`,
+      documentation: [parameter.description, `Type: ${parameter.type}`].filter(Boolean).join('\n\n'),
+    }));
+    // splitArgs counts values, not the runtime's parameter groups (rest
+    // expressions, separators, flags and options). Until tooling exposes
+    // those spans, only highlight simple positional string/number slots.
+    // With no parameter entries, LSP clients show the signature and docs
+    // without defaulting an unknown active parameter to the first one.
+    const positional = definitions.every(p => p.type === 'string' || p.type === 'number') && argument < parameters.length;
+    const documentation = [
+      macroInfo.description,
+      ...(!positional ? parameters.map(p => `${p.label}\n\n${p.documentation}`) : []),
+    ].filter(Boolean).join('\n\n') || undefined;
+    return {
+      signatures: [{
+        label: `{${[macroName, ...parameters.map(p => p.label)].join(' ')}}`,
+        documentation,
+        parameters: positional ? parameters : [],
+      }],
+      activeSignature: 0,
+      activeParameter: positional ? argument : 0,
+    };
+  }
+
   // Check widgets
   const widget = workspace.widgets.getWidget(macroName);
   if (widget && widget.params.length > 0) {
