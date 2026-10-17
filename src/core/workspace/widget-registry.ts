@@ -1,5 +1,5 @@
 import { widgetDefinitions, type ToolingMacro } from '@rohal12/spindle/tooling';
-import type { WidgetDef } from '../types.js';
+import type { Position, WidgetDef } from '../types.js';
 import type { PassageMarkup } from '../markup/passage-markup.js';
 import { macroTokens } from '../markup/tokens.js';
 
@@ -50,6 +50,15 @@ export class WidgetRegistry {
   /** Get all registered widget definitions. */
   getAllWidgets(): WidgetDef[] {
     return Array.from(this.widgets.values());
+  }
+
+  /** The effective widget whose declared name contains the cursor. */
+  definitionAt(uri: string, position: Position): WidgetDef | undefined {
+    return this.getAllWidgets().find(widget => {
+      const { start, end } = widget.nameRange;
+      return widget.uri === uri && position.line === start.line &&
+        position.character >= start.character && position.character <= end.character;
+    });
   }
 
   /**

@@ -1,10 +1,6 @@
-export {};
-
-declare const SPINDLE_LSP_VERSION: string;
+import { VERSION } from './version.js';
 
 const args = process.argv.slice(2);
-
-const VERSION = SPINDLE_LSP_VERSION;
 
 const HELP = `\
 spindle-lsp v${VERSION}

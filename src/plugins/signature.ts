@@ -158,6 +158,27 @@ export function getSignatureHelp(
     }
   }
 
+  // Explicit legacy schemas keep precedence. Runtime definitions already
+  // carry positional names, optionality and documentation; present them
+  // directly rather than translating them into the legacy schema grammar.
+  if (macroInfo) {
+    const definitions = macroInfo.parameters === undefined ? macroInfo.parameterDefs : undefined;
+    if (!definitions?.length) return null;
+    const parameters = definitions.map(parameter => ({
+      label: parameter.required ? parameter.name : `[${parameter.name}]`,
+      documentation: [parameter.description, `Type: ${parameter.type}`].filter(Boolean).join('\n\n'),
+    }));
+    return {
+      signatures: [{
+        label: `{${[macroName, ...parameters.map(p => p.label)].join(' ')}}`,
+        documentation: macroInfo.description,
+        parameters,
+      }],
+      activeSignature: 0,
+      activeParameter: argument,
+    };
+  }
+
   // Check widgets
   const widget = workspace.widgets.getWidget(macroName);
   if (widget && widget.params.length > 0) {

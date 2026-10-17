@@ -24,7 +24,7 @@ export async function loadPrettier(filePath?: string): Promise<PrettierSetup | u
   if (!p) return undefined;
   try {
     const path = filePath?.startsWith('file:') ? fileURLToPath(filePath) : filePath;
-    const resolved = await p.resolveConfig(path ?? resolve(process.cwd(), 'story.tw'));
+    const resolved = await p.resolveConfig(path ?? resolve(process.cwd(), 'story.tw'), { useCache: false });
     return { prettier: p, options: { tabWidth: 2, ...(resolved ?? {}) } };
   } catch {
     return { prettier: p, options: { tabWidth: 2 } };
