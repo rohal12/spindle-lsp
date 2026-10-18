@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { findVariableReferences, findWidgetReferences } from '../../src/plugins/references.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
@@ -96,5 +97,27 @@ describe('computeCodeLenses', () => {
     const lenses = computeCodeLenses('file:///test.tw', ws);
     const storyDataLens = lenses.find(l => l.range.start.line === 0);
     expect(storyDataLens).toBeUndefined();
+  });
+});
+
+
+describe('usage counts exclude non-invocations', () => {
+  it.each([0, 1, 2])('counts %i block-widget invocations without their closers (#131)', (count) => {
+    const ws = createWorkspace(
+      { name: 'widgets.tw', content: ':: Widgets [widget]\n{widget "card"}{@children}{/widget}' },
+      { name: 'story.tw', content: ':: Start\n' + '{card}body{/card}\n'.repeat(count) },
+    );
+    expect(computeCodeLenses('file:///widgets.tw', ws).find(l => l.range.start.line === 1)?.command.title)
+      .toBe(`${count} usage${count === 1 ? '' : 's'}`);
+    expect(findWidgetReferences('card', ws, true)).toHaveLength(1 + count * 2);
+    ws.dispose();
+  });
+
+  it.each([0, 1])('counts %i variable usages despite repeated declarations (#132)', (count) => {
+    const ws = createWorkspace({ name: 'story.tw', content: ':: StoryVariables\n$x = 1\n$x = 2\n:: Start\n' + '{$x}\n'.repeat(count) });
+    const lenses = computeCodeLenses('file:///story.tw', ws).filter(l => [1, 2].includes(l.range.start.line));
+    expect(lenses.map(l => l.command.title)).toEqual(Array(2).fill(`${count} usage${count === 1 ? '' : 's'}`));
+    expect(findVariableReferences('x', ws, true)).toHaveLength(2 + count);
+    ws.dispose();
   });
 });

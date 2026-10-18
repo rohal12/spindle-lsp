@@ -166,7 +166,10 @@ export class PlaySessions {
       const path = resolve(process.cwd(), storyPath);
       const { html, notes: storyNotes } = await play.resolveStoryHtml({ path });
       const notes = [...storyNotes, ...runtimeNote(path, play.version)];
-      const session = await play.openPlaySession({ html });
+      // Forward the host authorization checked before loading/compiling.
+      // Older supported runtimes ignore the extra option.
+      const sessionOptions = { html, trusted: this.trustedHostCode };
+      const session = await play.openPlaySession(sessionOptions);
       let observation: Observation;
       try {
         observation = passage === undefined ? await session.observe() : await session.goto(passage);

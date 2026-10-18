@@ -35,6 +35,15 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
   // Lines end at `\n`; a CRLF document's `\r` is part of the line break, not of the line
   const lines = splitLines(text);
   const lenses: CodeLensItem[] = [];
+  const addLens = (line: number, title: string): void => {
+    lenses.push({
+      range: {
+        start: { line, character: 0 },
+        end: { line, character: lines[line].length },
+      },
+      command: { title },
+    });
+  };
 
   const storyVarsPassage = workspace.passages.getStoryVariables();
   const widgetLines = new Map(workspace.widgets.getAllWidgets()
@@ -53,33 +62,16 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
       // references only: a name declared twice is two declarations, not references
       const refCount = findPassageReferences(passageName, workspace, false).length;
 
-      lenses.push({
-        range: {
-          start: { line: lineNum, character: 0 },
-          end: { line: lineNum, character: line.length },
-        },
-        command: {
-          title: `${refCount} reference${refCount !== 1 ? 's' : ''}`,
-        },
-      });
+      addLens(lineNum, `${refCount} reference${refCount !== 1 ? 's' : ''}`);
       continue;
     }
 
     // --- Widget definitions ---
     const widgetName = widgetLines.get(lineNum);
     if (widgetName !== undefined) {
-      const refs = findWidgetReferences(widgetName, workspace, true);
-      const usageCount = Math.max(0, refs.length - 1);
+      const usageCount = findWidgetReferences(widgetName, workspace, false, false).length;
 
-      lenses.push({
-        range: {
-          start: { line: lineNum, character: 0 },
-          end: { line: lineNum, character: line.length },
-        },
-        command: {
-          title: `${usageCount} usage${usageCount !== 1 ? 's' : ''}`,
-        },
-      });
+      addLens(lineNum, `${usageCount} usage${usageCount !== 1 ? 's' : ''}`);
     }
 
     // --- StoryVariables declarations ---
@@ -88,18 +80,9 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
       const varDeclMatch = line.match(/^\$(\w+)\s*=/);
       if (varDeclMatch) {
         const varName = varDeclMatch[1];
-        const refs = findVariableReferences(varName, workspace, true);
-        const usageCount = Math.max(0, refs.length - 1);
+        const usageCount = findVariableReferences(varName, workspace, false).length;
 
-        lenses.push({
-          range: {
-            start: { line: lineNum, character: 0 },
-            end: { line: lineNum, character: line.length },
-          },
-          command: {
-            title: `${usageCount} usage${usageCount !== 1 ? 's' : ''}`,
-          },
-        });
+        addLens(lineNum, `${usageCount} usage${usageCount !== 1 ? 's' : ''}`);
       }
     }
   }

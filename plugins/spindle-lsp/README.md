@@ -36,6 +36,11 @@ Code. Stories can read and write host files, read environment variables and run
 commands with your account's privileges. This setting trusts every story run by
 that server; see [host-code trust](../../docs/mcp-play-tools.md#host-code-trust).
 
+Formatting uses JSON/YAML Prettier settings by default. Executable configs,
+shareable config imports and plugins require the separate host setting
+`SPINDLE_LSP_TRUSTED_FORMAT=1`; they run with your account's privileges. See
+[formatter trust](../../docs/mcp-play-tools.md#host-code-trust) for details.
+
 Six MCP tools let Claude play the story it is editing, the way a reader would:
 
 | Tool                   | Does                                     |

@@ -22,6 +22,7 @@
     "@rohal12/twee-ts": "^1.18.2",
     "glob": "^13.0.6",
     "happy-dom": "^20.14.6",
+    "minimatch": "^10.2.6",
     "vscode-languageserver": "^10.1.2",
     "vscode-languageserver-textdocument": "^1.0.15",
     "yaml": "^2.9.1"

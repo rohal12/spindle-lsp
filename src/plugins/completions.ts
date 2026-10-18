@@ -64,6 +64,13 @@ export function getCompletions(
     return editing(getClosingMacroCompletions(cursor, head.brace), head.brace, at + tail);
   }
 
+  // A link target or macro head is a name, even when it contains a variable
+  // sigil (such as the underscore in room_hall or my_widget).
+  const target = cursor.linkTarget();
+  if (target) return editing(getPassageNameCompletions(workspace), target.start, target.end);
+  // `{_` starts a temporary-variable display, rather than a macro name.
+  if (head && !head.typed.startsWith('_')) return typedEdit(getMacroCompletions(workspace), head.typed.length, /^[\w-]*/);
+
   // A field name that is not an identifier needs bracket access. Replace the
   // dot as well as the typed suffix/tail so accepting accesses the chosen key.
   const dotPath = /([$%])([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(before);
@@ -107,13 +114,6 @@ export function getCompletions(
   if (transientVar) {
     return typedEdit(getVariableCompletions('%', workspace), transientVar[1].length);
   }
-
-  // --- Context: passage link `[[` ---
-  const target = cursor.linkTarget();
-  if (target) return editing(getPassageNameCompletions(workspace), target.start, target.end);
-
-  // --- Context: macro invocation `{` or `{partial` ---
-  if (head) return typedEdit(getMacroCompletions(workspace), head.typed.length, /^[\w-]*/);
 
   return [];
 }
