@@ -16,7 +16,8 @@ Options:
   --help, -h                 Show this help message
   --version, -v              Show version number
 
-MCP environment:
+Host trust environment:
+  SPINDLE_LSP_TRUSTED_FORMAT=1 Allow executable Prettier configs and plugins (CLI, LSP and MCP)
   SPINDLE_LSP_TRUSTED_PLAY=1   Allow trusted stories to access host files, environment and commands
 
 Check options:

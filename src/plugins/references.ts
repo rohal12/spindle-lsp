@@ -190,11 +190,13 @@ export function findTransientReferences(
 
 /**
  * Find all references to a widget across the workspace.
+ * Closing tags participate in navigation/rename; usage counts omit them.
  */
 export function findWidgetReferences(
   widgetName: string,
   workspace: WorkspaceModel,
   includeDeclaration: boolean,
+  includeClosingTags = true,
 ): ReferenceLocation[] {
   const locations: ReferenceLocation[] = [];
   const widget = workspace.widgets.getWidget(widgetName);
@@ -218,7 +220,7 @@ export function findWidgetReferences(
     const doc = workspace.markup.get(docUri);
     if (!doc) continue;
     for (const head of documentMacroHeads(doc)) {
-      if (head.closing && !isBlock) continue;
+      if (head.closing && (!isBlock || !includeClosingTags)) continue;
       if (head.name.toLowerCase() === lowerName) {
         locations.push({ uri: docUri, range: head.range });
       }

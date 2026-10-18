@@ -89,7 +89,7 @@ describe('PlaySessions', () => {
     expect(resolveStoryHtml).toHaveBeenCalledWith({
       path: resolve(process.cwd(), 'story.twee'),
     });
-    expect(openPlaySession).toHaveBeenCalledWith({ html: 'x' });
+    expect(openPlaySession).toHaveBeenCalledWith({ html: 'x', trusted: true });
   });
 
   it('refuses a ninth session', async () => {

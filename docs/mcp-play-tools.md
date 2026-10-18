@@ -31,6 +31,16 @@ It cannot be enabled through a tool argument or a story's project config. Withou
 it, `spindle_play_start` returns a tool error before loading or compiling the
 story; checks and formatting remain available.
 
+Formatting reads JSON/YAML Prettier settings by default, including object settings
+in `package.json` and `package.yaml`. It skips executable configs, shareable config
+imports and plugins. To allow those for a trusted project, set
+`SPINDLE_LSP_TRUSTED_FORMAT=1` in the host environment before starting the CLI,
+LSP or MCP server. They execute with your account's host privileges. This setting
+is independent of play trust and cannot be granted by a tool argument or project
+config. Other config formats (including JSON5 and TOML) also require this opt-in.
+The formatter preserves the document's line-ending style regardless of Prettier's
+`endOfLine` setting.
+
 ## Requirements
 
 Nothing beyond `@rohal12/spindle-lsp` itself. `@rohal12/spindle` (a release

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { getCompletions } from '../../src/plugins/completions.js';
 
@@ -241,5 +242,37 @@ describe('getCompletions in half-typed and non-markup text', () => {
     expect(at(doc, 1, 3)).toEqual([]);
     expect(at(doc, 1, 15)).toEqual(['Start', 'Second']);
     expect(at(doc, 1, 18)).toEqual([]);
+  });
+});
+
+
+describe('completion context precedence (#130)', () => {
+  it.each(['[[room_¦', '[[Go|room_¦', '[[Go->room_¦', '[[room_¦<-Go', '[[room_¦hall]]', '[[room$¦', '[[room@¦', '[[room%¦'])(
+    'replaces the full passage target in %s', (marked) => {
+      const content = ':: room_hall\nHello\n:: Start\n{set _hello=1}\n' + marked.replace('¦', '');
+      const ws = createWorkspace({ name: 'test.tw', content });
+      const items = getCompletions('file:///test.tw', { line: 4, character: marked.indexOf('¦') }, undefined, ws);
+      expect(items.every(item => item.kind === 18)).toBe(true);
+      const chosen = items.find(item => item.label === 'room_hall');
+      expect(chosen?.textEdit).toBeDefined();
+      const output = TextDocument.applyEdits(TextDocument.create('file:///test.tw', 'twee', 1, content), [chosen!.textEdit as never]);
+      expect(output.split('\n')[4]).toBe(marked.startsWith('[[Go|') ? '[[Go|room_hall'
+        : marked.startsWith('[[Go->') ? '[[Go->room_hall'
+        : marked.includes('<-') ? '[[room_hall<-Go'
+        : marked.includes(']]') ? '[[room_hall]]' : '[[room_hall');
+      ws.dispose();
+    },
+  );
+
+  it.each(['{my_¦', '{my_¦widget}'])('replaces the widget head in %s', (marked) => {
+    const content = ':: Widgets [widget]\n{widget "my_widget"}hello{/widget}\n:: Start\n{set _hello=1}\n' + marked.replace('¦', '');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    const items = getCompletions('file:///test.tw', { line: 4, character: marked.indexOf('¦') }, undefined, ws);
+    expect(items.every(item => item.kind === 3)).toBe(true);
+    const item = items.find(item => item.label === 'my_widget');
+    expect(item?.textEdit).toBeDefined();
+    const output = TextDocument.applyEdits(TextDocument.create('file:///test.tw', 'twee', 1, content), [item!.textEdit as never]);
+    expect(output.split('\n')[4]).toBe(marked.endsWith('}') ? '{my_widget}' : '{my_widget');
+    ws.dispose();
   });
 });
