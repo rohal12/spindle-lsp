@@ -77,7 +77,7 @@ export function startServer(args: string[]): void {
 
     // Determine workspace root from LSP params (try multiple sources)
     workspaceRoot =
-      initOptions.workspaceRoot ??
+      (initOptions.workspaceRoot !== undefined ? uriToFsPath(initOptions.workspaceRoot) : undefined) ??
       (params.workspaceFolders?.[0]?.uri
         ? uriToFsPath(params.workspaceFolders[0].uri)
         : undefined) ??
