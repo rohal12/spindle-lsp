@@ -853,6 +853,51 @@ describe('Integration: LSP server over stdio', () => {
     if (serverBundleDir) rmSync(serverBundleDir, { recursive: true, force: true });
   });
 
+  it('excludes dependency, build and hidden stories from scans and watcher ingestion (#123)', async () => {
+    const story = ':: StoryVariables\n$x = 1\n:: Start\n{$x} [[Target]] [[DependencyOnly]]\n:: Target\nProject target.\n';
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.twee': story });
+    const excluded = ['node_modules/story-lib', 'dist', 'build', '.fixtures'];
+    for (const folder of excluded) {
+      mkdirSync(join(dir, folder), { recursive: true });
+      writeFileSync(join(dir, folder, 'fixture.twee'),
+        ':: StoryData\n{"format":"SugarCube"}\n:: StoryVariables\n$foreign = 2\n:: Start\nDependency start.\n:: Target\nDependency target.\n:: DependencyOnly\nExtra.\n');
+    }
+    const uri = uriFor(dir, 'story.twee');
+    const session = await startLsp(dir);
+    const assertProject = async (diags: LspDiagnostic[]) => {
+      expect(diags.filter(d => d.code === 'SP300').map(d => d.message)).toEqual([
+        expect.stringContaining('DependencyOnly'),
+      ]);
+      expect(diags.some(d => d.code === 'SP200')).toBe(false);
+      const definition = await session.conn.sendRequest('textDocument/definition', {
+        textDocument: { uri }, position: { line: 3, character: 9 },
+      }) as { uri: string; range: { start: { line: number } } };
+      expect(definition.uri).toBe(uri);
+      expect(definition.range.start.line).toBe(4);
+      expect(session.log()).not.toContain('language features disabled');
+    };
+    await assertProject(await session.waitForDiagnostics(uri, hasCode('SP300')));
+    await didOpen(session, uri, story);
+    for (const type of [1, 2, 3] as const) {
+      const mark = session.publishes.length;
+      for (const folder of excluded) {
+        await watchedFileChanged(session, uriFor(dir, `${folder}/fixture.twee`), type);
+      }
+      await didChangeFull(session, uri, type + 1, story + '\n'.repeat(type));
+      await assertProject(await session.waitForDiagnostics(uri, hasCode('SP300'), mark));
+    }
+    // The editor may deliberately open an excluded source; closing removes it again.
+    const explicitUri = uriFor(dir, 'dist/explicit.tw');
+    writeFileSync(join(dir, 'dist/explicit.tw'), ':: Explicit\nOpened in editor.\n');
+    await didOpen(session, explicitUri, ':: Explicit\nOpened in editor.\n');
+    await session.waitForDiagnostics(explicitUri, () => true);
+    expect(await documentSymbolNames(session, explicitUri)).toEqual(['Explicit']);
+    const mark = session.publishes.length;
+    await didClose(session, explicitUri);
+    await session.waitForDiagnostics(explicitUri, d => d.length === 0, mark);
+    expect(await documentSymbolNames(session, explicitUri)).toEqual([]);
+  });
+
   // -----------------------------------------------------------------------
   // #14: unsaved editor buffers stay authoritative
   // -----------------------------------------------------------------------

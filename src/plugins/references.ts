@@ -153,15 +153,8 @@ export function findVariableReferences(
 ): ReferenceLocation[] {
   const locations: ReferenceLocation[] = [];
 
-  // Include declaration from StoryVariables
   if (includeDeclaration) {
-    const decl = workspace.variables.getDeclared().get(varName);
-    if (decl?.declarationRange && decl.declarationUri) {
-      locations.push({
-        uri: decl.declarationUri,
-        range: decl.declarationRange,
-      });
-    }
+    locations.push(...workspace.variables.getDeclarations(varName, '$'));
   }
 
   // Get all usages from the variable tracker
@@ -184,10 +177,7 @@ export function findTransientReferences(
   const results: ReferenceLocation[] = [];
 
   if (includeDeclaration) {
-    const decl = workspace.variables.getDeclaredTransient().get(varName);
-    if (decl?.declarationUri && decl.declarationRange) {
-      results.push({ uri: decl.declarationUri, range: decl.declarationRange });
-    }
+    results.push(...workspace.variables.getDeclarations(varName, '%'));
   }
 
   const usages = workspace.variables.getTransientUsages(varName);

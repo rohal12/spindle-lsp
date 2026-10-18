@@ -30,6 +30,12 @@ To try a local checkout, add the repository path instead of
 
 ## Play-testing while writing
 
+Play execution is disabled by default. To enable it for trusted stories, set
+`SPINDLE_LSP_TRUSTED_PLAY=1` in the MCP server environment and restart Claude
+Code. Stories can read and write host files, read environment variables and run
+commands with your account's privileges. This setting trusts every story run by
+that server; see [host-code trust](../../docs/mcp-play-tools.md#host-code-trust).
+
 Six MCP tools let Claude play the story it is editing, the way a reader would:
 
 | Tool                   | Does                                     |

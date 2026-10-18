@@ -15,7 +15,7 @@ const MACRO_SOURCE_PATTERN = /\.[cm]?[jt]s$/i;
 export const MACRO_SOURCE_GLOB = '**/*.{js,cjs,mjs,ts,cts,mts}';
 
 /**
- * Directories whose JS/TS files are not project macro sources:
+ * Directories excluded from automatic project source discovery:
  * dependencies and build output (bundles would duplicate the project's own
  * definitions). Hidden entries (`.git`, `.storybook`, `.eslintrc.js`, ...)
  * are excluded as well.
@@ -34,12 +34,12 @@ export function isMacroSource(uriOrPath: string): boolean {
 }
 
 /**
- * Whether a JS/TS file is hidden or lies inside a hidden or excluded
+ * Whether a project file is hidden or lies inside a hidden or excluded
  * directory (relative to `root`, or anywhere in the path if no root is
  * given). The single source of truth for both the initial scan
- * ({@link findMacroSourceFiles}) and file watcher events.
+ * ({@link findProjectFiles}) and file watcher events.
  */
-export function isExcludedMacroSource(path: string, root?: string): boolean {
+export function isExcludedProjectFile(path: string, root?: string): boolean {
   return (root ? relative(root, path) : path)
     .split(/[\\/]/)
     .some(isExcludedSegment);
@@ -47,7 +47,7 @@ export function isExcludedMacroSource(path: string, root?: string): boolean {
 
 /**
  * Find the JS/TS macro source files under `root` (absolute paths),
- * skipping those matched by {@link isExcludedMacroSource}.
+ * skipping those matched by {@link isExcludedProjectFile}.
  */
 export function findMacroSourceFiles(root: string): Promise<string[]> {
   return findProjectFiles(root, MACRO_SOURCE_GLOB);
@@ -59,7 +59,7 @@ export function findMacroSourceFiles(root: string): Promise<string[]> {
  * {@link findMacroSourceFiles}.
  */
 export function findProjectFiles(root: string, pattern: string): Promise<string[]> {
-  const excluded = (p: Path): boolean => isExcludedMacroSource(p.fullpath(), root);
+  const excluded = (p: Path): boolean => isExcludedProjectFile(p.fullpath(), root);
   return glob(pattern, {
     cwd: root,
     absolute: true,

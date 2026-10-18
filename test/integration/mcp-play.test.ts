@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,7 +34,7 @@ afterEach(async () => {
   open = [];
 });
 
-async function connect(sessions = new PlaySessions()) {
+async function connect(sessions = new PlaySessions({ trustedHostCode: true })) {
   const server = new McpServer({ name: 't', version: '0' });
   open.push(sessions);
   registerPlayTools(server, sessions);
@@ -57,6 +57,37 @@ async function start(call: Call, story: string): Promise<{ id: string; observati
 }
 
 describe('spindle_play_* tools over MCP', () => {
+  it('refuses host-file access by default, even if a tool caller claims trust (#122)', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'spindle-play-untrusted-'));
+    const sentinel = join(directory, 'sentinel');
+    const marker = join(directory, 'marker');
+    writeFileSync(sentinel, 'private host data');
+    const story = join(directory, 'story.twee');
+    writeFileSync(story, `:: StoryData
+{"ifid":"7E95B777-0E72-4603-AA57-049388D05756","format":"spindle"}
+:: StoryVariables
+:: StoryInit
+{do}
+const fs = process.getBuiltinModule("node:fs");
+fs.writeFileSync(${JSON.stringify(marker)}, fs.readFileSync(${JSON.stringify(sentinel)}));
+{/do}
+:: Start
+Hello.
+`);
+    try {
+      const { call, sessions } = await connect(new PlaySessions());
+      const result = await call('spindle_play_start', { story, trustedHostCode: true });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('host-code trust');
+      expect(result.content[0].text).toContain('SPINDLE_LSP_TRUSTED_PLAY=1');
+      expect(existsSync(marker)).toBe(false);
+      expect(readFileSync(sentinel, 'utf8')).toBe('private host data');
+      expect(sessions.size).toBe(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('lists the six play tools', async () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
@@ -243,6 +274,7 @@ describe('spindle_play_* tools over MCP', () => {
         ].join('\n'),
       );
       const sessions = new PlaySessions({
+        trustedHostCode: true,
         load: async () => {
           const play = await import('@rohal12/spindle/play');
           return {

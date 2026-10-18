@@ -40,6 +40,7 @@ function makeSessions(options: { max?: number; idleMs?: number; version?: string
   const fake = fakePlay();
   if (options.version !== undefined) fake.play.version = options.version;
   const sessions = new PlaySessions({
+    trustedHostCode: true,
     load: async () => fake.play,
     ...options,
   });
@@ -51,6 +52,17 @@ afterEach(() => {
 });
 
 describe('PlaySessions', () => {
+  it('refuses untrusted execution before loading or resolving a story', async () => {
+    const { play, resolveStoryHtml, openPlaySession } = fakePlay();
+    const load = vi.fn(async () => play);
+    const sessions = new PlaySessions({ load });
+    await expect(sessions.start('story.twee')).rejects.toThrow('SPINDLE_LSP_TRUSTED_PLAY=1');
+    expect(load).not.toHaveBeenCalled();
+    expect(resolveStoryHtml).not.toHaveBeenCalled();
+    expect(openPlaySession).not.toHaveBeenCalled();
+    expect(sessions.size).toBe(0);
+  });
+
   it('starts a session and returns the first observation and notes', async () => {
     const { sessions } = makeSessions();
     const r = await sessions.start('story.twee');

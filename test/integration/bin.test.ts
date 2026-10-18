@@ -51,8 +51,11 @@ interface McpMessage {
   result?: Record<string, unknown> & { tools?: { name: string }[] };
 }
 /** The `mcp` subcommand over stdio: newline-delimited JSON-RPC, initialized. */
-async function mcpProcess(executable: string) {
-  const child = spawn(process.execPath, [executable, 'mcp'], { stdio: ['pipe', 'pipe', 'pipe'] });
+async function mcpProcess(executable: string, trust = '1') {
+  const child = spawn(process.execPath, [executable, 'mcp'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, SPINDLE_LSP_TRUSTED_PLAY: trust },
+  });
   const pending = new Map<number, (message: McpMessage) => void>();
   let buffer = '';
   child.stdout.on('data', data => {
@@ -180,6 +183,18 @@ describe('B76-dist: the executable built by `npm run build`', () => {
   it('B76-dist-version: --version prints the package version', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
     expect(execFileSync(process.execPath, [dist.executable, '--version'], { encoding: 'utf8' }).trim()).toBe(pkg.version);
+  });
+  it.each(['', '0', 'true'])('refuses play without exact host opt-in (%j) (#122)', async trust => {
+    const { child, request } = await mcpProcess(dist.executable, trust);
+    try {
+      const { result } = await request('tools/call', {
+        name: 'spindle_play_start', arguments: { story: playFixture, trustedHostCode: true },
+      });
+      expect(result?.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain('SPINDLE_LSP_TRUSTED_PLAY=1');
+    } finally {
+      child.kill();
+    }
   });
   it('B76-dist-play-tools: the mcp subcommand lists the six play tools', async () => {
     const { child, request } = await mcpProcess(dist.executable);

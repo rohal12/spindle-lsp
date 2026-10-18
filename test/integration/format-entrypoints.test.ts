@@ -4,7 +4,7 @@
  * preserves multiline macro payloads and the document's line endings.
  */
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -61,6 +61,21 @@ function expectFormatted(source: string, output: string, eol: string): void {
   // Something was formatted: the header lost its trailing spaces
   expect(output.startsWith(`:: Start${eol}`)).toBe(true);
 }
+
+it('CLI format --check preserves a sibling path sharing cwd prefix (#125)', () => {
+  const cwd = join(directory, 'project');
+  const outside = join(directory, 'project-other');
+  mkdirSync(cwd);
+  mkdirSync(outside);
+  writeFileSync(join(outside, 'package.json'), '{}');
+  const file = join(outside, 'story.tw');
+  writeFileSync(file, ':: Start   \nHello.\n');
+  const result = spawnSync(process.execPath, [dist.executable, 'format', '--check', file], {
+    cwd, encoding: 'utf8',
+  });
+  expect(result.status, result.stderr).toBe(1);
+  expect(result.stdout.split('\n')[0]).toBe(file);
+});
 
 for (const [label, eol] of [['LF', '\n'], ['CRLF', '\r\n']] as const) {
   describe(`K66-entry ${label}: real entrypoints of the built executable`, () => {

@@ -83,6 +83,8 @@ async function playInstalled(project: string): Promise<void> {
     command: process.execPath,
     args: [bin, 'mcp'],
     cwd: project,
+    // This smoke check runs only the repository's known fixture.
+    env: { ...process.env, SPINDLE_LSP_TRUSTED_PLAY: '1' },
     stderr: 'inherit',
   });
   const client = new Client({ name: 'smoke-pack', version: '0' });

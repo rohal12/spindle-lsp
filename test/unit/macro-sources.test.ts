@@ -7,7 +7,7 @@ import {
   commonDirectory,
   findMacroSourceFiles,
   findProjectRoot,
-  isExcludedMacroSource,
+  isExcludedProjectFile,
 } from '../../src/core/workspace/macro-sources.js';
 
 let dir: string;
@@ -74,7 +74,7 @@ describe('findProjectRoot', () => {
   });
 });
 
-describe('isExcludedMacroSource', () => {
+describe('isExcludedProjectFile', () => {
   const root = '/home/me/game';
 
   it.each([
@@ -88,7 +88,7 @@ describe('isExcludedMacroSource', () => {
     'src/.cache/m.mjs',
     '.eslintrc.js',
   ])('excludes %s', path => {
-    expect(isExcludedMacroSource(`${root}/${path}`, root)).toBe(true);
+    expect(isExcludedProjectFile(`${root}/${path}`, root)).toBe(true);
   });
 
   it.each([
@@ -97,16 +97,16 @@ describe('isExcludedMacroSource', () => {
     'distribution/m.js',
     'src/my.config.js',
   ])('keeps %s', path => {
-    expect(isExcludedMacroSource(`${root}/${path}`, root)).toBe(false);
+    expect(isExcludedProjectFile(`${root}/${path}`, root)).toBe(false);
   });
 
   it('only considers the path below the root', () => {
-    expect(isExcludedMacroSource('/home/me/.projects/game/macros.js', '/home/me/.projects/game')).toBe(false);
-    expect(isExcludedMacroSource('/home/me/dist/game/macros.js', '/home/me/dist/game')).toBe(false);
+    expect(isExcludedProjectFile('/home/me/.projects/game/macros.js', '/home/me/.projects/game')).toBe(false);
+    expect(isExcludedProjectFile('/home/me/dist/game/macros.js', '/home/me/dist/game')).toBe(false);
   });
 
   it('does not treat a path outside the root as hidden', () => {
-    expect(isExcludedMacroSource('/home/me/other/macros.js', root)).toBe(false);
+    expect(isExcludedProjectFile('/home/me/other/macros.js', root)).toBe(false);
   });
 });
 
@@ -133,7 +133,7 @@ describe('findMacroSourceFiles', () => {
     const found = (await findMacroSourceFiles(dir)).sort();
     const expected = tree
       .map(path => join(dir, path))
-      .filter(path => /\.[cm]?[jt]s$/.test(path) && !isExcludedMacroSource(path, dir))
+      .filter(path => /\.[cm]?[jt]s$/.test(path) && !isExcludedProjectFile(path, dir))
       .sort();
     expect(found).toEqual(expected);
     expect(found.map(path => path.slice(dir.length + 1)).sort()).toEqual([
