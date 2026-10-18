@@ -265,7 +265,9 @@ export class VariableTracker {
         const member = u.fullName.split('.')[1];
         if (member === undefined) continue;
         if (declared.get(u.baseName)?.type !== 'array') continue;
-        if (ARRAY_MEMBERS.has(member)) continue;
+        // Canonical array indices are properties too, including a path
+        // through an element such as $rows.0.name.
+        if (ARRAY_MEMBERS.has(member) || (/^(0|[1-9]\d*)$/.test(member) && Number(member) < 0xffffffff)) continue;
         results.push({ sigil, name: u.baseName, member, range: u.range });
       }
     }

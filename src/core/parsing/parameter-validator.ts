@@ -16,7 +16,7 @@
  *   (group)        — grouping
  */
 
-import { passageTarget } from '@rohal12/spindle/tooling';
+import { passageTarget, readQuoted } from '@rohal12/spindle/tooling';
 import { ArgType, type Arg } from './argument-lexer.js';
 
 // ---------------------------------------------------------------------------
@@ -318,17 +318,10 @@ function lexFormat(formatString: string): FormatLex[] {
         throw new Error(`Lex: Invalid character after '|': '${next}'`);
       }
     } else if (quoteRe.test(ch)) {
-      const openQuote = ch;
-      const start = pos;
-      pos++;
-      while (pos < formatString.length && formatString[pos] !== openQuote) {
-        if (++iter > LEX_LIMIT) throw new Error('Format lex string iteration limit exceeded');
-        pos++;
-      }
-      if (pos >= formatString.length) throw new Error('Lex: Unterminated string literal');
-      const value = formatString.slice(start + 1, pos);
-      pos++; // skip closing quote
-      lexed.push({ kind: FormatKind.Literal, value });
+      const quoted = readQuoted(formatString, pos);
+      if (!quoted) throw new Error('Lex: Unterminated string literal');
+      pos = quoted.end;
+      lexed.push({ kind: FormatKind.Literal, value: quoted.value });
     } else if (ch === '(' || ch === ')') {
       pos++;
       lexed.push({ kind: FormatKind.Group, open: ch === '(' });
@@ -548,93 +541,91 @@ function crawlValidate(
   startIndex: number,
   state?: StateInfo,
 ): CrawlResult {
-  let iter = 0;
+  const memo = new Map<Format, Map<number, CrawlResult[]>>();
 
-  function crawl(fmt: Format, argIdx: number): CrawlResult {
-    if (++iter > VALIDATE_LIMIT) {
+  function append(left: CrawlResult, right: CrawlResult): CrawlResult {
+    return { ...right, rank: left.rank + right.rank, warnings: left.warnings.concat(right.warnings) };
+  }
+
+  function follow(left: CrawlResult[], right: Format): CrawlResult[] {
+    return left.flatMap(matched => isFail(matched.status)
+      ? [matched]
+      : crawl(right, matched.argIndex).map(result => append(matched, result)));
+  }
+
+  // Retain every reachable argument position, once. Two paths to the same
+  // position have the same possible continuations; keep the first one's
+  // warnings and branch preference, without exponentially revisiting it.
+  function crawl(fmt: Format, argIdx: number): CrawlResult[] {
+    let positions = memo.get(fmt);
+    if (!positions) memo.set(fmt, positions = new Map());
+    const cached = positions.get(argIdx);
+    if (cached) return cached;
+    // Bound positions per node: alternatives must not consume the allowance
+    // of an otherwise valid long repetition just by visiting other nodes.
+    if (positions.size >= VALIDATE_LIMIT) {
       throw new Error(`Validation iteration limit exceeded at argument ${argIdx}`);
     }
+    const unique = new Map<number | 'failure', CrawlResult>();
+    for (const result of match(fmt, argIdx)) {
+      const key = isFail(result.status) ? 'failure' : result.argIndex;
+      const previous = unique.get(key);
+      if (!previous || (key === 'failure' && result.rank > previous.rank)) unique.set(key, result);
+    }
+    const results = [...unique.values()];
+    positions.set(argIdx, results);
+    return results;
+  }
 
+  function match(fmt: Format, argIdx: number): CrawlResult[] {
     switch (fmt.kind) {
       case FormatKind.MaybeNext: {
-        let rank = 0;
-        let warnings: ArgumentWarning[] = [];
-        let idx = argIdx;
-
-        if (fmt.left) {
-          const left = crawl(fmt.left, idx);
-          if (isFail(left.status)) return left;
-          rank += left.rank;
-          idx = left.argIndex;
-          warnings = left.warnings;
-        }
-
-        const right = crawl(fmt.right, idx);
-        if (right.status === CrawlStatus.NotFound) {
-          return makeSuccess(idx, rank, warnings);
-        }
-        if (isFail(right.status)) {
-          right.status = CrawlStatus.Failure;
-          return right;
-        }
-
-        return makeSuccess(right.argIndex, rank + right.rank, warnings.concat(right.warnings));
+        const left = fmt.left ? crawl(fmt.left, argIdx) : [makeSuccess(argIdx, 0)];
+        return [...follow(left, fmt.right), ...left];
       }
 
       case FormatKind.AndNext: {
-        const left = crawl(fmt.left, argIdx);
-        if (isFail(left.status)) return left;
-
-        const right = crawl(fmt.right, left.argIndex);
-        if (isFail(right.status)) return right;
-
-        return makeSuccess(
-          right.argIndex,
-          left.rank + right.rank,
-          left.warnings.concat(right.warnings),
-        );
+        return follow(crawl(fmt.left, argIdx), fmt.right);
       }
 
       case FormatKind.Or: {
-        const left = crawl(fmt.left, argIdx);
-        if (!isFail(left.status)) return left;
-
-        const right = crawl(fmt.right, argIdx);
-        if (!isFail(right.status)) return right;
-
-        // Both failed — return left's error
-        return left;
+        return [...crawl(fmt.left, argIdx), ...crawl(fmt.right, argIdx)];
       }
 
       case FormatKind.Repeat: {
-        let rank = 0;
-        let warnings: ArgumentWarning[] = [];
-        let idx = argIdx;
-
-        for (;;) {
-          const r = crawl(fmt.right, idx);
-          if (isFail(r.status)) break;
-          idx = r.argIndex;
-          rank += r.rank;
-          warnings = warnings.concat(r.warnings);
+        const matches: CrawlResult[] = [];
+        const pending = [makeSuccess(argIdx, 0)];
+        const reached = new Set<number>();
+        while (pending.length > 0) {
+          const matched = pending.pop()!;
+          // Mark on visit, so earlier alternatives and their repetitions
+          // keep priority over a later alternative reaching the same end.
+          if (reached.has(matched.argIndex)) continue;
+          reached.add(matched.argIndex);
+          matches.push(matched);
+          const items = crawl(fmt.right, matched.argIndex);
+          for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            // This also stops repetitions of an empty optional group.
+            if (!isFail(item.status) && !reached.has(item.argIndex)) pending.push(append(matched, item));
+          }
         }
-
-        return makeSuccess(idx, rank, warnings);
+        return matches.sort((left, right) => right.argIndex - left.argIndex);
       }
 
       case FormatKind.Literal: {
         const arg = args[argIdx];
         if (arg === undefined) {
-          return makeError(CrawlStatus.NotFound, `Expected literal '${fmt.value}' but no argument found`, argIdx);
+          return [makeError(CrawlStatus.NotFound, `Expected literal '${fmt.value}' but no argument found`, argIdx)];
         }
         if (isAlwaysArg(arg)) {
-          return makeSuccess(argIdx + 1, CORRECT_RANK);
+          return [makeSuccess(argIdx + 1, CORRECT_RANK)];
         }
 
         // Check literal match
-        const argText = arg.type === ArgType.String ? arg.text.slice(1, -1) : arg.text;
+        const argText = arg.type === ArgType.String ? readQuoted(arg.text, 0)?.value : arg.text;
         if (argText === fmt.value) {
-          return makeSuccess(argIdx + 1, CORRECT_RANK);
+          return [makeSuccess(argIdx + 1, CORRECT_RANK)];
         }
         // Special keyword matches
         if (
@@ -644,10 +635,10 @@ function crawlValidate(
           (fmt.value === 'false' && arg.type === ArgType.Boolean && arg.text === 'false') ||
           (fmt.value === 'NaN' && arg.type === ArgType.NaN)
         ) {
-          return makeSuccess(argIdx + 1, CORRECT_RANK);
+          return [makeSuccess(argIdx + 1, CORRECT_RANK)];
         }
 
-        return makeError(CrawlStatus.Failure, `Expected literal '${fmt.value}'`, argIdx, CORRECT_TYPE_RANK);
+        return [makeError(CrawlStatus.Failure, `Expected literal '${fmt.value}'`, argIdx, CORRECT_TYPE_RANK)];
       }
 
       case FormatKind.Type: {
@@ -655,39 +646,41 @@ function crawlValidate(
         const typeDef = fmt.type;
 
         if (arg === undefined) {
-          return makeError(
+          return [makeError(
             CrawlStatus.NotFound,
             `Expected type '${typeDef.name[0]}' but no argument found`,
             argIdx,
-          );
+          )];
         }
 
         if (isAlwaysArg(arg)) {
-          return makeSuccess(argIdx + 1, CORRECT_RANK);
+          return [makeSuccess(argIdx + 1, CORRECT_RANK)];
         }
 
         const result = typeDef.validate(arg, args, argIdx, state);
         if (result instanceof TypeError) {
-          return {
+          return [{
             status: CrawlStatus.Failure,
             rank: 0,
             argIndex: argIdx,
             errors: [{ message: result.message, argIndex: argIdx }],
             warnings: [],
-          };
+          }];
         }
         if (result instanceof TypeWarning) {
-          return makeSuccess(argIdx + 1, CORRECT_RANK, [
+          return [makeSuccess(argIdx + 1, CORRECT_RANK, [
             { message: result.message, argIndex: argIdx },
-          ]);
+          ])];
         }
 
-        return makeSuccess(argIdx + 1, CORRECT_RANK);
+        return [makeSuccess(argIdx + 1, CORRECT_RANK)];
       }
     }
   }
 
-  return crawl(format, startIndex);
+  const results = crawl(format, startIndex);
+  return results.find(result => !isFail(result.status) && result.argIndex === args.length)
+    ?? results.reduce((best, result) => result.rank > best.rank ? result : best);
 }
 
 // ---------------------------------------------------------------------------

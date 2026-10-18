@@ -853,6 +853,26 @@ describe('Integration: LSP server over stdio', () => {
     if (serverBundleDir) rmSync(serverBundleDir, { recursive: true, force: true });
   });
 
+  it.each(['path', 'uri'])('loads project config and target versions with a workspaceRoot %s (#138)', async kind => {
+    const dir = makeTempWorkspace({
+      'package.json': JSON.stringify({ dependencies: { '@rohal12/spindle': '0.59.0' } }),
+      'spindle.config.json': JSON.stringify({ macros: { custom: { description: 'Configured macro' } } }),
+      'story.twee': ':: StoryVariables\n:: Start\n{custom}\n',
+    });
+    const installed = join(dir, 'node_modules/@rohal12/spindle');
+    mkdirSync(installed, { recursive: true });
+    writeFileSync(join(installed, 'package.json'), '{"name":"@rohal12/spindle","version":"0.59.0"}');
+    const session = await startLsp(dir, { workspaceRoot: kind === 'uri' ? pathToFileURL(dir).href : dir });
+    const uri = uriFor(dir, 'story.twee');
+    const diagnostics = await session.waitForDiagnostics(uri, () => true);
+    expect(diagnostics.filter(d => d.code === 'SP100')).toEqual([]);
+    expect(diagnostics.filter(d => d.code === 'SP001')).toHaveLength(1);
+    const hover: any = await session.conn.sendRequest('textDocument/hover', {
+      textDocument: { uri }, position: { line: 2, character: 3 },
+    });
+    expect(JSON.stringify(hover)).toContain('Configured macro');
+  });
+
   it('excludes dependency, build and hidden stories from scans and watcher ingestion (#123)', async () => {
     const story = ':: StoryVariables\n$x = 1\n:: Start\n{$x} [[Target]] [[DependencyOnly]]\n:: Target\nProject target.\n';
     const dir = makeTempWorkspace({ 'package.json': '{}', 'story.twee': story });

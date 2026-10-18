@@ -223,6 +223,77 @@ describe('receiver parameter type', () => {
   });
 });
 
+describe('configured schema alternatives (#135)', () => {
+  it.each([
+    ['string | (string &+ number)', '"hello" 1'],
+    ['(string &+ number) | string', '"hello"'],
+    ['(string | (string &+ number)) &+ bool', '"hello" 1 true'],
+    ['((string &+ number) | string) &+ number', '"hello" 1'],
+    ['(string | (string &+ number)) |+ bool', '"hello" 1 true'],
+    ['...(string | (string &+ number)) &+ bool', '"hello" 1 "world" 2 true'],
+    ['...string &+ string', '"hello"'],
+    ['...(|+ string) &+ number', '1'],
+  ])('accepts a complete match for %s', (schema, source) => {
+    expect(new Parameters([schema]).validate(lexArguments(source)).errors).toEqual([]);
+  });
+
+  it.each(['"hello" true', '"hello" 1 2', '1', ''])('still rejects %s', source => {
+    expect(new Parameters(['string | (string &+ number)']).validate(lexArguments(source)).errors.length).toBeGreaterThan(0);
+  });
+
+  it('keeps warnings from the chosen complete branch only', () => {
+    const result = new Parameters(['passage | (string &+ number)']).validate(
+      lexArguments('"Missing" 1'), { passages: ['Start'] },
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(new Parameters(['passage | (string &+ number)']).validate(
+      lexArguments('"Missing"'), { passages: ['Start'] },
+    ).warnings).toHaveLength(1);
+  });
+
+  it.each([
+    ['(...(string | (string &+ string)) &+ bool) | (...string &+ number)'],
+    ['...(string | (string &+ string)) &+ bool', '...string &+ number'],
+  ])('does not revisit equivalent repeated matches before trying a later branch (%j)', (...schemas) => {
+    const source = [...Array(11).fill('"x"'), '1'].join(' ');
+    expect(new Parameters(schemas).validate(lexArguments(source)).errors).toEqual([]);
+  });
+
+  it('keeps the preferred repeated branch warnings at a shared endpoint', () => {
+    const result = new Parameters(['...(passage | (string &+ string))']).validate(
+      lexArguments('"MissingA" "MissingB"'), { passages: ['Start'] },
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.map(warning => warning.argIndex)).toEqual([0, 1]);
+  });
+
+  it.each([
+    ['...(string | number)', 667],
+    ['(...string) | (...(string | (string &+ string)))', 400],
+  ])('keeps long valid calls within the matching budget for %s', (schema, count) => {
+    const args = lexArguments(Array(count).fill('"x"').join(' '));
+    expect(new Parameters([schema]).validate(args).errors).toEqual([]);
+  });
+});
+
+describe('configured quoted literals (#137)', () => {
+  it.each([
+    [String.raw`'a"b'`, String.raw`"a\"b"`],
+    [String.raw`"a'b"`, String.raw`'a\'b'`],
+    [String.raw`'a\\b'`, String.raw`"a\\b"`],
+    [String.raw`'a\b'`, String.raw`"a\\b"`],
+    [String.raw`'a\'b'`, String.raw`"a'b"`],
+    [String.raw`"a\"b"`, String.raw`'a"b'`],
+    [String.raw`'a\nb'`, String.raw`"a\nb"`],
+  ])('compares decoded values for %s and %s', (schema, source) => {
+    const params = new Parameters([schema]);
+    expect(params.validate(lexArguments(source)).errors).toEqual([]);
+    expect(params.validate(lexArguments('"different"')).errors).toHaveLength(1);
+    expect(params.describe()[0][0].accepts(lexArguments(source)[0])).toBe(true);
+  });
+});
+
 describe('shipped macro parameter schemas', () => {
   const entries = Object.entries(supplements as Record<string, { parameters?: string[] }>)
     .filter(([, entry]) => entry.parameters !== undefined);

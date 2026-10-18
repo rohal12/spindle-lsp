@@ -156,7 +156,7 @@ const COMPILER_PASSAGES = new Set(['StoryTitle', 'StoryData']);
 
 function storyReport(workspace: WorkspaceModel): StoryReport {
   const documents: DocumentMarkup[] = [];
-  for (const uri of workspace.documents.getUris()) {
+  for (const uri of workspace.passages.getDocumentUris()) {
     if (isMacroSource(uri)) continue;
     const doc = workspace.markup.get(uri);
     if (doc) documents.push(doc);
