@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { resolveFiles, readFileContents } from '../core/workspace/file-inputs.js';
+import { resolveFiles, readFileContents, relativeTo } from '../core/workspace/file-inputs.js';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -138,9 +138,7 @@ export async function checkProject(
         diags = filterBySeverity(diags, severity);
       }
 
-      const relativePath = filePath.startsWith(cwd)
-        ? filePath.slice(cwd.length + 1)
-        : filePath;
+      const relativePath = relativeTo(cwd, filePath);
 
       for (const d of diags) {
         results.push({
@@ -158,11 +156,6 @@ export async function checkProject(
   } finally {
     workspace.dispose();
   }
-}
-
-/** Path of `filePath` relative to `cwd` when inside it. */
-function relativeTo(cwd: string, filePath: string): string {
-  return filePath.startsWith(cwd) ? filePath.slice(cwd.length + 1) : filePath;
 }
 
 /** Result of the `spindle_format` tool. */
@@ -326,7 +319,7 @@ export async function startMcpServer(version: string): Promise<void> {
   // spindle_play_*
   // -------------------------------------------------------------------------
 
-  const playSessions = new PlaySessions();
+  const playSessions = new PlaySessions({ trustedHostCode: process.env.SPINDLE_LSP_TRUSTED_PLAY === '1' });
   registerPlayTools(server, playSessions);
 
   // -------------------------------------------------------------------------

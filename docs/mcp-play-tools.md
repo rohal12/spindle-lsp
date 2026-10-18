@@ -10,6 +10,27 @@ Each session runs the story in its own worker thread on
 `@rohal12/spindle/play`. A story stuck in a loop can be stopped, and several
 stories can run side by side.
 
+## Host-code trust
+
+Play execution is disabled by default. Stories execute JavaScript with the MCP
+server account's privileges, including reading and writing host files, reading
+environment variables and running commands. Worker threads and timeouts do not
+isolate that authority. Only enable play for stories and project code you trust,
+including any scripts and dependencies used to compile them.
+
+To opt in, set `SPINDLE_LSP_TRUSTED_PLAY=1` in the MCP server's environment and
+restart the server, for example:
+
+```sh
+SPINDLE_LSP_TRUSTED_PLAY=1 npx @rohal12/spindle-lsp mcp
+```
+
+For an MCP client configuration, add `"SPINDLE_LSP_TRUSTED_PLAY": "1"` to the
+server's `env` object. The setting applies to every story played by that server.
+It cannot be enabled through a tool argument or a story's project config. Without
+it, `spindle_play_start` returns a tool error before loading or compiling the
+story; checks and formatting remain available.
+
 ## Requirements
 
 Nothing beyond `@rohal12/spindle-lsp` itself. `@rohal12/spindle` (a release
@@ -210,6 +231,7 @@ text. A tool never throws out of the server.
 
 | Message                                                                           | When                                                    |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `spindle_play requires host-code trust: ...`                                      | `start` without host opt-in (see [host-code trust](#host-code-trust)) |
 | `too many open play sessions (8); stop one with spindle_play_stop`                | `start` with 8 sessions open                            |
 | `unknown or expired session <id>`                                                 | An id that was never issued, stopped, expired or closed |
 | `spindle_play needs @rohal12/spindle <PLAY_SPINDLE_VERSION> or later`             | `start` when Spindle or its `spindle/play` is missing   |

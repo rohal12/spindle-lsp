@@ -8,7 +8,6 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { glob } from 'glob';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadPlugins } from '../core/plugin/plugin-loader.js';
@@ -22,8 +21,8 @@ import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace
 import {
   MACRO_SOURCE_GLOB,
   findMacroSourceFiles,
-  isExcludedMacroSource,
-  isMacroSource,
+  findProjectFiles,
+  isExcludedProjectFile,
 } from '../core/workspace/macro-sources.js';
 
 /**
@@ -230,8 +229,12 @@ export function startServer(args: string[]): void {
       // is gone.
       try {
         const fsPath = uriToFsPath(textDocument.uri);
-        const text = readFileSync(fsPath, 'utf-8');
-        workspace.documents.update(textDocument.uri, text);
+        if (isExcludedProjectFile(fsPath, workspaceRoot)) {
+          workspace.documents.close(textDocument.uri);
+        } else {
+          const text = readFileSync(fsPath, 'utf-8');
+          workspace.documents.update(textDocument.uri, text);
+        }
       } catch {
         // File no longer readable (deleted / outside workspace) — remove it
         workspace.documents.close(textDocument.uri);
@@ -267,10 +270,8 @@ export function startServer(args: string[]): void {
         continue;
       }
 
-      // Hidden, dependency and build-output JS is not a macro source
-      // (same predicate as the initial scan)
-      if (isMacroSource(change.uri)
-        && isExcludedMacroSource(uriToFsPath(change.uri), workspaceRoot)) {
+      // Automatic ingestion uses the same exclusions for stories and macro sources.
+      if (isExcludedProjectFile(uriToFsPath(change.uri), workspaceRoot)) {
         continue;
       }
 
@@ -325,11 +326,7 @@ async function scanWorkspaceFiles(
 
   try {
     const files = [
-      ...await glob('**/*.{tw,twee}', {
-        cwd: root,
-        absolute: true,
-        nodir: true,
-      }),
+      ...await findProjectFiles(root, '**/*.{tw,twee}'),
       ...await findMacroSourceFiles(root),
     ];
     for (const filePath of files) {

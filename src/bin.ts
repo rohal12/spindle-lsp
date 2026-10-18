@@ -16,6 +16,9 @@ Options:
   --help, -h                 Show this help message
   --version, -v              Show version number
 
+MCP environment:
+  SPINDLE_LSP_TRUSTED_PLAY=1   Allow trusted stories to access host files, environment and commands
+
 Check options:
   --format <pretty|json|sarif>   Output format (default: pretty)
   --severity <level>             Minimum severity: error, warning, info, hint

@@ -35,7 +35,7 @@ const sessionId = z.string().describe('Session id returned by spindle_play_start
 export function registerPlayTools(server: McpServer, sessions: PlaySessions): void {
   server.tool(
     'spindle_play_start',
-    'Start playing a Spindle story headlessly. Returns a session id and what the reader sees.',
+    'Execute a trusted Spindle story headlessly with host file, environment and command access. Requires SPINDLE_LSP_TRUSTED_PLAY=1 in the server environment. Returns a session id and what the reader sees.',
     {
       story: z
         .string()

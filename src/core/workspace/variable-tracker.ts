@@ -59,6 +59,8 @@ const ARRAY_MEMBERS: ReadonlySet<string> = new Set([
 class DeclarationSet {
   present = false;
   readonly declared = new Map<string, DeclaredVariable>();
+  /** Every declaration, including earlier defaults for the same binding. */
+  readonly occurrences: DeclaredVariable[] = [];
   /** Lines Spindle rejects. */
   problems: InvalidDeclaration[] = [];
   /** The names declared, with the range of sigil and name of the first. */
@@ -69,6 +71,7 @@ class DeclarationSet {
   clear(): void {
     this.present = false;
     this.declared.clear();
+    this.occurrences.length = 0;
     this.problems = [];
     this.names.clear();
   }
@@ -100,6 +103,7 @@ class DeclarationSet {
       }
       // A name declared again replaces the first declaration, as when Spindle evaluates them
       this.declared.set(name, declared);
+      this.occurrences.push(declared);
       if (!this.names.has(name)) this.names.set(name, declarationRange);
     }
   }
@@ -192,6 +196,14 @@ export class VariableTracker {
     return usagesOf(this.usagesByUri, name);
   }
 
+  /** Every declaration location of a story or transient binding, in source order. */
+  getDeclarations(name: string, sigil: DeclarationSigil): Array<{ uri: string; range: Range }> {
+    const declarations = sigil === '$' ? this.variables : this.transients;
+    return declarations.occurrences.flatMap(d =>
+      d.name === name && d.declarationUri !== undefined && d.declarationRange
+        ? [{ uri: d.declarationUri, range: d.declarationRange }] : []);
+  }
+
   /** The executable usage or declaration containing the cursor, in source coordinates. */
   referenceAt(uri: string, position: Position): { sigil: '$' | '%'; name: string; range: Range } | null {
     const contains = (range: Range) =>
@@ -199,12 +211,12 @@ export class VariableTracker {
       (position.line < range.end.line || (position.line === range.end.line && position.character <= range.end.character));
     let atEnd: { sigil: '$' | '%'; name: string; range: Range } | null = null;
     for (const [sigil, usages, declarations] of [
-      ['$', this.usagesByUri.get(uri), this.variables.declared],
-      ['%', this.transientUsagesByUri.get(uri), this.transients.declared],
+      ['$', this.usagesByUri.get(uri), this.variables.occurrences],
+      ['%', this.transientUsagesByUri.get(uri), this.transients.occurrences],
     ] as const) {
       const candidates = (usages ?? []).map(u => ({ name: u.baseName, range: u.range }));
-      for (const [name, declaration] of declarations) {
-        if (declaration.declarationUri === uri && declaration.declarationRange) candidates.push({ name, range: declaration.declarationRange });
+      for (const declaration of declarations) {
+        if (declaration.declarationUri === uri && declaration.declarationRange) candidates.push({ name: declaration.name, range: declaration.declarationRange });
       }
       for (const candidate of candidates) {
         if (!contains(candidate.range)) continue;

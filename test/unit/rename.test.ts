@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
+import { findReferences } from '../../src/plugins/references.js';
 import { prepareRename, computeRename, RenameError, type RenameEdit } from '../../src/plugins/rename.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
@@ -28,6 +29,39 @@ function applyRename(
   }
   return results;
 }
+
+describe('variable redeclarations (#124)', () => {
+  for (const [passage, sigil] of [['StoryVariables', '$'], ['StoryTransients', '%']] as const) {
+    it.each([1, 2, 4])(`renames every ${passage} declaration from line %i`, line => {
+      const original = `:: ${passage}\n${sigil}x = 1\n${sigil}x = { value: 2 }\n:: Start\n{${sigil}x.value}\n`;
+      const ws = createWorkspace({ name: 'story.tw', content: original });
+      const uri = 'file:///story.tw';
+      try {
+        const position = { line, character: line === 4 ? 2 : 1 };
+        expect(prepareRename(uri, position, ws)?.placeholder).toBe('x');
+        expect(findReferences(uri, position, ws, true).map(r => r.range.start.line)).toEqual([1, 2, 4]);
+        expect(findReferences(uri, position, ws, false).map(r => r.range.start.line)).toEqual([4]);
+        const effective = sigil === '$' ? ws.variables.getDeclared() : ws.variables.getDeclaredTransient();
+        expect(effective.get('x')?.type).toBe('object');
+        expect(effective.get('x')?.declarationRange?.start.line).toBe(2);
+        const renamed = applyRename(ws, uri, position, 'y').get(uri)!;
+        expect(renamed).toBe(original.replaceAll(`${sigil}x`, `${sigil}y`));
+        const schema = parseStoryVariables(renamed.split(':: Start')[0].split('\n').slice(1).join('\n'), sigil);
+        expect([...schema.keys()]).toEqual(['y']);
+        expect(schema.get('y')?.type).toBe('object');
+        expect([...schema.get('y')!.fields!.keys()]).toEqual(['value']);
+        // Re-indexing must discard the old declaration locations.
+        ws.documents.update(uri, renamed);
+        expect(ws.variables.getDeclarations('x', sigil)).toEqual([]);
+        expect(ws.variables.getDeclarations('y', sigil)).toHaveLength(2);
+        ws.documents.update(uri, ':: Start\nHello\n');
+        expect(ws.variables.getDeclarations('y', sigil)).toEqual([]);
+      } finally {
+        ws.dispose();
+      }
+    });
+  }
+});
 
 describe('prepareRename', () => {
   it('returns range and placeholder for passage header', () => {

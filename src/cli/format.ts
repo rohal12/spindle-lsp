@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs';
-import { resolveInputs, readFileContents } from '../core/workspace/file-inputs.js';
+import { resolveInputs, readFileContents, relativeTo } from '../core/workspace/file-inputs.js';
 
 import { formatDocument } from '../plugins/format.js';
 import { commonDirectory } from '../core/workspace/macro-sources.js';
@@ -103,10 +103,7 @@ export async function runFormat(args: string[]): Promise<number> {
 
       if (formatted !== text) {
         if (options.check) {
-          const relative = filePath.startsWith(cwd)
-            ? filePath.slice(cwd.length + 1)
-            : filePath;
-          unformatted.push(relative);
+          unformatted.push(relativeTo(cwd, filePath));
         } else {
           writeFileSync(filePath, formatted, 'utf-8');
         }

@@ -106,6 +106,8 @@ function runtimeNote(storyPath: string, runtime: string | undefined): string[] {
 }
 
 export interface PlaySessionsOptions {
+  /** Host authorization to execute stories with unrestricted Node privileges. Default false. */
+  trustedHostCode?: boolean;
   load?: () => Promise<PlayModule>;
   /** Most sessions open at once. Default 8. */
   max?: number;
@@ -122,6 +124,7 @@ interface Entry {
 export class PlaySessions {
   private readonly entries = new Map<string, Entry>();
   private readonly load: () => Promise<PlayModule>;
+  private readonly trustedHostCode: boolean;
   private readonly max: number;
   private readonly idleMs: number;
   /** Sessions being opened; they count toward the cap before they are registered. */
@@ -131,6 +134,7 @@ export class PlaySessions {
 
   constructor(options: PlaySessionsOptions = {}) {
     this.load = options.load ?? loadPlay;
+    this.trustedHostCode = options.trustedHostCode === true;
     this.max = options.max ?? 8;
     this.idleMs = options.idleMs ?? 1_800_000;
   }
@@ -144,6 +148,13 @@ export class PlaySessions {
     storyPath: string,
     passage?: string,
   ): Promise<{ session: string; observation: Observation; notes: string[] }> {
+    if (!this.trustedHostCode) {
+      throw new Error(
+        'spindle_play requires host-code trust: stories can read/write host files, access environment ' +
+        'variables and run commands with your account privileges. Only for trusted stories, set ' +
+        'SPINDLE_LSP_TRUSTED_PLAY=1 in the MCP server environment and restart it.',
+      );
+    }
     if (this.closing) throw shuttingDown();
     this.prune();
     if (this.entries.size + this.starting >= this.max) {

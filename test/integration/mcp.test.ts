@@ -332,3 +332,38 @@ describe('MCP tools on a story in another format', () => {
     expect(readFileSync(join(tmpDir, 'story', 'Act1.twee'), 'utf-8')).toContain('  {nope}');
   });
 });
+
+describe('external paths sharing cwd prefix (#125)', () => {
+  let root: string;
+  beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'spindle-paths-')); });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it.each(['project-other', '..project'])('preserves external paths in diagnostics and formatting: %s', async sibling => {
+    const cwd = join(root, 'project');
+    const outside = join(root, sibling);
+    mkdirSync(cwd);
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'package.json'), '{}');
+    const file = join(outside, 'story.tw');
+    writeFileSync(file, ':: Start   \n{notKnown}\n');
+    const diagnostics = await checkFiles(file, undefined, cwd);
+    expect(diagnostics.some(d => d.code === 'SP100')).toBe(true);
+    expect(diagnostics.every(d => d.file === file)).toBe(true);
+    expect(await checkFormatting(file, cwd)).toEqual({ needsFormatting: [file], alreadyFormatted: [] });
+    expect(await formatFiles(file, cwd)).toEqual({ formatted: 1, unchanged: 0, files: [file] });
+    expect(await checkFormatting(file, cwd)).toEqual({ needsFormatting: [], alreadyFormatted: [file] });
+    expect(await formatFiles(file, cwd)).toEqual({ formatted: 0, unchanged: 1, files: [] });
+  });
+
+  it('uses relative paths for descendants even with .. in their names', async () => {
+    const subdir = join(root, '..story');
+    mkdirSync(subdir);
+    writeFileSync(join(root, 'package.json'), '{}');
+    const file = join(subdir, 'story.tw');
+    writeFileSync(file, ':: Start\n{notKnown}\n');
+    expect((await checkFiles(file, undefined, root)).map(d => d.file)).toEqual(['..story/story.tw']);
+    expect(await checkFormatting(file, root + '/')).toEqual({
+      needsFormatting: [], alreadyFormatted: ['..story/story.tw'],
+    });
+  });
+});

@@ -36,6 +36,28 @@ describe('computeInlayHints', () => {
     expect(labels).toContain('@count:');
   });
 
+  it.each(['builtin', 'configured', 'discovered'] as const)(
+    'suppresses widget hints shadowed by a %s macro (#126)', source => {
+      const name = source === 'builtin' ? 'button' : 'greet';
+      const ws = createWorkspace(
+        { name: 'widgets.tw', content: `:: Widgets [widget]\n{widget "${name}" @unused}{@unused}{/widget}\n` },
+        { name: 'story.tw', content: `:: Start\n{${name.toUpperCase()} "Run"}${source === 'builtin' ? 'clicked{/button}' : ''}\n` },
+        ...(source === 'discovered' ? [{
+          name: 'macros.js', content: 'Story.defineMacro({ name: "greet", render() { return null; } });',
+        }] : []),
+      );
+      try {
+        if (source === 'configured') ws.macros.loadConfig({ greet: { parameters: [] } });
+        const hints = computeInlayHints('file:///story.tw', {
+          start: { line: 0, character: 0 }, end: { line: 10, character: 0 },
+        }, ws);
+        expect(hints.filter(h => h.kind === 'parameter')).toEqual([]);
+      } finally {
+        ws.dispose();
+      }
+    },
+  );
+
   it('provides parameter hints for invocations differing in case', () => {
     const ws = createWorkspace(
       {
