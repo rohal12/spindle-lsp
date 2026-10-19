@@ -1007,10 +1007,8 @@ export const diagnosticsPlugin: SpindlePlugin = {
     };
 
     ctx.workspace.on('modelReady', publishAll);
-    // Switching the story format to or from Spindle changes the diagnostics
-    // of every document, not just the edited StoryData file.
-    ctx.workspace.on('storyFormatChanged', publishAll);
-    ctx.workspace.on('documentChanged', publishFor);
+    // modelReady follows coalesced analysis, including story format changes.
+    // Publishing on each documentChanged would force that work per keystroke.
     // A document that left the store won't be republished — clear its
     // diagnostics so the editor drops stale problems.
     ctx.workspace.on('documentClosed', (uri: string) => {

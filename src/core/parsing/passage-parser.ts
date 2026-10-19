@@ -16,6 +16,7 @@ const SPECIAL_PASSAGES = new Set([
   'StoryTitle',
   'StoryBanner',
   'StoryCaption',
+  'StoryContext',
   'StoryMenu',
   'StoryInterface',
   'StoryAuthor',

@@ -53,11 +53,27 @@ function storyInitMacros(content: string): DiscoveredMacro[] {
 export class WorkspaceModel extends EventEmitter {
   readonly documents: DocumentStore;
   readonly passages: PassageIndex;
-  readonly macros: MacroRegistry;
-  readonly variables: VariableTracker;
-  readonly widgets: WidgetRegistry;
+  private readonly _macros: MacroRegistry;
+  get macros(): MacroRegistry {
+    this.ensureCurrent();
+    return this._macros;
+  }
+  private readonly _variables: VariableTracker;
+  get variables(): VariableTracker {
+    this.ensureCurrent();
+    return this._variables;
+  }
+  private readonly _widgets: WidgetRegistry;
+  get widgets(): WidgetRegistry {
+    this.ensureCurrent();
+    return this._widgets;
+  }
   /** Every document's markup, read through Spindle's tooling API. */
-  readonly markup: MarkupIndex;
+  private readonly _markup: MarkupIndex;
+  get markup(): MarkupIndex {
+    this.ensureCurrent();
+    return this._markup;
+  }
 
   /** True after initialize() has completed (full workspace scan done). */
   initialized = false;
@@ -70,13 +86,19 @@ export class WorkspaceModel extends EventEmitter {
    * workspace root, else StoryData's `format-version`. Only a version below
    * {@link MINIMUM_SPINDLE_VERSION} matters (it is reported, not emulated).
    */
-  target: SpindleTarget;
+  private _target: SpindleTarget;
+  get target(): SpindleTarget {
+    this.ensureCurrent();
+    return this._target;
+  }
 
   private readonly workspaceRoot: string | undefined;
   /** The version installed under the workspace root, read at startup and on refresh(). */
   private installedVersion: string | undefined;
   /** The `format-version` StoryData declares. */
   private declaredVersion: string | undefined;
+
+  private analysisPending = false;
 
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly DEBOUNCE_MS = 200;
@@ -90,11 +112,11 @@ export class WorkspaceModel extends EventEmitter {
     super();
     this.documents = new DocumentStore();
     this.passages = new PassageIndex();
-    this.macros = new MacroRegistry();
+    this._macros = new MacroRegistry();
     this.macros.onChange = () => this.markup?.invalidate();
-    this.variables = new VariableTracker();
-    this.widgets = new WidgetRegistry();
-    this.markup = new MarkupIndex({
+    this._variables = new VariableTracker();
+    this._widgets = new WidgetRegistry();
+    this._markup = new MarkupIndex({
       text: (uri) => this.documents.getText(uri),
       passages: (uri) => this.passages.getPassagesInDocument(uri),
       context: () => ({
@@ -105,7 +127,7 @@ export class WorkspaceModel extends EventEmitter {
 
     this.workspaceRoot = config?.workspaceRoot;
     this.installedVersion = this.workspaceRoot ? readInstalledSpindleVersion(this.workspaceRoot) : undefined;
-    this.target = resolveSpindleTarget(this.installedVersion);
+    this._target = resolveSpindleTarget(this.installedVersion);
 
     // Load builtins + supplements eagerly so macros are available
     // even before initialize() is called (LSP didOpen may arrive first)
@@ -159,7 +181,8 @@ export class WorkspaceModel extends EventEmitter {
   refresh(): void {
     // The project's Spindle may have been upgraded meanwhile
     if (this.workspaceRoot) this.installedVersion = readInstalledSpindleVersion(this.workspaceRoot);
-    this.cascade();
+    this.analysisPending = true;
+    this.ensureCurrent();
     this.scheduleModelReady();
   }
 
@@ -186,6 +209,7 @@ export class WorkspaceModel extends EventEmitter {
    * undefined if no StoryData passage names one.
    */
   get storyFormat(): string | undefined {
+    this.ensureCurrent();
     return this.format.name;
   }
 
@@ -196,6 +220,7 @@ export class WorkspaceModel extends EventEmitter {
    * Spindle.
    */
   isSpindleProject(): boolean {
+    this.ensureCurrent();
     return this.format.isSpindle;
   }
 
@@ -213,27 +238,25 @@ export class WorkspaceModel extends EventEmitter {
     this.removeAllListeners();
   }
 
-  /** Handle a document change: rebuild passages for that document, then cascade. */
+  /** Index local headers immediately; defer expensive cross-document analysis. */
   private handleDocumentChange(uri: string): void {
     const text = this.documents.getText(uri);
     // JS/TS macro sources only feed macro discovery — they hold no passages
     if (text !== undefined && !isMacroSource(uri)) {
       this.passages.rebuild(uri, text);
     }
-    this.refreshDiscoveredMacros();
-    this.cascade();
+    this.analysisPending = true;
     this.updateStoryFormat();
     this.emit('documentChanged', uri);
     this.emit('passagesUpdated', uri);
     this.scheduleModelReady();
   }
 
-  /** Handle a document close: remove its passages and variable usages, then cascade. */
+  /** Remove local indices immediately and schedule cross-document analysis. */
   private handleDocumentClose(uri: string): void {
     this.passages.remove(uri);
-    this.variables.removeDocument(uri);
-    this.refreshDiscoveredMacros();
-    this.cascade();
+    this._variables.removeDocument(uri);
+    this.analysisPending = true;
     this.updateStoryFormat();
     this.emit('documentClosed', uri);
     this.emit('passagesUpdated', uri);
@@ -248,6 +271,15 @@ export class WorkspaceModel extends EventEmitter {
         this.passages.rebuild(uri, text);
       }
     }
+    this.analysisPending = true;
+    this.ensureCurrent();
+  }
+
+  /** Finish pending cross-document work once, before a feature reads the indices. */
+  ensureCurrent(): void {
+    if (!this.analysisPending) return;
+    // Internal reads during the cascade must not recursively start another one.
+    this.analysisPending = false;
     this.refreshDiscoveredMacros();
     this.cascade();
     this.updateStoryFormat();
@@ -255,8 +287,8 @@ export class WorkspaceModel extends EventEmitter {
 
   /**
    * Re-read the story format from the StoryData passages after the passage
-   * index changed, emitting 'storyFormatChanged' if it differs. Called after
-   * the cascade, so listeners see up-to-date indices.
+   * index changed, emitting 'storyFormatChanged' if it differs. Listeners
+   * that read the analysis indices finish pending analysis through getters.
    */
   private updateStoryFormat(): void {
     const format = resolveStoryFormat(storyDataFormats(
@@ -279,8 +311,10 @@ export class WorkspaceModel extends EventEmitter {
    */
   private refreshDiscoveredMacros(): void {
     const found: DiscoveredMacro[] = [];
+    const init: DiscoveredMacro[] = [];
 
-    for (const uri of this.documents.getUris()) {
+    // Use a stable source order within each runtime phase.
+    for (const uri of this.documents.getUris().sort()) {
       const text = this.documents.getText(uri);
       if (!text) continue;
 
@@ -299,11 +333,13 @@ export class WorkspaceModel extends EventEmitter {
         const content = lines
           .slice(passage.headerEnd.end.line + 1, passage.range.end.line + 1)
           .join('\n');
-        found.push(...(isScript ? discoverMacros(content) : storyInitMacros(content)));
+        if (isScript) found.push(...discoverMacros(content));
+        else init.push(...storyInitMacros(content));
       }
     }
 
-    this.macros.setDiscoveredMacros(found);
+    // Story JavaScript runs before StoryInit, whose definitions override it.
+    this.macros.setDiscoveredMacros([...found, ...init]);
   }
 
   /**
@@ -320,7 +356,7 @@ export class WorkspaceModel extends EventEmitter {
 
     // The target version only decides whether to warn
     this.declaredVersion = storyDataFormatVersion(this.passages.getAllPassages(), (uri) => this.documents.getText(uri));
-    this.target = resolveSpindleTarget(this.installedVersion, this.declaredVersion);
+    this._target = resolveSpindleTarget(this.installedVersion, this.declaredVersion);
 
     // Declarations use the indexed passage body, including compact boundaries.
     const declarations = (name: string) => {
@@ -369,13 +405,14 @@ export class WorkspaceModel extends EventEmitter {
       .map(widget => ({ name: widget.name, block: widget.block, subMacros: [], widget: widget.tooling }))];
   }
 
-  /** Debounce modelReady emission. */
+  /** Coalesce analysis and diagnostics across a burst of document changes. */
   private scheduleModelReady(): void {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
+      this.ensureCurrent();
       this.emit('modelReady');
     }, this.DEBOUNCE_MS);
   }
