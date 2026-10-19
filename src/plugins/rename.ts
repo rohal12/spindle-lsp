@@ -110,6 +110,7 @@ export function computeRename(
         addEdit(declaration.uri, declaration.nameRange, escapePassageName(newName));
       }
       for (const { uri: refUri, ref, text } of refEdits) addEdit(refUri, ref.range, text);
+      preserveEntryPassage(symbol.name, newName, workspace, addEdit);
       break;
     }
 
@@ -197,6 +198,64 @@ export function computeRename(
   }
 
   return edits;
+}
+
+/** Preserve the compiler's explicit StoryData start, or its implicit Start. */
+function preserveEntryPassage(
+  oldName: string,
+  newName: string,
+  workspace: WorkspaceModel,
+  addEdit: (uri: string, range: Range, text: string) => void,
+): void {
+  const storyData = workspace.passages.getPassages('StoryData');
+  for (const declaration of storyData) {
+    const passage = workspace.markup.get(declaration.uri)!.passages.find(p => p.passage === declaration)!;
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(passage.content);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error();
+    } catch {
+      throw new RenameError('Cannot preserve the entry passage: StoryData must contain a valid JSON object.').at(declaration.uri, declaration.nameRange);
+    }
+    const start = typeof data.start === 'string' && data.start ? data.start : 'Start';
+    if (start !== oldName) continue;
+    if (Object.hasOwn(data, 'start') && typeof data.start !== 'string') {
+      throw new RenameError('Cannot preserve the entry passage: StoryData.start must be a string.').at(declaration.uri, declaration.nameRange);
+    }
+
+    // JSON is already validated. Use the public lexer to locate top-level
+    // keys without changing whitespace, escaped keys, or nested metadata.
+    let depth = 0;
+    let startValue = false;
+    let replaced = false;
+    lexJs(passage.content, {
+      code(ch) {
+        if (ch === '{' || ch === '[') depth++;
+        if (ch === '}' || ch === ']') depth--;
+        if (ch === ',') startValue = false;
+      },
+      literal(text, index) {
+        if (depth !== 1 || !text.startsWith('"')) return;
+        const isKey = /^\s*:/.test(passage.content.slice(index + text.length));
+        if (isKey) startValue = JSON.parse(text) === 'start';
+        else if (startValue) {
+          addEdit(declaration.uri, passage.range(index, index + text.length), JSON.stringify(newName));
+          replaced = true;
+        }
+      },
+    });
+    if (!replaced) {
+      const index = passage.content.indexOf('{') + 1;
+      addEdit(declaration.uri, passage.range(index, index), `"start":${JSON.stringify(newName)}${Object.keys(data).length ? ',' : ''}`);
+    }
+  }
+  if (storyData.length === 0 && oldName === 'Start') {
+    const declaration = workspace.passages.getPassage(oldName)!;
+    const doc = workspace.markup.get(declaration.uri)!;
+    const end = doc.passages.at(-1)!.position(doc.passages.at(-1)!.content.length);
+    const eol = doc.text.includes('\r\n') ? '\r\n' : '\n';
+    addEdit(declaration.uri, { start: end, end }, `${eol}${eol}:: StoryData${eol}${JSON.stringify({ start: newName })}${eol}`);
+  }
 }
 
 /**
