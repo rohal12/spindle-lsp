@@ -39,6 +39,21 @@ it.each(['**/*.{tw,twee}', '.', 'chapters'])('shares project exclusions for disc
   expect(await resolveInputs([pattern, 'story.tw'], directory)).toEqual([join(directory, 'story.tw')]);
 });
 
+it.each(['node_modules', 'node_modules/story-library', 'dist', 'build', 'chapters/node_modules/library', '.hidden'])(
+  'keeps exclusions when the selected directory is %s (#149)', async path => {
+    for (const pattern of [path, join(directory, path), `${path}/**/*.{tw,twee}`]) {
+      expect(await resolveFiles(pattern, directory)).toEqual([]);
+      expect(await checkFiles(pattern, undefined, directory)).toEqual([]);
+      expect(await checkFormatting(pattern, directory)).toMatchObject({ needsFormatting: [], alreadyFormatted: [] });
+      expect(await formatFiles(pattern, directory)).toMatchObject({ formatted: 0, files: [] });
+    }
+    expect(cli('check', '--format=json', path).status).toBe(0);
+    expect(cli('format', '--check', path).status).toBe(0);
+    expect(cli('format', path).status).toBe(0);
+    expectExcludedUnchanged();
+  },
+);
+
 for (const path of excluded) {
   it(`allows explicitly selected ${path} despite discovery exclusions (#149)`, async () => {
     expect(await resolveFiles(path, directory)).toEqual([join(directory, path)]);

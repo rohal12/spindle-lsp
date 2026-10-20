@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { findProjectFiles } from './macro-sources.js';
+import { findProjectFiles, isExcludedProjectFile } from './macro-sources.js';
 
 /**
  * Existing files are literal, even when their names contain glob syntax or
@@ -15,6 +15,8 @@ export async function resolveFiles(pattern: string, cwd: string): Promise<string
     const stat = statSync(literal);
     if (stat.isFile()) return [literal];
     if (stat.isDirectory()) {
+      // Changing the scan root must not hide excluded ancestor segments.
+      if (isExcludedProjectFile(literal, cwd)) return [];
       directory = literal;
       input = '**/*.{tw,twee}';
     }
