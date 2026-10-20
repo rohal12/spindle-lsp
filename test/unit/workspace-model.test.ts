@@ -100,6 +100,25 @@ describe('WorkspaceModel', () => {
     expect(handler).toHaveBeenCalled();
   });
 
+  it('announces a completed batch immediately and cancels earlier pending notifications', async () => {
+    const handler = vi.fn(() => {
+      expect(model.initialized).toBe(true);
+      expect(model.passages.getPassage('Start')).toBeDefined();
+    });
+    model.on('modelReady', handler);
+    model.documents.open('file:///story.tw', ':: Start\nBefore.\n');
+    model.initialize(new Map([['file:///story.tw', ':: Start\nAfter.\n']]));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    model.documents.update('file:///story.tw', ':: Start\nEdited.\n');
+    expect(handler).toHaveBeenCalledTimes(1);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
   it('rebuilds on document change', async () => {
     const files = new Map([['file:///story.tw', storyFile]]);
     model.initialize(files);

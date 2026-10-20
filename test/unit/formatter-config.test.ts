@@ -13,12 +13,48 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   rmSync(directory, { recursive: true, force: true });
 });
 
 const source = ':: Code [script]\nconst x="hello";\nif(x){console.log(x)}\n';
 const format = (text = source) => formatDocument(text, { filePath: pathToFileURL(join(directory, 'story.tw')).href });
 const markerCode = `require('node:fs').writeFileSync(__dirname + '/marker', 'executed');\n`;
+
+describe('PRETTIER-CONFIG project resolution (#105)', () => {
+  const document = source + ':: Style [stylesheet]\n.x{color:red}\n:: Start\n<script>\nconsole.log("hello");\n</script>\n';
+  const configurations = [
+    ['root-json', '.prettierrc.json', '{"singleQuote":true,"tabWidth":6}'],
+    ['root-yaml', '.prettierrc.yaml', 'singleQuote: true\ntabWidth: 6\n'],
+    ['root-package', 'package.json', '{"prettier":{"singleQuote":true,"tabWidth":6}}'],
+  ];
+
+  it.each(configurations)('PRETTIER-CONFIG/%s', async (_label, filename, config) => {
+    writeFileSync(join(directory, filename), config);
+    // With no document path, use a file within cwd so root config is found.
+    vi.spyOn(process, 'cwd').mockReturnValue(directory);
+    const fromRoot = await formatDocument(document);
+    expect(fromRoot).toContain("const x = 'hello';");
+    expect(fromRoot).toContain('      console.log(x);');
+    expect(fromRoot).toContain('.x {\n      color: red;');
+    expect(fromRoot).toContain("console.log('hello');");
+    expect(await formatDocument(fromRoot)).toBe(fromRoot);
+
+    // An explicit path resolves the same config even from an external cwd.
+    vi.mocked(process.cwd).mockReturnValue('/');
+    expect(await format(document)).toBe(fromRoot);
+    expect(await formatDocument(document, { filePath: join(directory, 'nested/story.tw') })).toBe(fromRoot);
+  });
+
+  it('PRETTIER-CONFIG/unconfigured-project', async () => {
+    const output = await format(document);
+    expect(output).toContain('const x = "hello";');
+    expect(output).toContain('  console.log(x);');
+    expect(output).toContain('.x {\n  color: red;');
+    expect(output).toContain('console.log("hello");');
+    expect(await format(output)).toBe(output);
+  });
+});
 
 describe('formatter host trust (#128)', () => {
   it('does not execute JavaScript config without formatter trust, even with play trusted', async () => {

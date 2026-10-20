@@ -170,8 +170,11 @@ export class WorkspaceModel extends EventEmitter {
 
     this.initialized = true;
 
-    // Schedule modelReady emission
-    this.scheduleModelReady();
+    // The batch is already fully analyzed. Publish it before returning,
+    // rather than leaving a stale initialization event among later requests.
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
+    this.emit('modelReady');
   }
 
   /**

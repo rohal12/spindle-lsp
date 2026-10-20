@@ -23,6 +23,23 @@ beforeEach(() => {
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 const run = (executable: string, args: string[]) => spawnSync(process.execPath, [executable, ...args], { cwd: directory, encoding: 'utf8', timeout: 10000 });
 
+function setPrettierConfig(kind: string, singleQuote: boolean, tabWidth: number): string {
+  const file = join(directory, kind === 'package' ? 'package.json' : `.prettierrc.${kind}`);
+  const options = { singleQuote, tabWidth };
+  writeFileSync(file, kind === 'yaml' ? `singleQuote: ${singleQuote}\ntabWidth: ${tabWidth}\n`
+    : JSON.stringify(kind === 'package' ? { prettier: options } : options));
+  return file;
+}
+
+const extraCode = ':: Style [stylesheet]\n.x{color:red}\n:: StartEmbedded\n<script>\nconsole.log("hello");\n</script>\n';
+
+function expectPrettierConfig(output: string, singleQuote: boolean, width: number): void {
+  const quoted = singleQuote ? "'hello'" : '"hello"';
+  expect(output).toContain(`const a = ${quoted};`);
+  expect(output).toContain(`.x {\n${' '.repeat(width)}color: red;`);
+  expect(output).toContain(`console.log(${quoted});`);
+}
+
 for (const version of ['package', '9.8.7-test']) {
   it(`CLI-REPORT/sarif-running-version/${version}`, async () => {
     let executable = dist.executable;
@@ -55,13 +72,12 @@ for (const version of ['package', '9.8.7-test']) {
   });
 }
 
-it('W74/HEADER/STRUCTURE/CONFIGURED-ARGS/PRETTIER-CONFIG over framed LSP', async () => {
-  const text = ':: StoryVariables\n:: W [widget]\n{widget "button"}unused{/widget}\n{widget "hello"}Hi{/widget}\n:: X\\ \nbody\n:: Start\n{button "Run"}clicked{/button}\n{hello}\n[[X]]\n{greet "Alice" }\n{button "{switch 2}{case 1}x{default}y{default}z{/switch}"}clicked{/button}\n:: Code [script]\nconst a="hello";\n';
+it.each(['json', 'yaml', 'package'])('W74/HEADER/STRUCTURE/CONFIGURED-ARGS/PRETTIER-CONFIG/%s over framed LSP', async kind => {
+  const text = ':: StoryVariables\n:: W [widget]\n{widget "button"}unused{/widget}\n{widget "hello"}Hi{/widget}\n:: X\\ \nbody\n:: Start\n{button "Run"}clicked{/button}\n{hello}\n[[X]]\n{greet "Alice" }\n{button "{switch 2}{case 1}x{default}y{default}z{/switch}"}clicked{/button}\n:: Code [script]\nconst a="hello";\n' + extraCode;
   const file = join(directory, 'story.tw');
   writeFileSync(file, text);
   writeFileSync(join(directory, 'macros.js'), 'Story.defineMacro({name:"greet",parameters:[{name:"who",type:"string",required:true},{name:"count",type:"number"}],render(){return null;}});');
-  const config = join(directory, '.prettierrc.json');
-  writeFileSync(config, '{"singleQuote":false}');
+  const config = setPrettierConfig(kind, false, 2);
   const uri = pathToFileURL(file).toString();
   const source = TextDocument.create(uri, 'twee', 1, text);
   const textDocument = { uri };
@@ -99,15 +115,18 @@ it('W74/HEADER/STRUCTURE/CONFIGURED-ARGS/PRETTIER-CONFIG over framed LSP', async
     const countLabel = signature.signatures[0].parameters[1].label;
     expect(signature.signatures[0].label.slice(...countLabel)).toBe('[count]');
     const format = async () => TextDocument.applyEdits(source, await request('textDocument/formatting', { textDocument, options: { tabSize: 2, insertSpaces: true } }));
-    expect(await format()).toContain('const a = "hello";');
-    writeFileSync(config, '{"singleQuote":true}');
+    expectPrettierConfig(await format(), false, 2);
+    setPrettierConfig(kind, true, 6);
     const changed = await format();
     expect(changed).toContain("const a = 'hello';");
+    expectPrettierConfig(changed, true, 6);
     expect(changed).toContain(':: X\\ \n');
     await conn.sendNotification('workspace/didChangeWatchedFiles', { changes: [{ uri: pathToFileURL(config).toString(), type: 2 }] });
     expect(await format()).toBe(changed);
     rmSync(config);
-    expect(await format()).toContain('const a = "hello";');
+    expectPrettierConfig(await format(), false, 2);
+    setPrettierConfig(kind, true, 4);
+    expectPrettierConfig(await format(), true, 4);
     const deadline = Date.now() + 4000;
     while (!diagnostics?.some(d => d.code === 'SP114') && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
     expect(diagnostics?.filter(d => d.code === 'SP114'), JSON.stringify(diagnostics)).toHaveLength(1);
@@ -115,11 +134,11 @@ it('W74/HEADER/STRUCTURE/CONFIGURED-ARGS/PRETTIER-CONFIG over framed LSP', async
   } finally { conn.dispose(); proc.kill(); }
 });
 
-it('STRUCTURE and PRETTIER-CONFIG changes through repeated MCP requests and CLI controls', async () => {
+it.each(['json', 'yaml', 'package'])('STRUCTURE and PRETTIER-CONFIG/%s changes through repeated MCP requests and CLI controls', async kind => {
   const file = join(directory, 'story.tw');
-  const text = ':: StoryVariables\n:: Start\n<span title="{option \'hi\'}">x</span>\n:: Code [script]\nconst a="hello";\n';
+  const text = ':: StoryVariables\n:: Start\n<span title="{option \'hi\'}">x</span>\n:: Code [script]\nconst a="hello";\n' + extraCode;
   writeFileSync(file, text);
-  const config = join(directory, '.prettierrc.json');
+  let config: string;
   const client = new Client({ name: 'audit-followup', version: '1' });
   const transport = new StdioClientTransport({ command: process.execPath, args: [dist.executable, 'mcp'], cwd: directory, stderr: 'pipe' });
   try {
@@ -136,12 +155,20 @@ it('STRUCTURE and PRETTIER-CONFIG changes through repeated MCP requests and CLI 
       expect(result.isError).not.toBe(true);
       return readFileSync(file, 'utf8');
     };
-    expect(await format()).toContain('const a = "hello";');
-    writeFileSync(config, '{"singleQuote":true}');
-    expect(await format()).toContain("const a = 'hello';");
-    writeFileSync(config, '{"singleQuote":false}');
-    expect(await format()).toContain('const a = "hello";');
+    const compareWithCli = async (singleQuote: boolean, width: number) => {
+      const output = await format();
+      expectPrettierConfig(output, singleQuote, width);
+      writeFileSync(file, text);
+      const fresh = run(dist.executable, ['format', file]);
+      expect(fresh.status, fresh.stderr).toBe(0);
+      expect(readFileSync(file, 'utf8')).toBe(output);
+    };
+    await compareWithCli(false, 2);
+    config = setPrettierConfig(kind, true, 6);
+    await compareWithCli(true, 6);
+    setPrettierConfig(kind, false, 4);
+    await compareWithCli(false, 4);
     rmSync(config);
-    expect(await format()).toContain('const a = "hello";');
+    await compareWithCli(false, 2);
   } finally { await client.close(); }
 });
