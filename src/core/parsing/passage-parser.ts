@@ -108,6 +108,8 @@ const CODE_PASSAGE_TAGS = new Set(['script', 'stylesheet']);
  */
 const RESERVED_PASSAGE_NAMES: ReadonlySet<string> = new Set([
   ...SPECIAL_PASSAGES,
+  // twee-ts also reads these legacy compiler metadata passages by name.
+  'StorySettings', 'StoryIncludes',
   'StoryTitle', 'StoryLoading', 'StoryTransients', 'StoryScript', 'SaveTitle',
   'PassageReady', 'PassageDone', 'PassageHeader', 'PassageFooter',
 ]);

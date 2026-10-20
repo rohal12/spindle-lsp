@@ -1,8 +1,12 @@
 import { readFileSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { glob } from 'glob';
+import { findProjectFiles } from './macro-sources.js';
 
-/** Existing paths are literal, even when their names contain glob syntax. */
+/**
+ * Existing files are literal, even when their names contain glob syntax or
+ * lie in excluded directories. Directory and glob discovery use the same
+ * project exclusions as the LSP scan.
+ */
 export async function resolveFiles(pattern: string, cwd: string): Promise<string[]> {
   let input = pattern;
   let directory = cwd;
@@ -18,7 +22,7 @@ export async function resolveFiles(pattern: string, cwd: string): Promise<string
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
   }
-  return [...new Set(await glob(input, { cwd: directory, absolute: true, nodir: true }))];
+  return [...new Set(await findProjectFiles(directory, input))];
 }
 
 /** Read the whole input batch before analysis or writes; failures retain their path. */

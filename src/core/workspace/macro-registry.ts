@@ -148,8 +148,10 @@ export class MacroRegistry {
       });
     }
 
-    for (const m of macros) {
-      for (const sub of m.subMacros) {
+    // Only surviving definitions register companions. Snapshot the entries
+    // before adding children so superseded parents cannot leave stale names.
+    for (const m of [...this.discovered.values()]) {
+      for (const sub of m.subMacros ?? []) {
         const key = sub.toLowerCase();
         const existing = this.discovered.get(key);
         if (existing) {

@@ -12,6 +12,11 @@ Usage:
   spindle-lsp format <files> Format .twee/.tw files in place
   spindle-lsp mcp            Start the MCP server
 
+File selection:
+  Check and format default to **/*.{tw,twee}.
+  Directory and glob scans skip hidden entries, node_modules, dist and build.
+  Pass an existing file path to select an excluded file explicitly.
+
 Options:
   --help, -h                 Show this help message
   --version, -v              Show version number
