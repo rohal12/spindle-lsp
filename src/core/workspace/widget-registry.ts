@@ -1,7 +1,8 @@
-import { widgetDefinitions, type ToolingMacro } from '@rohal12/spindle/tooling';
+import { effectiveWidgetDefinitions, type ToolingMacro } from '@rohal12/spindle/tooling';
 import type { Position, WidgetDef } from '../types.js';
 import type { PassageMarkup } from '../markup/passage-markup.js';
 import { macroTokens } from '../markup/tokens.js';
+import { widgetSources } from '../markup/widgets.js';
 
 /**
  * Registry of user-defined widgets, as the runtime registers them: the
@@ -13,41 +14,45 @@ export class WidgetRegistry {
   /** Widgets keyed by lower-cased name; Spindle resolves widgets case-insensitively. */
   private widgets = new Map<string, WidgetDef>();
 
+  /** Half-typed declarations remain discoverable in the editor, without replacing effective widgets. */
+  private incomplete = new Map<string, WidgetDef>();
+
   /** Per-URI set of lower-cased macro names opened in that document. */
   private invokedByUri = new Map<string, Set<string>>();
 
   /**
    * Read the widget definitions of `passages` (all of them, in workspace
-   * order; a name defined twice keeps the later definition, as when the
-   * runtime registers them).
+   * order). Public tooling selects the closed definitions in runtime phase
+   * order, preserving their identities so the original source is retained.
    */
   scan(passages: Iterable<PassageMarkup>, macros: Iterable<ToolingMacro>): void {
     this.widgets.clear();
-    const known = [...macros];
-
-    for (const markup of passages) {
-      if (!markup.isMarkup) continue;
-      const { name, tags } = markup.passage;
-      for (const definition of widgetDefinitions([{ name, tags, content: markup.content }], known)) {
-        this.widgets.set(definition.name.toLowerCase(), {
-          tooling: definition,
-          name: definition.name,
-          params: definition.params,
-          uri: markup.passage.uri,
-          range: markup.range(definition.start, definition.end),
-          nameRange: markup.range(definition.nameStart, definition.nameEnd),
-          block: definition.block,
-        });
-      }
+    this.incomplete.clear();
+    const sources = widgetSources(passages, [...macros]);
+    const effective = new Set(effectiveWidgetDefinitions([...sources.keys()]));
+    for (const [definition, markup] of sources) {
+      const widget: WidgetDef = {
+        tooling: definition,
+        name: definition.name,
+        params: definition.params,
+        uri: markup.passage.uri,
+        range: markup.range(definition.start, definition.end),
+        nameRange: markup.range(definition.nameStart, definition.nameEnd),
+        block: definition.block,
+      };
+      const key = definition.name.toLowerCase();
+      if (effective.has(definition)) this.widgets.set(key, widget);
+      else if (definition.closeStart === undefined) this.incomplete.set(key, widget);
     }
   }
 
-  /** Get a widget definition by name (case-insensitive). */
+  /** The effective definition, or an incomplete declaration while its first definition is being typed. */
   getWidget(name: string): WidgetDef | undefined {
-    return this.widgets.get(name.toLowerCase());
+    const key = name.toLowerCase();
+    return this.widgets.get(key) ?? this.incomplete.get(key);
   }
 
-  /** Get all registered widget definitions. */
+  /** Get the effective registered definitions, excluding incomplete editor declarations. */
   getAllWidgets(): WidgetDef[] {
     return Array.from(this.widgets.values());
   }

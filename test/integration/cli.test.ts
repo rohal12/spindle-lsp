@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { runCheck } from '../../src/cli/check.js';
+import { checkFiles } from '../../src/mcp/server.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
 
@@ -120,6 +121,35 @@ describe('CLI check command', () => {
     expect(byCode('SP303')).toHaveLength(1);
     expect(byCode('SP303')[0]).toMatchObject({ severity: 'hint' });
     expect(byCode('SP303')[0].message).toContain('"ActResist"');
+  });
+
+  it('CLI and MCP distinguish write-only destructuring from executable loop reads (#107)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-loop-roles-'));
+    try {
+      writeFileSync(join(dir, 'package.json'), '{}');
+      const file = join(dir, 'story.twee');
+      for (const [body, count] of [['{set ({a: [_x]} = {a: [2]})}', 0], ['{set [_other = _x] = []}', 1]] as const) {
+        writeFileSync(file, `:: StoryVariables\n:: Start\n{for @n of [1,2]}{set _x = @n}${body}{/for}`);
+        const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', file]));
+        expect(exitCode).toBe(0);
+        const diags = JSON.parse(output).files.flatMap((f: { diagnostics: Array<{ code: string }> }) => f.diagnostics);
+        expect(diags.filter((d: { code: string }) => d.code === 'SP205')).toHaveLength(count);
+        expect((await checkFiles(file)).filter(d => d.code === 'SP205')).toHaveLength(count);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('CLI and MCP use StoryInit widget parameter roles and arity (#146)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-widget-phases-'));
+    try {
+      writeFileSync(join(dir, 'package.json'), '{}');
+      writeFileSync(join(dir, 'a.twee'), ':: StoryVariables\n:: StoryInit\n{widget "caption" @v}INIT:{@v}{/widget}\n:: Start\n{caption "{$missing}"}\n');
+      writeFileSync(join(dir, 'z.twee'), ':: Widgets [widget]\n{widget "caption" @v:markup @extra}{@v}{/widget}\n');
+      const { exitCode, output } = await captureStdout(() => runCheck(['--format', 'json', dir]));
+      expect(exitCode).toBe(0);
+      expect(JSON.parse(output).files).toEqual([]);
+      expect(await checkFiles(dir)).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it('accepts {next} branches with delays inside {timed}', async () => {

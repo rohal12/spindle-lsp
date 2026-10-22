@@ -199,6 +199,7 @@ describe('WidgetRegistry', () => {
     const registry = scanWidgets(':: W [widget]\n<!-- {widget "gone"}x{/widget} -->\n{widget "open"}never closed\n');
     expect(registry.getWidget('gone')).toBeUndefined();
     expect(registry.getWidget('open')).toBeDefined();
+    expect(registry.getAllWidgets()).toEqual([]);
   });
 
   it('gives {@children} to the innermost of nested definitions', () => {

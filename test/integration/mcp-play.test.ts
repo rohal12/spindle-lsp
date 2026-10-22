@@ -259,6 +259,8 @@ Hello.
       writeFileSync(
         file,
         [
+          ':: StoryTitle',
+          'Loop timeout',
           ':: StoryData',
           '{"ifid": "0F3C4C1A-2B7E-4D8B-9C51-6A2E1F0B7D44", "format": "spindle"}',
           '',
@@ -308,6 +310,8 @@ Hello.
       writeFileSync(
         file,
         [
+          ':: StoryTitle',
+          'Structured variables',
           ':: StoryData',
           '{"ifid": "5B1D2E3F-4A5B-4C6D-8E7F-9A0B1C2D3E4F", "format": "spindle"}',
           '',

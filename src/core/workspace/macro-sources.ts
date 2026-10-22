@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { existsSync, lstatSync, readdir, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { glob } from 'glob';
 import type { Path } from 'glob';
@@ -45,6 +45,21 @@ export function isExcludedProjectFile(path: string, root?: string): boolean {
     .some(isExcludedSegment);
 }
 
+/** Whether every component from `root` to `path` exists without symbolic links. */
+export function canDiscoverProjectPath(path: string, root: string): boolean {
+  let current = resolve(root);
+  try {
+    for (const segment of relative(root, path).split(sep)) {
+      current = resolve(current, segment);
+      if (lstatSync(current).isSymbolicLink()) return false;
+    }
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) return false;
+    throw error;
+  }
+  return true;
+}
+
 /**
  * Find the JS/TS macro source files under `root` (absolute paths),
  * skipping those matched by {@link isExcludedProjectFile}.
@@ -55,19 +70,31 @@ export function findMacroSourceFiles(root: string): Promise<string[]> {
 
 /**
  * Find the files matching `pattern` under `root` (absolute paths), skipping
- * hidden entries, dependencies and build output like
+ * symbolic links, hidden entries, dependencies and build output like
  * {@link findMacroSourceFiles}.
  */
-export function findProjectFiles(root: string, pattern: string): Promise<string[]> {
-  const excluded = (p: Path): boolean => isExcludedProjectFile(p.fullpath(), root);
-  return glob(pattern, {
+export async function findProjectFiles(root: string, pattern: string): Promise<string[]> {
+  const excluded = (p: Path): boolean => isExcludedProjectFile(p.fullpath(), root)
+    || !canDiscoverProjectPath(p.fullpath(), root);
+  const files = await glob(pattern, {
     cwd: root,
     absolute: true,
     nodir: true,
+    follow: false,
     // Hidden entries are excluded by the predicate, not by glob's default
     dot: true,
     ignore: { ignored: excluded, childrenIgnored: excluded },
+    // Glob can read a literal prefix before consulting childrenIgnored.
+    fs: {
+      readdir(path, options, callback) {
+        if (canDiscoverProjectPath(path, root)) readdir(path, options, callback);
+        else callback(null, []);
+      },
+    },
   });
+  // Recheck after enumeration: files or their ancestors may have disappeared
+  // or become links while glob was running.
+  return files.filter(file => canDiscoverProjectPath(file, root));
 }
 
 /** Whether `path` is `dir` or lies inside it (whole segments, not a string prefix). */
