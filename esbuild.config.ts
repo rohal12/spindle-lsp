@@ -10,7 +10,7 @@ await build({
   entryPoints: ['src/bin.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node22',
+  target: 'node24',
   format: 'esm',
   outfile,
   external: [

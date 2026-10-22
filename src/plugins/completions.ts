@@ -1,5 +1,6 @@
 import type { CompletionItem } from 'vscode-languageserver';
 import { tokenizeMarkupTolerant } from '@rohal12/spindle/tooling';
+import { widgetSources } from '../core/markup/widgets.js';
 import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
@@ -187,9 +188,8 @@ function getDocumentVariableCompletions(sigil: '_' | '@', cursor: MarkupCursor, 
   for (const passage of doc.passages) {
     for (const use of variableUses(passage)) if (use.sigil === sigil) names.add(use.name);
   }
-  for (const widget of workspace.widgets.getAllWidgets()) {
-    if (widget.uri !== doc.uri) continue;
-    for (const param of widget.params) if (param[0] === sigil) names.add(param.slice(1));
+  for (const definition of widgetSources(doc.passages, doc.context.macros).keys()) {
+    for (const param of definition.params) if (param[0] === sigil) names.add(param.slice(1));
   }
   return [...names].map(name => ({
     label: `${sigil}${name}`,

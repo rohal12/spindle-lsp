@@ -3,6 +3,9 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { fileURLToPath } from 'node:url';
+import { compile } from '@rohal12/twee-ts';
+import { openPlaySession } from '@rohal12/spindle/play';
 import { tokenize } from '../helpers/tooling.js';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import type { Range } from '../../src/core/types.js';
@@ -10,6 +13,7 @@ import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { computeRename, prepareRename } from '../../src/plugins/rename.js';
 import { findReferences, findVariableReferences, findWidgetReferences } from '../../src/plugins/references.js';
 import { getDefinition } from '../../src/plugins/definition.js';
+import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 
 const uri = 'file:///story.tw';
 const models: WorkspaceModel[] = [];
@@ -73,6 +77,49 @@ describe('V73: StoryInterface variables participate in navigation and rename (#7
     const model = workspace(':: StoryVariables\n$x = 1\n:: StoryScript\n$x\n:: Start\nhello');
     expect(findVariableReferences('x', model, false)).toHaveLength(0);
   });
+
+  for (const sigil of ['$', '%'] as const) {
+    for (const eol of ['\n', '\r\n']) {
+      it(`V73-StoryScript: applied ${sigil} rename preserves runtime output (${JSON.stringify(eol)})`, async () => {
+        const declUri = 'file:///vars.tw';
+        const declarations = `:: StoryTitle\nExample\n:: StoryData\n{"ifid":"7E95B777-0E72-4603-AA57-049388D05756","format":"Spindle"}\n`
+          + `:: Story${sigil === '$' ? 'Variables' : 'Transients'}\n${sigil}x = {hp: 7}\n`
+          + (sigil === '%' ? ':: StoryVariables\n' : '');
+        const story = `:: StoryScript\n{${sigil}x.hp}\n:: Start\n{include "StoryScript"}`.replaceAll('\n', eol);
+        const model = workspace(story, [[declUri, declarations]]);
+        expect(findReferences(uri, { line: 1, character: 2 }, model, true)).toHaveLength(2);
+        expect(prepareRename(uri, { line: 1, character: 2 }, model)?.placeholder).toBe('x');
+        if (sigil === '$') expect(computeCodeLenses(declUri, model).find(l => l.range.start.line === 5)?.command.title).toBe('1 usage');
+
+        const edits = computeRename(declUri, { line: 5, character: 1 }, 'y', model);
+        const renamedStory = apply(story, edits.get(uri) ?? []);
+        const renamedDeclarations = apply(declarations, edits.get(declUri) ?? []);
+        expect(renamedStory).toBe(story.replace(`${sigil}x.hp`, `${sigil}y.hp`));
+        expect(renamedDeclarations).toContain(`${sigil}y = {hp: 7}`);
+        const rebuilt = workspace(renamedStory, [[declUri, renamedDeclarations]]);
+        expect(codes(rebuilt)).not.toContain('SP200');
+        expect(findReferences(uri, { line: 1, character: 2 }, rebuilt, true)).toHaveLength(2);
+
+        for (const [content, vars] of [[story, declarations], [renamedStory, renamedDeclarations]]) {
+          const compiled = await compile({
+            sources: [{ filename: uri, content }, { filename: declUri, content: vars }],
+            formatId: 'pkg',
+            formatPaths: [fileURLToPath(new URL('../../node_modules/@rohal12/spindle/dist/', import.meta.url))],
+            noRemote: true, useTweegoPath: false,
+          });
+          expect(compiled.diagnostics).toEqual([]);
+          const session = await openPlaySession({ html: compiled.output, trusted: true });
+          try { expect(await session.observe()).toMatchObject({ text: '7', errors: [] }); }
+          finally { await session.close(); }
+        }
+
+        model.documents.update(uri, story.replace(`{${sigil}x.hp}`, 'plain text'));
+        expect(findReferences(declUri, { line: 5, character: 1 }, model, false)).toEqual([]);
+        model.documents.update(uri, story.replace(':: StoryScript', ':: StoryScript [script]'));
+        expect(findReferences(declUri, { line: 5, character: 1 }, model, false)).toEqual([]);
+      });
+    }
+  }
 });
 
 describe('W74: widget spelling shared by navigation and edits (#74)', () => {

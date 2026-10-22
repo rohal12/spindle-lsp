@@ -1,12 +1,13 @@
 import {
   builtinMacros,
+  effectiveWidgetDefinitions,
   lexJs,
   pairMarkup,
+  parseCode,
   pieceOffset,
   splitArgs,
   validateStoryMarkup,
   validateVariableReferences,
-  widgetDefinitions,
   type FieldSchema,
   type MacroToken,
   type MarkupDiagnostic,
@@ -26,6 +27,7 @@ import type { DiagnosticCodeValue, DiagnosticData, SpindleDiagnostic } from '../
 import type { DocumentMarkup, PassageMarkup } from '../core/markup/passage-markup.js';
 import { macroTokens, markupTokens } from '../core/markup/tokens.js';
 import { textAt } from '../core/markup/source-view.js';
+import { widgetSources } from '../core/markup/widgets.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { findLinkRuntimeMismatches, findLiteralLinkInterpolations } from '../core/parsing/link-parser.js';
@@ -136,7 +138,7 @@ interface StoryReport {
   readonly macros: readonly ToolingMacro[];
   /** `validateStoryMarkup`'s diagnostics, by the passage they are in. */
   readonly markup: ReadonlyMap<PassageMarkup, MarkupDiagnostic[]>;
-  /** The widgets the story defines, by lower-case name (a later definition replaces an earlier one). */
+  /** The effective closed widgets, selected in runtime phase order by tooling. */
   readonly widgets: ReadonlyMap<string, DefinedWidget>;
   readonly widgetList: readonly DefinedWidget[];
   /** The lower-case names of the macros the story invokes. */
@@ -203,16 +205,14 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
     else markup.set(passage, [diagnostic]);
   }
 
-  const widgets = new Map<string, DefinedWidget>();
-  const widgetList: DefinedWidget[] = [];
+  const sources = widgetSources(passages, macros);
+  const widgetList = [...sources].map(([definition, passage]) => ({ definition, passage }));
+  const widgets = new Map(effectiveWidgetDefinitions([...sources.keys()]).map(definition => [
+    definition.name.toLowerCase(), { definition, passage: sources.get(definition)! },
+  ]));
   const invoked = new Set<string>();
   for (const passage of passages) {
     if (!passage.isMarkup) continue;
-    for (const definition of widgetDefinitions([{ name: passage.passage.name, content: passage.content, tags: passage.passage.tags }], macros)) {
-      const widget = { definition, passage };
-      widgets.set(definition.name.toLowerCase(), widget);
-      widgetList.push(widget);
-    }
     for (const token of macroTokens(passage)) {
       if (!token.isClose) invoked.add(token.name.toLowerCase());
     }
@@ -713,8 +713,8 @@ function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: r
 
 /**
  * Whether `_name` is read somewhere in the loop body outside the assigning
- * macro. Occurrences that are themselves plain assignment targets
- * (`_name = …`) do not count as reads.
+ * macro. Public tooling distinguishes reads from write-only targets,
+ * including nested destructuring patterns and their default expressions.
  */
 function isReadInBody(passage: PassageMarkup, bodyStart: number, bodyEnd: number, name: string, macroStart: number, macroEnd: number): boolean {
   const eligible = (offset: number) => offset >= bodyStart && offset < bodyEnd && !(offset >= macroStart && offset < macroEnd);
@@ -723,14 +723,13 @@ function isReadInBody(passage: PassageMarkup, bodyStart: number, bodyEnd: number
   }
   for (const piece of passage.pieces) {
     if (piece.kind !== 'code') continue;
-    let read = false;
-    lexJs(piece.code, {
-      variable(sigil, found, index, _nesting, end) {
-        if (sigil !== '_' || found !== name || !eligible(pieceOffset(piece, index))) return;
-        if (!/^\s*=(?![=>])/.test(maskLiterals(piece.code.slice(end)))) read = true;
-      },
-    }, piece.goal);
-    if (read) return true;
+    try {
+      if (parseCode(piece.code, piece.goal).refs.some(ref =>
+        ref.sigil === '_' && ref.name === name && ref.read && eligible(pieceOffset(piece, ref.start)),
+      )) return true;
+    } catch {
+      // Syntax diagnostics own malformed code; it provides no proven read.
+    }
   }
   return false;
 }

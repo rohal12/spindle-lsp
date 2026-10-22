@@ -432,9 +432,16 @@ describe('VariableTracker references the tooling API reads', () => {
     expect(names(':: Code [script]\nlet x = {$a};\n:: StoryVariables\n$b = 1\n:: Start\n\\{$c} {$d')).toEqual([]);
   });
 
-  it('keeps the StoryScript text out of the usages', () => {
-    const tracker = scan(':: StoryScript\n{$a}\n:: Start\n{$b}');
+  it('keeps tagged StoryScript JavaScript out of the usages', () => {
+    const tracker = scan(':: StoryScript [script]\n{$a}\n:: Start\n{$b}');
     expect(tracker.getUsages('a')).toEqual([]);
+    expect(tracker.getUsages('b')).toHaveLength(1);
+  });
+
+  it('indexes executable markup in an untagged StoryScript (#73)', () => {
+    const tracker = scan(':: StoryScript\n{$a} {%t}\n:: Start\n{$b}');
+    expect(tracker.getUsages('a')).toHaveLength(1);
+    expect(tracker.getTransientUsages('t')).toHaveLength(1);
     expect(tracker.getUsages('b')).toHaveLength(1);
   });
 });

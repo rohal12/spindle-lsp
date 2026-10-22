@@ -1,11 +1,11 @@
 import { readFileSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { findProjectFiles, isExcludedProjectFile } from './macro-sources.js';
+import { canDiscoverProjectPath, findProjectFiles, isExcludedProjectFile } from './macro-sources.js';
 
 /**
  * Existing files are literal, even when their names contain glob syntax or
  * lie in excluded directories. Directory and glob discovery use the same
- * project exclusions as the LSP scan.
+ * project exclusions as the LSP scan, and never traverse symbolic links.
  */
 export async function resolveFiles(pattern: string, cwd: string): Promise<string[]> {
   let input = pattern;
@@ -16,7 +16,7 @@ export async function resolveFiles(pattern: string, cwd: string): Promise<string
     if (stat.isFile()) return [literal];
     if (stat.isDirectory()) {
       // Changing the scan root must not hide excluded ancestor segments.
-      if (isExcludedProjectFile(literal, cwd)) return [];
+      if (isExcludedProjectFile(literal, cwd) || !canDiscoverProjectPath(literal, cwd)) return [];
       directory = literal;
       input = '**/*.{tw,twee}';
     }

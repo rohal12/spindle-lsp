@@ -41,9 +41,14 @@ config. Other config formats (including JSON5 and TOML) also require this opt-in
 The formatter preserves the document's line-ending style regardless of Prettier's
 `endOfLine` setting.
 
+Directory and glob scans for checks and formatting skip symbolic links, including
+paths through linked directories. To check or format a linked file, select its
+file path explicitly; formatting then writes to that link's target. The same
+selection policy applies to the CLI and MCP tools.
+
 ## Requirements
 
-Nothing beyond `@rohal12/spindle-lsp` itself. `@rohal12/spindle` (a release
+Node.js 24 or later and `@rohal12/spindle-lsp` itself. `@rohal12/spindle` (a release
 with `@rohal12/spindle/play`, the version in `PLAY_SPINDLE_VERSION` in
 `src/mcp/play/sessions.ts` or later), `happy-dom` and `@rohal12/twee-ts` (which
 compiles Twee) are its dependencies, so `npx @rohal12/spindle-lsp mcp` and the

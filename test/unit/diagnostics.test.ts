@@ -411,6 +411,49 @@ describe('SP205: temporary assigned inside {for}', () => {
     return computeDiagnostics('file:///test.tw', workspace).filter(d => d.code === 'SP205');
   }
 
+  it.each([
+    ['write-array-pattern', '{set [_x] = [2]}'],
+    ['write-object-pattern', '{set ({a: _x} = {a: 2})}'],
+    ['write-nested-pattern', '{set ({a: [_x]} = {a: [2]})}'],
+    ['write-rest-pattern', '{set [_other, ..._x] = [1, 2]}'],
+    ['write-default-target', '{set [_x = 2] = []}'],
+    ['write-object-rest', '{set ({a: _other, ..._x} = {a: 1, b: 2})}'],
+    ['comment', '<!-- _x -->'],
+    ['string', '{print "_x"}'],
+    ['regex', '{print /_x/.test("x")}'],
+    ['template-text', '{print `_x`}'],
+    ['prose', 'plain _x text'],
+  ])('TEMP-LOOP/%s excludes non-reads (#107)', (_name, body) => {
+    const text = `:: StoryVariables\n:: Start\n{for @n of [1,2]}{set _x = @n}${body}{/for}`;
+    expect(sp205(text)).toEqual([]);
+  });
+
+  it.each([
+    ['default-read', '{set [_other = _x] = []}'],
+    ['nested-default-read', '{set ({a: [_other = _x]} = {a: []})}'],
+    ['computed-key-read', '{set ({[_x]: _other} = {})}'],
+    ['self-default-read', '{set [_x = _x + 1] = []}'],
+    ['member-read', '{set _x.field = 2}'],
+    ['compound-read', '{set _x += 1}'],
+    ['update-read', '{set _x++}'],
+    ['display-read', '{_x}'],
+    ['template-read', '{print `${_x}`}'],
+    ['quoted-code-read', '{watch "true" run "console.log(\\"ok\\", _x)"}'],
+  ])('TEMP-LOOP/%s retains executable reads and source ranges (#107)', (_name, body) => {
+    const text = `:: StoryVariables\r\n:: Start\r\n{for @n of [1,2]}{set _x = @n}${body}{/for}`;
+    const diags = sp205(text);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].range).toEqual({ start: { line: 2, character: 22 }, end: { line: 2, character: 24 } });
+  });
+
+  it('TEMP-LOOP/malformed-code keeps syntax diagnostics without speculative reads (#107)', () => {
+    const text = ':: StoryVariables\n:: Start\n{for @n of [1,2]}{set _x = @n}{set [_x] =}{/for}';
+    const model = createWorkspaceFrom({ name: 'test.tw', content: text });
+    const diags = computeDiagnostics('file:///test.tw', model);
+    expect(diags.filter(d => d.code === 'SP106')).not.toEqual([]);
+    expect(diags.filter(d => d.code === 'SP205')).toEqual([]);
+  });
+
   it('flags {computed _x} inside {for} that is read in the loop body', () => {
     const diags = sp205([
       ':: Start',

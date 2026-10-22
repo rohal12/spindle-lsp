@@ -23,7 +23,7 @@ it('accepts array-index displays that the public runtime renders for both variab
     <tw-passagedata pid="1" name="StoryVariables">${variables}</tw-passagedata>
     <tw-passagedata pid="2" name="StoryTransients">${transients}</tw-passagedata>
     <tw-passagedata pid="3" name="Start">${displays}</tw-passagedata>
-  </tw-storydata>` });
+  </tw-storydata>`, trusted: true });
   try {
     expect(await session.observe()).toMatchObject({ text: 'hello world Ada one two', errors: [] });
   } finally { await session.close(); }

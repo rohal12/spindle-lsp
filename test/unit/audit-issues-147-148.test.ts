@@ -41,7 +41,7 @@ for (const phase of ['script', 'StoryInit']) {
     expect(computeDiagnostics(uri, model).filter(d => d.code === 'SP100').map(d => d.message)).toEqual(['Unknown macro {branch}.']);
     const compiled = await compile({ sources: [{ filename: uri, content: text }], ...compilerOptions });
     expect(compiled.diagnostics.filter(d => d.severity === 'error')).toEqual([]);
-    await expect(openPlaySession({ html: compiled.output })).rejects.toThrow('Unknown macro {branch}');
+    await expect(openPlaySession({ html: compiled.output, trusted: true })).rejects.toThrow('Unknown macro {branch}');
     const line = text.split('\n').length - 1;
     const completions = getCompletions(uri, { line, character: 9 }, undefined, model).map(c => c.label);
     expect(completions).toContain('kept');

@@ -6,9 +6,6 @@ import { buildLineStarts, offsetToPosition } from '../text.js';
 import { PassageIndex } from './passage-index.js';
 import { readDeclarations, type DeclarationSigil } from './declaration-check.js';
 
-/** The text of `StoryScript` is script, not an executable usage (C-V73). */
-const STORY_SCRIPT_PASSAGE = 'StoryScript';
-
 /**
  * What a tracker that is not given a document's markup knows of the macros:
  * the built-in ones. The workspace passes the markup it reads with its own
@@ -163,8 +160,6 @@ export class VariableTracker {
     const transientUsages: VariableUsage[] = [];
 
     for (const passage of markup.passages) {
-      // StoryScript is script, not markup: rename and references do not list it
-      if (passage.passage.name === STORY_SCRIPT_PASSAGE) continue;
       for (const ref of collectVariableReferences(passage)) {
         const usage: VariableUsage = {
           uri,

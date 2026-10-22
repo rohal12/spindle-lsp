@@ -18,8 +18,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "@rohal12/spindle": ">=0.61.0",
-    "@rohal12/twee-ts": "^1.18.2",
+    "@rohal12/spindle": "0.62.0",
+    "@rohal12/twee-ts": "^2.0.0",
     "glob": "^13.0.6",
     "happy-dom": "^20.14.6",
     "minimatch": "^10.2.6",
@@ -45,7 +45,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=22.17"
+    "node": ">=24"
   },
   "license": "Unlicense",
   "author": "Rohal12",

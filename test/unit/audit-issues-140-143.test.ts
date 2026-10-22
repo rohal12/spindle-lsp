@@ -57,7 +57,7 @@ for (const scriptPassage of [false, true]) {
       // pre-StoryInit variable check is tracked in rohal12/spindle#601.
       const compiled = await compile({ sources: files.map(([filename, content]) => ({ filename, content })), ...compilerOptions });
       expect(compiled.diagnostics).toEqual([]);
-      const session = await openPlaySession({ html: compiled.output });
+      const session = await openPlaySession({ html: compiled.output, trusted: true });
       try {
         expect(await session.observe()).toMatchObject({ text: 'INIT:{$x}', errors: [] });
       } finally { await session.close(); }
@@ -91,7 +91,7 @@ it.each([
   const compiled = await compile({ sources, ...compilerOptions });
   expect(compiled.diagnostics).toEqual([]);
   expect(compiled.story.twine2.start).toBe('New Opening');
-  const session = await openPlaySession({ html: compiled.output });
+  const session = await openPlaySession({ html: compiled.output, trusted: true });
   try { expect(await session.observe()).toMatchObject({ passage: 'New Opening', text: 'Hello.', errors: [] }); }
   finally { await session.close(); }
 });
@@ -141,7 +141,7 @@ it('protects StoryContext from source and destination renames, preserving its ru
   const ordinary = workspace([[uri, ':: Ordinary\nHello']]);
   expect(() => computeRename(uri, { line: 0, character: 4 }, 'StoryContext', ordinary)).toThrow(/reserved passage name/);
   const compiled = await compile({ sources: [{ filename: uri, content: text }], ...compilerOptions });
-  const session = await openPlaySession({ html: compiled.output });
+  const session = await openPlaySession({ html: compiled.output, trusted: true });
   try { expect(await session.observe()).toMatchObject({ context: 'HP: 10', errors: [] }); }
   finally { await session.close(); }
 });
