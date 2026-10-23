@@ -1,4 +1,5 @@
 import { builtinMacros, type DiscoveredMacro, type ToolingMacro } from '@rohal12/spindle/tooling';
+import { Parameters } from '../parsing/parameter-validator.js';
 import { normalizeMacroEntries } from './config-loader.js';
 import type { MacroInfo, ChildConstraint, ParameterDoc } from '../types.js';
 
@@ -217,7 +218,48 @@ export class MacroRegistry {
       storeVar: m.storeVar,
       interpolate: m.interpolate,
       parameters: m.parameterDefs,
+      widget: this.configuredToolingParameters(m.name),
     }));
+  }
+
+  /** Whether an invoked configured schema prevents a safe passage rename. */
+  hasUnsafeConfiguredPassages(name: string): boolean {
+    const positions = this.configuredPassagePositions(name);
+    if (positions === undefined) return false;
+    if (positions === null) return true;
+    const definitions = this.getMacro(name)?.parameterDefs;
+    if (!definitions?.length) return false;
+    const runtimePositions = definitions.flatMap((parameter, i) =>
+      parameter.type === 'passage' || parameter.holds === 'passage' ? [i] : []);
+    // Parameter groups do not describe fixed argument positions. Keep their
+    // runtime reading, but refuse a rename if config also declares passages.
+    if (definitions.some(parameter => parameter.type === 'options' || parameter.type === 'names'
+      || parameter.type === 'text' || parameter.type === 'separator')) {
+      return positions.length > 0 || runtimePositions.length > 0;
+    }
+    return positions.length !== runtimePositions.length || positions.some((position, i) => position !== runtimePositions[i]);
+  }
+
+  private configuredPassagePositions(name: string): number[] | null | undefined {
+    const parameters = this.configEntries.get(name.toLowerCase())?.parameters;
+    if (parameters === undefined) return undefined;
+    try {
+      return new Parameters(parameters).passagePositions();
+    } catch {
+      // An invalid schema cannot supply trustworthy passage roles either.
+      return null;
+    }
+  }
+
+  private configuredToolingParameters(name: string): ToolingMacro['widget'] {
+    const positions = this.configuredPassagePositions(name);
+    if (!positions?.length || this.getMacro(name)?.parameterDefs?.length) return undefined;
+    // The public widget annotation supplies positional string roles even for
+    // macros whose runtime parameters are computed. Spindle reads the args,
+    // JavaScript escapes and reference spans. Existing runtime signatures keep
+    // their executable roles; conflicting config is checked before rename.
+    const params = Array.from({ length: positions.at(-1)! + 1 }, (_, i) => `arg${i}`);
+    return { params, holds: Object.fromEntries(positions.map(i => [params[i], 'passage' as const])) };
   }
 
   /** Get all registered macros. */

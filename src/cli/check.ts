@@ -190,14 +190,13 @@ export async function runCheck(args: string[]): Promise<number> {
   // checked. Search the project containing the checked files (independent
   // of the cwd).
   const workspace = new WorkspaceModel({ workspaceRoot: commonDir });
-  const workspaceContents = new Map(fileContents);
-  await addProjectMacroSources(workspaceContents, commonDir);
-  workspace.initialize(workspaceContents);
-
-  // Load user macros from config
+  // Configure macros before initialization builds markup and usage indices.
   if (Object.keys(projectConfig.macros).length > 0) {
     workspace.macros.loadConfig(projectConfig.macros);
   }
+  const workspaceContents = new Map(fileContents);
+  await addProjectMacroSources(workspaceContents, commonDir);
+  workspace.initialize(workspaceContents);
 
   // Compute diagnostics for each file
   const diagOptions: DiagnosticOptions = {};

@@ -75,14 +75,13 @@ async function createWorkspace(
   const projectConfig = loadConfigFromDisk(configRoot);
 
   const workspace = new WorkspaceModel({ workspaceRoot: configRoot });
-  fileContents = new Map(fileContents);
-
-  await addProjectMacroSources(fileContents, commonDir);
-  workspace.initialize(fileContents);
-
+  // Configure macros before initialization builds markup and usage indices.
   if (Object.keys(projectConfig.macros).length > 0) {
     workspace.macros.loadConfig(projectConfig.macros);
   }
+  fileContents = new Map(fileContents);
+  await addProjectMacroSources(fileContents, commonDir);
+  workspace.initialize(fileContents);
 
   return workspace;
 }

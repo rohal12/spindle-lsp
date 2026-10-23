@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseTwee } from '@rohal12/twee-ts';
 import { parsePassageHeader } from '../../src/core/parsing/passage-parser.js';
 
 describe('parsePassageHeader', () => {
@@ -92,10 +93,34 @@ describe('parsePassageHeader', () => {
     expect(result!.meta).toBeUndefined();
   });
 
-  it('handles invalid meta JSON gracefully', () => {
-    const result = parsePassageHeader(':: Name {not valid json}', 0);
-    // Invalid JSON meta should cause the line to not match as a valid header
-    expect(result).toBeNull();
+  it.each(['{not valid json}', '{"position":}'])('keeps the compiler header when metadata %s cannot be decoded', metadata => {
+    const line = `:: Name [widget nobr] ${metadata}`;
+    const compiled = parseTwee(`${line}\nbody`);
+    expect(compiled.passages).toMatchObject([{ name: 'Name', tags: ['widget', 'nobr'], text: 'body' }]);
+    expect(compiled.passages[0].metadata).toBeUndefined();
+    expect(compiled.diagnostics).toMatchObject([{ level: 'warning', message: expect.stringContaining('could not decode metadata') }]);
+    expect(parsePassageHeader(line, 2)).toEqual({
+      name: 'Name',
+      tags: ['widget', 'nobr'],
+      meta: undefined,
+      headerRange: { start: { line: 2, character: 0 }, end: { line: 2, character: line.length } },
+      nameRange: { start: { line: 2, character: 3 }, end: { line: 2, character: 7 } },
+    });
+  });
+
+  it.each([
+    ':: Name {"position":',
+    ':: Name {{x}',
+    ':: Name {x}{y}',
+    ':: Name {x} trailing',
+    ':: Name {"note":"unterminated}',
+    ':: Name [broken',
+    ':: Name ]',
+  ])('rejects malformed header delimiters in %s', line => {
+    const compiled = parseTwee(`${line}\nbody`);
+    expect(compiled.passages).toEqual([]);
+    expect(compiled.diagnostics.some(diagnostic => diagnostic.level === 'error')).toBe(true);
+    expect(parsePassageHeader(line, 0)).toBeNull();
   });
 
   it('ends the header range before a CRLF line ending', () => {
