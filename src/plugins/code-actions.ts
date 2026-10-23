@@ -14,6 +14,7 @@ import { documentPassageRefs, encodeEnclosingMarkup } from '../core/markup/passa
 import { encodePassageRefName } from './rename.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { buildLineStarts, positionToOffset } from '../core/text.js';
+import { isRuntimePassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -362,7 +363,7 @@ function declareVariable(diag: SpindleDiagnostic, workspace: WorkspaceModel, sig
   const { name } = diag.data;
 
   const passage = sigil === '$' ? workspace.passages.getStoryVariables() : workspace.passages.getStoryTransients();
-  if (!passage) return [];
+  if (!passage || !isRuntimePassage(passage)) return [];
   const text = workspace.documents.getText(passage.uri);
   if (text === undefined) return [];
 
@@ -388,6 +389,9 @@ const fixUndeclaredTransient = (diag: SpindleDiagnostic, workspace: WorkspaceMod
 function fixNoStoryVariables(
   workspace: WorkspaceModel,
 ): CodeAction | null {
+  // A source declaration with an omitted runtime role must be repaired in
+  // place; appending a duplicate would replace its original body.
+  if (workspace.passages.getStoryVariables()) return null;
   // Same owner as the SP202 diagnostic, so applying the fix clears it.
   const targetUri = missingStoryVariablesOwner(workspace);
   if (targetUri === undefined) return null;
@@ -462,7 +466,7 @@ function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: Workspac
 
   // A new passage after the last one of the document
   const header = `:: ${name.replace(/[\\[\]{}]/g, '\\$&')}`;
-  if (name.trim() === name && name !== '' && !/[\r\n]/.test(name)) {
+  if (!workspace.passages.getPassage(name) && name.trim() === name && name !== '' && !/[\r\n]/.test(name)) {
     const edit = insertLinesAt(text, text.split('\n').length, `\n${header}\n`, lineEndingFor(workspace, uri));
     actions.push({
       title: `Create passage '${name}'`,

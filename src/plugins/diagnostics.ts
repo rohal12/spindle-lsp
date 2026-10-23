@@ -239,7 +239,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
 /** The names the passage `name` declares with the shape of their default, or undefined if the story has no such passage. */
 function declarationsOf(workspace: WorkspaceModel, name: 'StoryVariables' | 'StoryTransients'): Map<string, FieldSchema | undefined> | undefined {
   const passage = name === 'StoryVariables' ? workspace.passages.getStoryVariables() : workspace.passages.getStoryTransients();
-  if (!passage) return undefined;
+  if (!passage || !isRuntimePassage(passage)) return undefined;
   const markup = workspace.markup.get(passage.uri)?.passages.find((candidate) => candidate.passage === passage);
   if (!markup) return undefined;
   return new Map(markup.declarations.declarations.map((declaration) => [declaration.name, declaration.schema]));
@@ -745,9 +745,9 @@ function isReadInBody(passage: PassageMarkup, bodyStart: number, bodyEnd: number
 // Arguments against a configured parameter schema (SP108-SP111)
 // ---------------------------------------------------------------------------
 
-/** Every macro Spindle itself defines, branches included: the tooling API judges their arguments. */
+/** Unchanged runtime definitions, including their branches, own argument validation. */
 const SPINDLE_MACROS: ReadonlySet<string> = new Set([
-  ...builtinMacros.flatMap((macro) => [macro.name, ...macro.subMacros]).map((name) => name.toLowerCase()),
+  ...builtinMacros.flatMap(macro => [macro.name, ...macro.subMacros]).map(name => name.toLowerCase()),
   ...BRANCH_MACROS,
 ]);
 
@@ -765,7 +765,8 @@ function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel):
   for (const token of passage.isMarkup ? macroTokens(passage) : []) {
     if (token.type !== 'macro' || token.isClose) continue;
     const info = workspace.macros.getMacro(token.name);
-    if (!info?.parameters || info.skipArgs || SPINDLE_MACROS.has(token.name.toLowerCase())) continue;
+    if (!info?.parameters || info.skipArgs || info.parameterDefs?.length) continue;
+    if (SPINDLE_MACROS.has(token.name.toLowerCase()) && !workspace.macros.hasDiscoveredMacro(token.name)) continue;
 
     // A malformed parameter schema only disables the checks of its own macro.
     let params: Parameters;
