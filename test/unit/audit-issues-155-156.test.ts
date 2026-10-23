@@ -130,4 +130,19 @@ describe('tooling owns custom branch diagnostics (#156)', () => {
       code: 'SP107', message: 'Invalid: {child} can only be inside {parent}',
     })]);
   });
+
+  it.each([
+    '{option "a"}',
+    '{listbox "_choice"}<b>{option "a"}</b>{/listbox}',
+  ])('retains value-child constraints when a project replaces listbox: %s', body => {
+    const definition = 'Story.defineMacro({name:"listbox",block:true,subMacros:["option"],render(){return null;}});';
+    const model = workspace(body, definition);
+    // Tooling treats listbox's sub-macros as values, not branches, even
+    // when the project replaces that macro's runtime definition.
+    const macros = [...builtinMacros.filter(macro => macro.name !== 'listbox'), ...discoverMacros(definition)];
+    expect(validateStoryMarkup([{ name: 'Start', content: body }], macros, { tolerant: true })).toEqual([]);
+    expect(computeDiagnostics(uri, model)).toEqual([expect.objectContaining({
+      code: 'SP107', message: expect.stringContaining('can only be directly inside {listbox}'),
+    })]);
+  });
 });

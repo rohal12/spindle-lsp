@@ -522,9 +522,10 @@ function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors:
   const parents = workspace.macros.getMacro(name)?.parents;
   if (!parents || parents.length === 0 || BRANCH_MACROS.has(name)) return [];
   // Tooling owns discovered companion branches. Built-in value children
-  // (such as listbox options) and configured-only constraints stay here.
+  // and configured-only constraints stay here. Tooling treats listbox's
+  // sub-macros as values even when a project replaces its definition.
   if (workspace.macros.getAllMacros().some(macro => macro.source === 'user' &&
-    macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
+    macro.name.toLowerCase() !== 'listbox' && macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
 
   const allowed = new Set(parents.map((parent) => parent.toLowerCase()));
   const parentList = parents.join(', ');
