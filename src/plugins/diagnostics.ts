@@ -462,10 +462,7 @@ function versionDiagnostics(uri: string, doc: DocumentMarkup, workspace: Workspa
 // The tree of a passage: parents and children (SP107, SP114, SP115) and loops (SP205)
 // ---------------------------------------------------------------------------
 
-/**
- * Macros Spindle's pairing attaches to their parent itself: `misplaced-branch`
- * (SP107) reports one outside it.
- */
+/** Implicit built-in branches; custom branches come from the tooling macro metadata. */
 const BRANCH_MACROS = new Set(['elseif', 'else', 'case', 'default', 'next']);
 
 /**
@@ -524,6 +521,11 @@ function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors:
   const name = token.name.toLowerCase();
   const parents = workspace.macros.getMacro(name)?.parents;
   if (!parents || parents.length === 0 || BRANCH_MACROS.has(name)) return [];
+  // Tooling owns discovered companion branches. Built-in value children
+  // and configured-only constraints stay here. Tooling treats listbox's
+  // sub-macros as values even when a project replaces its definition.
+  if (workspace.macros.getAllMacros().some(macro => macro.source === 'user' &&
+    macro.name.toLowerCase() !== 'listbox' && macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
 
   const allowed = new Set(parents.map((parent) => parent.toLowerCase()));
   const parentList = parents.join(', ');

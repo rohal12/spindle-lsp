@@ -3,6 +3,17 @@ import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { Parameters } from '../../src/core/parsing/parameter-validator.js';
 import { getSignatureHelp, signaturePlugin } from '../../src/plugins/signature.js';
 import type { ParameterDef } from '@rohal12/spindle/tooling';
+import supplements from '../../src/macro-supplements.json' with { type: 'json' };
+
+// These schema tests exercise explicit project overrides. Built-ins now use
+// the runtime's parameter definitions; their signatures are checked against
+// that public metadata in audit-issues-155-156.test.ts.
+const configuredSchemas = Object.fromEntries(Object.entries(supplements)
+  .filter(([, entry]) => 'parameters' in entry)
+  .map(([name, entry]) => [name, {
+    parameters: 'parameters' in entry ? entry.parameters : undefined,
+    parameterDocs: 'parameterDocs' in entry ? entry.parameterDocs : undefined,
+  }]));
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -242,6 +253,7 @@ describe('H79: signature schema and active argument (#79)', () => {
   function help(body: string) {
     const ws = new WorkspaceModel();
     ws.initialize(new Map([[uri, `:: StoryVariables\n$name = ""\n:: Start\n${body}`]]));
+    ws.macros.loadConfig(configuredSchemas);
     return getSignatureHelp(uri, { line: 3, character: body.length }, ws);
   }
   function active(body: string) {
@@ -298,7 +310,7 @@ describe('N-sig: active signature follows typed arguments; parameters are named'
   function helpWith(body: string, macros: Config = {}) {
     const ws = new WorkspaceModel();
     ws.initialize(new Map([[uri, `:: StoryVariables\n$name = ""\n:: Start\n${body}`]]));
-    ws.macros.loadConfig(macros);
+    ws.macros.loadConfig({ ...configuredSchemas, ...macros });
     return getSignatureHelp(uri, { line: 3, character: body.length }, ws)!;
   }
   const alt: Config = {
@@ -353,18 +365,18 @@ describe('N-sig: active signature follows typed arguments; parameters are named'
     expect(r.signatures[r.activeSignature].parameters.length).toBeGreaterThan(1);
   });
 
-  it('N-sig-type-8: built-in textbox/radiobutton keep their single alternative', () => {
+  it('N-sig-type-8: configured textbox/radiobutton keep their single alternative', () => {
     expect(helpWith('{textbox $name "p" ').activeSignature).toBe(0);
     expect(helpWith('{radiobutton $name "a" "b" ').activeSignature).toBe(0);
   });
 
-  it('N-sig-type-9: built-in option alternatives: two arguments need the two-position signature', () => {
+  it('N-sig-type-9: configured option alternatives: two arguments need the two-position signature', () => {
     const r = helpWith('{listbox $name}{option "a" ');
     expect(r.activeSignature).toBe(0);
     expect(r.signatures[r.activeSignature].label).toBe('{option [label] [more]}');
   });
 
-  it('N-sig-type-10: built-in link/dialog/set: typed prefix keeps the right active parameter', () => {
+  it('N-sig-type-10: configured link/dialog/set: typed prefix keeps the right active parameter', () => {
     expect(helpWith('{link "go" ').activeParameter).toBe(1);
     expect(helpWith('{dialog "open" ').signatures[0].parameters.map(p => p.label)).toEqual(['label', '[noclose]']);
     expect(helpWith('{set $a to 1, $b to 2 ').activeParameter).toBe(0);
@@ -407,6 +419,7 @@ describe('N-sig: active signature follows typed arguments; parameters are named'
     const ws = new WorkspaceModel();
     const body = '{textbox $name ';
     ws.initialize(new Map([[uri, `:: Start\n${body}`]]));
+    ws.macros.loadConfig(configuredSchemas);
     signaturePlugin.initialize!({ connection: { onSignatureHelp: (h: any) => { handler = h; } }, workspace: ws } as any);
     const out = handler!({ textDocument: { uri }, position: { line: 1, character: body.length } });
     const sig = out.signatures[0];
