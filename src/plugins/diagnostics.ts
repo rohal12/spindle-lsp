@@ -31,7 +31,7 @@ import { widgetSources } from '../core/markup/widgets.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { findLinkRuntimeMismatches, findLiteralLinkInterpolations } from '../core/parsing/link-parser.js';
-import { isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
+import { isRuntimePassage, isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace/spindle-version.js';
@@ -180,12 +180,17 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
   const passages: PassageMarkup[] = [];
   for (const doc of documents) {
     for (const passage of doc.passages) {
-      if (!COMPILER_PASSAGES.has(passage.passage.name)) passages.push(passage);
+      if (isRuntimePassage(passage.passage)) passages.push(passage);
     }
   }
 
   // validateStoryMarkup hands back the `data-source-file` it was given: the index of the passage
   const markup = new Map<PassageMarkup, MarkupDiagnostic[]>();
+  // Configured positional annotations feed navigation; argumentDiagnostics
+  // already checks their schema. Keep the runtime signature here so the
+  // inferred roles do not add a second missing-destination warning.
+  const validationMacros = toolingMacros.map(macro => workspace.macros.hasConfiguredParameters(macro.name)
+    ? { ...macro, widget: undefined } : macro);
   const found = validateStoryMarkup(
     passages.map((passage, index) => ({
       name: passage.passage.name,
@@ -193,7 +198,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
       tags: passage.passage.tags,
       metadata: { 'data-source-file': String(index) },
     })),
-    toolingMacros,
+    validationMacros,
     // Every malformed tag and pairing error, and the checks of the markup around them
     { tolerant: true },
   );
@@ -755,7 +760,7 @@ const SPINDLE_MACROS: ReadonlySet<string> = new Set([
  */
 function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
   const diagnostics: SpindleDiagnostic[] = [];
-  const passageNames = Array.from(workspace.passages.getAllPassages(), (candidate) => candidate.name);
+  const passageNames = workspace.passages.getAllPassages().filter(isRuntimePassage).map(candidate => candidate.name);
 
   for (const token of passage.isMarkup ? macroTokens(passage) : []) {
     if (token.type !== 'macro' || token.isClose) continue;

@@ -495,6 +495,58 @@ function describeFormat(format: Format): ParameterSlot[][] {
   }
 }
 
+/** A conservative positional summary; unsafe means passage roles cannot be fixed. */
+interface PassageSlots {
+  slots: boolean[];
+  variable: boolean;
+  unsafe: boolean;
+  /** First position a repeated non-passage tail can occupy. */
+  restFrom?: number;
+}
+
+function passageSlots(format: Format): PassageSlots {
+  const single = (passage: boolean): PassageSlots => ({ slots: [passage], variable: false, unsafe: false });
+  switch (format.kind) {
+    case FormatKind.Type: return single(format.type.name.includes('passage'));
+    case FormatKind.Literal: return single(false);
+    case FormatKind.Repeat: {
+      const child = passageSlots(format.right);
+      return { slots: [], variable: true, unsafe: child.unsafe || child.slots.includes(true), restFrom: 0 };
+    }
+    case FormatKind.Or:
+      return mergePassageSlots(passageSlots(format.left), passageSlots(format.right));
+    case FormatKind.AndNext:
+    case FormatKind.MaybeNext: {
+      const left = format.left ? passageSlots(format.left) : { slots: [], variable: false, unsafe: false };
+      const right = passageSlots(format.right);
+      return {
+        slots: [...left.slots, ...right.slots],
+        variable: left.variable || right.variable || format.kind === FormatKind.MaybeNext,
+        restFrom: left.restFrom ?? (right.restFrom === undefined ? undefined : left.slots.length + right.restFrom),
+        // A variable-width prefix can move every position that follows it.
+        // Refuse rather than attributing an ordinary string to a passage.
+        unsafe: left.unsafe || right.unsafe || (left.variable && right.slots.length > 0 &&
+          (left.slots.includes(true) || right.slots.includes(true))),
+      };
+    }
+  }
+}
+
+function mergePassageSlots(left: PassageSlots, right: PassageSlots): PassageSlots {
+  const repeatedConflict = (repeated: PassageSlots, other: PassageSlots) => repeated.restFrom !== undefined
+    && other.slots.some((passage, i) => passage && i >= repeated.restFrom!);
+  return {
+    slots: Array.from({ length: Math.max(left.slots.length, right.slots.length) }, (_, i) =>
+      left.slots[i] === true || right.slots[i] === true),
+    variable: left.variable || right.variable || left.slots.length !== right.slots.length,
+    restFrom: left.restFrom === undefined ? right.restFrom : right.restFrom === undefined
+      ? left.restFrom : Math.min(left.restFrom, right.restFrom),
+    unsafe: left.unsafe || right.unsafe || left.slots.some((passage, i) =>
+      right.slots[i] !== undefined && passage !== right.slots[i])
+      || repeatedConflict(left, right) || repeatedConflict(right, left),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Validator (tree-crawl)
 // ---------------------------------------------------------------------------
@@ -715,6 +767,20 @@ export class Parameters {
       else sequences.push(...describeFormat(variant.format));
     }
     return sequences;
+  }
+
+  /**
+   * Passage positions that have the same role in every schema alternative.
+   * Unlike describe(), this walks the whole tree without truncating branches.
+   * Repeated or conflicting passage roles return null so callers can refuse
+   * an unsafe rename; actual argument spans and values remain Spindle's job.
+   */
+  passagePositions(): number[] | null {
+    const summary = this.variants.map(variant => variant.format
+      ? passageSlots(variant.format)
+      : { slots: [], variable: false, unsafe: false })
+      .reduce(mergePassageSlots, { slots: [], variable: false, unsafe: false });
+    return summary.unsafe ? null : summary.slots.flatMap((passage, i) => passage ? [i] : []);
   }
 
   /**

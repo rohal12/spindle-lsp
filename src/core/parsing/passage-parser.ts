@@ -1,4 +1,5 @@
 import type { Range } from '../types.js';
+import { createRequire as createCompilerRequire } from 'node:module';
 import { withoutCr } from '../text.js';
 
 export interface ParsedPassageHeader {
@@ -68,7 +69,11 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
     try {
       meta = JSON.parse(raw);
     } catch {
-      return null;
+      // Metadata decoding is a compiler warning, not a lost passage boundary.
+      // Ask the compiler about this line alone so malformed delimiters or
+      // extra optional blocks still reject the header without a second lexer.
+      const { parseTwee } = createCompilerRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
+      if (parseTwee(line.slice(bomLength)).passages.length !== 1) return null;
     }
   }
 
@@ -148,7 +153,13 @@ export interface PassageRole {
   tags?: string[];
 }
 
+/** Source passages compiled into attributes, code or private drafts have no runtime destination. */
+export function isRuntimePassage(passage: PassageRole): boolean {
+  return passage.name !== 'StoryTitle' && passage.name !== 'StoryData'
+    && !isScriptOrStylesheetPassage(passage) && !passage.tags?.includes('Twine.private');
+}
+
 /** Whether Spindle tokenizes the passage's body as story markup. */
 export function isMarkupPassage(passage: PassageRole): boolean {
-  return !(passage.name !== undefined && NON_MARKUP_PASSAGES.has(passage.name)) && !isScriptOrStylesheetPassage(passage);
+  return isRuntimePassage(passage) && !(passage.name !== undefined && NON_MARKUP_PASSAGES.has(passage.name));
 }
