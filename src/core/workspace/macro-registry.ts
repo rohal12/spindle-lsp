@@ -192,6 +192,11 @@ export class MacroRegistry {
     return this.resolve(name.toLowerCase());
   }
 
+  /** A project's explicit schema takes precedence over runtime signature metadata. */
+  hasConfiguredParameters(name: string): boolean {
+    return this.configEntries.get(name.toLowerCase())?.parameters !== undefined;
+  }
+
   /** Check if a macro is a block (container) macro. */
   isBlock(name: string): boolean {
     return this.getMacro(name)?.block ?? false;

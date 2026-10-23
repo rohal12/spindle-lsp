@@ -139,10 +139,14 @@ export function getSignatureHelp(
 
   // Check builtin macros
   const macroInfo = workspace.macros.getMacro(macroName);
-  if (macroInfo && macroInfo.parameters && macroInfo.parameters.length > 0) {
+  // Bundled legacy schemas are only a fallback. A project may explicitly
+  // override the runtime's signature with its own schema (including []).
+  const schema = macroInfo?.parameterDefs?.length && !workspace.macros.hasConfiguredParameters(macroName)
+    ? undefined : macroInfo?.parameters;
+  if (macroInfo && schema && schema.length > 0) {
     const described = describeSignatures(
       macroName,
-      macroInfo.parameters,
+      schema,
       macroInfo.description ?? undefined,
       macroInfo.parameterDocs,
     );
@@ -158,14 +162,14 @@ export function getSignatureHelp(
     }
   }
 
-  // Explicit legacy schemas keep precedence. Runtime definitions already
+  // Explicit project schemas keep precedence. Runtime definitions already
   // carry positional names, optionality and documentation; present them
   // directly rather than translating them into the legacy schema grammar.
   if (macroInfo) {
-    const definitions = macroInfo.parameters === undefined ? macroInfo.parameterDefs : undefined;
+    const definitions = schema === undefined ? macroInfo.parameterDefs : undefined;
     if (!definitions?.length) return null;
     const parameters = definitions.map(parameter => ({
-      label: parameter.required ? parameter.name : `[${parameter.name}]`,
+      label: parameter.required || parameter.type === 'separator' ? parameter.name : `[${parameter.name}]`,
       documentation: [parameter.description, `Type: ${parameter.type}`].filter(Boolean).join('\n\n'),
     }));
     // splitArgs counts values, not the runtime's parameter groups (rest

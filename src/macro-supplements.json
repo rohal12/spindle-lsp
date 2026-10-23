@@ -94,11 +94,7 @@
   },
   "computed": {
     "name": "computed",
-    "description": "Evaluates an expression and outputs the result.\n\nUsage: `{computed expression}`",
-    "parameters": ["...text"],
-    "parameterDocs": [
-      {"name": "expression", "documentation": "Expression whose result is output."}
-    ]
+    "description": "Assigns an expression's value to a variable and recomputes it when its dependencies change. The target must be a story ($), temporary (_) or local (@) variable. This macro produces no output; display the variable to show its value.\n\nUsage: `{computed _total = 1 + 2}Value: {_total}`"
   },
   "print": {
     "name": "print",
@@ -111,7 +107,7 @@
   "do": {
     "name": "do",
     "container": true,
-    "description": "Displays its contents. Can be updated dynamically.\n\nUsage:\n\n```\n{do}\n  ...\n{/do}\n```",
+    "description": "Executes JavaScript statements in its body. The body is code and produces no markup output.\n\nUsage:\n\n```\n{do}\n  _total = 1 + 2;\n{/do}\nValue: {_total}\n```",
     "parameters": []
   },
   "link": {
@@ -251,7 +247,7 @@
   },
   "passage": {
     "name": "passage",
-    "description": "Outputs the name of the current passage.\n\nUsage: `{passage}`",
+    "description": "Renders the current passage's contents in a layout. Put this slot in StoryInterface; placing it in the current passage itself recursively renders that passage. To display the passage's name, use `{print currentPassage().name}`.\n\nUsage in StoryInterface: `<main>{passage}</main>`",
     "parameters": []
   },
   "textbox": {
