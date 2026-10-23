@@ -123,11 +123,10 @@
   "button": {
     "name": "button",
     "container": true,
-    "description": "Creates a button that executes its contents when clicked.\n\nUsage:\n\n```\n{button \"text\" \"passage\"}\n  ...\n{/button}\n```",
-    "parameters": ["text |+ text", ""],
+    "description": "Creates a button that executes its contents when clicked. Navigate by placing {goto} in its body.\n\nUsage:\n\n```\n{button \"Go\"}\n  {goto \"Hall\"}\n{/button}\n```",
+    "parameters": ["text"],
     "parameterDocs": [
-      {"name": "label", "documentation": "Text of the button."},
-      {"name": "passage", "documentation": "Passage to go to when clicked; omit to run the contents."}
+      {"name": "label", "documentation": "Text of the button; its body runs when clicked."}
     ]
   },
   "timed": {
@@ -208,7 +207,7 @@
   },
   "meter": {
     "name": "meter",
-    "description": "Displays a progress meter.\n\nUsage: `{meter $var min max}`",
+    "description": "Displays the current value relative to a maximum, with an optional quoted label.\n\nUsage: `{meter 5 10 \"%\"}`",
     "parameters": ["...text"],
     "parameterDocs": [
       {"name": "current", "documentation": "Current value expression; a maximum expression and an optional label mode (`\"%\"`, `\"none\"` or a unit) follow."}
@@ -355,27 +354,19 @@
   },
   "watch": {
     "name": "watch",
-    "description": "Watches a variable for changes and triggers a re-render.\n\nUsage: `{watch $var}`",
+    "description": "Watches a quoted condition and runs an action when it changes from false to true. Use name to allow removal with {unwatch}.\n\nUsage: `{watch \"$x >= 2\" run \"$x = 0\" name \"reset-x\"}`",
     "parameters": ["...text"],
     "parameterDocs": [
-      {"name": "variable", "documentation": "Variable to watch for changes."}
+      {"name": "condition", "documentation": "Quoted expression checked when variables change or the story navigates."},
+      {"name": "options", "documentation": "Action (goto, dialog or run), optional name, priority and once flag."}
     ]
   },
   "unwatch": {
     "name": "unwatch",
-    "description": "Stops watching a variable.\n\nUsage: `{unwatch $var}`",
+    "description": "Removes a watcher by its registered name.\n\nUsage: `{unwatch \"reset-x\"}`",
     "parameters": ["...text"],
     "parameterDocs": [
-      {"name": "variable", "documentation": "Variable to stop watching."}
-    ]
-  },
-  "unless": {
-    "name": "unless",
-    "container": true,
-    "description": "Conditionally displays its contents when the expression is falsy. The inverse of `{if}`.\n\nUsage:\n\n```\n{unless condition}\n  ...\n{/unless}\n```",
-    "parameters": ["...text"],
-    "parameterDocs": [
-      {"name": "condition", "documentation": "Expression; the contents show when it is falsy."}
+      {"name": "name", "documentation": "Name supplied to the watch macro."}
     ]
   }
 }

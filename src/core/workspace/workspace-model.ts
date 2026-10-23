@@ -19,6 +19,7 @@ import { readInstalledSpindleVersion, resolveSpindleTarget } from './spindle-ver
 import type { SpindleTarget } from './spindle-version.js';
 import type { StoryFormat } from './story-format.js';
 import type { Passage } from '../types.js';
+import { isRuntimePassage } from '../parsing/passage-parser.js';
 import supplements from '../../macro-supplements.json' with { type: 'json' };
 
 export interface WorkspaceModelConfig {
@@ -328,7 +329,8 @@ export class WorkspaceModel extends EventEmitter {
 
       let lines: string[] | undefined;
       for (const passage of this.passages.getPassagesInDocument(uri)) {
-        const isStoryInit = passage.name === 'StoryInit';
+        if (passage.tags?.includes('Twine.private')) continue;
+        const isStoryInit = passage.name === 'StoryInit' && isRuntimePassage(passage);
         const isScript = passage.tags?.includes('script') ?? false;
         if (!isStoryInit && !isScript) continue;
 
@@ -364,7 +366,7 @@ export class WorkspaceModel extends EventEmitter {
     // Declarations use the indexed passage body, including compact boundaries.
     const declarations = (name: string) => {
       const passage = this.passages.getPassage(name);
-      return passage ? this.markup.get(passage.uri)?.passages.find(p => p.passage === passage) : undefined;
+      return passage && isRuntimePassage(passage) ? this.markup.get(passage.uri)?.passages.find(p => p.passage === passage) : undefined;
     };
     const variables = declarations('StoryVariables');
     if (variables) this.variables.parseStoryVariables(variables.content, variables.passage.headerEnd.end.line + 1, variables.doc.uri);

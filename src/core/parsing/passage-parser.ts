@@ -48,7 +48,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   // Trim structural whitespace in the masked source so an escaped trailing
   // space stays in the edit range. The compiler trims the decoded name.
   const nameEnd = escaped.slice(0, boundary).trimEnd().length;
-  const name = line.slice(nameStart, nameEnd).replace(/\\(.)/g, '$1').trim();
+  const name = line.slice(nameStart, nameEnd).replace(/\\(.|$)/g, '$1').trim();
   if (!name) return null;
 
   let rest = boundary;
@@ -151,11 +151,12 @@ const NON_MARKUP_PASSAGES: ReadonlySet<string> = new Set([
 export interface PassageRole {
   name?: string;
   tags?: string[];
+  runtimeOmitted?: boolean;
 }
 
 /** Source passages compiled into attributes, code or private drafts have no runtime destination. */
 export function isRuntimePassage(passage: PassageRole): boolean {
-  return passage.name !== 'StoryTitle' && passage.name !== 'StoryData'
+  return !passage.runtimeOmitted && passage.name !== 'StoryTitle' && passage.name !== 'StoryData'
     && !isScriptOrStylesheetPassage(passage) && !passage.tags?.includes('Twine.private');
 }
 

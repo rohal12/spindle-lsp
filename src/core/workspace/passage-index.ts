@@ -1,6 +1,7 @@
 import type { Passage } from '../types.js';
 import { parsePassageHeader } from '../parsing/passage-parser.js';
 import { splitLines } from '../text.js';
+import { createRequire as createSettingsRequire } from 'node:module';
 
 /**
  * Maintains an index of all passages across all open documents.
@@ -59,6 +60,14 @@ export class PassageIndex {
         start: passages[i].range.start,
         end: { line: nextStart, character: lines[nextStart]?.length ?? 0 },
       };
+      if (passages[i].name === 'StorySettings') {
+        // Let the public compiler decode legacy settings, including obsolete
+        // or malformed entries that leave no settings to emit.
+        const { StoryBuilder } = createSettingsRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
+        const builder = new StoryBuilder();
+        builder.add({ name: 'StorySettings', tags: [], text: lines.slice(passages[i].headerEnd.end.line + 1, nextStart + 1).join('\n') }, []);
+        passages[i].runtimeOmitted = builder.build().twine1.settings.size === 0;
+      }
     }
 
     if (passages.length > 0) {

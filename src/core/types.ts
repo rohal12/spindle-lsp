@@ -49,6 +49,8 @@ export interface Passage {
   uri: string;
   tags?: string[];
   meta?: Record<string, unknown>;
+  /** A content-dependent compiler omission (currently empty legacy StorySettings). */
+  runtimeOmitted?: boolean;
 }
 
 export interface Diagnostic {

@@ -198,6 +198,11 @@ export class MacroRegistry {
     return this.configEntries.get(name.toLowerCase())?.parameters !== undefined;
   }
 
+  /** Whether a project definition replaces the original runtime macro. */
+  hasDiscoveredMacro(name: string): boolean {
+    return this.discovered.has(name.toLowerCase());
+  }
+
   /** Check if a macro is a block (container) macro. */
   isBlock(name: string): boolean {
     return this.getMacro(name)?.block ?? false;
