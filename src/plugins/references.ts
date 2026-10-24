@@ -60,7 +60,7 @@ export function findReferences(
   const head = doc && macroHeadAt(doc, position);
   if (head) {
     const widget = workspace.widgets.getWidget(head.name);
-    if (!workspace.macros.getMacro(head.name) && widget && (!head.closing || widget.block)) {
+    if (!workspace.getEffectiveMacro(head.name) && widget && (!head.closing || workspace.isContainer(head.name))) {
       return findWidgetReferences(head.name, workspace, includeDeclaration);
     }
   }
@@ -206,15 +206,13 @@ export function findWidgetReferences(
     locations.push({ uri: widget.uri, range: widget.range });
   }
 
-  // Macros take precedence over widgets, including when the request starts
-  // at a shadowed widget's declaration. Only that declaration belongs to it.
-  if (workspace.macros.getMacro(widgetName)) return locations;
+  if (workspace.getEffectiveMacro(widgetName)) return locations;
 
   // Every call of the widget the runtime runs (case-insensitive, like Spindle):
   // the macros of the paired markup, those in labels and attribute values
-  // included, and its {/widgetName} closing tags when the widget is a block widget
+  // included, and its {/widgetName} closing tags when the name takes a body
   const lowerName = widgetName.toLowerCase();
-  const isBlock = widget?.block ?? false;
+  const isBlock = workspace.isContainer(widgetName);
 
   for (const docUri of workspace.documents.getUris()) {
     const doc = workspace.markup.get(docUri);

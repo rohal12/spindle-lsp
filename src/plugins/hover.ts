@@ -54,7 +54,7 @@ function getMacroHover(passage: PassageMarkup, at: number, workspace: WorkspaceM
     if (at < macro.nameStart || at > macro.nameEnd) continue;
     const range = passage.range(macro.nameStart, macro.nameEnd);
 
-    const info = workspace.macros.getMacro(macro.name);
+    const info = workspace.getEffectiveMacro(macro.name);
     if (info) {
       const parts: string[] = [];
       parts.push(`**${info.name}** _(${info.block ? 'container' : 'inline'} macro)_`);

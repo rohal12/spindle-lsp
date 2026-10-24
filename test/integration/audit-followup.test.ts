@@ -73,7 +73,7 @@ for (const version of ['package', '9.8.7-test']) {
 }
 
 it.each(['json', 'yaml', 'package'])('W74/HEADER/STRUCTURE/CONFIGURED-ARGS/PRETTIER-CONFIG/%s over framed LSP', async kind => {
-  const text = ':: StoryVariables\n:: W [widget]\n{widget "button"}unused{/widget}\n{widget "hello"}Hi{/widget}\n:: X\\ \nbody\n:: Start\n{button "Run"}clicked{/button}\n{hello}\n[[X]]\n{greet "Alice" }\n{button "{switch 2}{case 1}x{default}y{default}z{/switch}"}clicked{/button}\n:: Code [script]\nconst a="hello";\n' + extraCode;
+  const text = ':: StoryVariables\n:: W [widget]\n{widget "button" @label:markup}{@label}{@children}{/widget}\n{widget "hello"}Hi{/widget}\n:: X\\ \nbody\n:: Start\n{button "Run"}clicked{/button}\n{hello}\n[[X]]\n{greet "Alice" }\n{button "{switch 2}{case 1}x{default}y{default}z{/switch}"}clicked{/button}\n:: Code [script]\nconst a="hello";\n' + extraCode;
   const file = join(directory, 'story.tw');
   writeFileSync(file, text);
   writeFileSync(join(directory, 'macros.js'), 'Story.defineMacro({name:"greet",parameters:[{name:"who",type:"string",required:true},{name:"count",type:"number"}],render(){return null;}});');
@@ -103,8 +103,10 @@ it.each(['json', 'yaml', 'package'])('W74/HEADER/STRUCTURE/CONFIGURED-ARGS/PRETT
     expect(declarationRefs).toHaveLength(2);
     const callRefs = await request('textDocument/references', { textDocument, position: at('{hello}', 2), context: { includeDeclaration: true } });
     expect(callRefs).toEqual(declarationRefs);
-    const shadowed = await request('textDocument/rename', { textDocument, position: at('"button"', 2), newName: 'fresh' });
-    expect(TextDocument.applyEdits(source, shadowed.changes[uri])).toBe(text.replace('"button"', '"fresh"'));
+    const widgetRename = await request('textDocument/rename', { textDocument, position: at('"button"', 2), newName: 'fresh' });
+    expect(TextDocument.applyEdits(source, widgetRename.changes[uri])).toBe(
+      text.replace('"button"', '"fresh"').replaceAll('{button ', '{fresh ').replaceAll('{/button}', '{/fresh}'),
+    );
     const renamed = await request('textDocument/rename', { textDocument, position: at(':: X', 3), newName: 'Fresh' });
     const applied = TextDocument.applyEdits(source, renamed.changes[uri]);
     expect(applied).toContain(':: Fresh\n');

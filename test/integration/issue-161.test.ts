@@ -59,8 +59,16 @@ describe.each([
   { name: 'CLI explicit config', check: () => cliDiagnostics(true) },
   { name: 'MCP project config', check: () => checkFiles(storyFile, undefined, directory) },
 ])('$name initializes analysis with config (#161)', ({ check }) => {
-  it('does not read a string argument as the shadowed widget markup', async () => {
+  it('reads effective widget markup despite same-name configured macro metadata (#181)', async () => {
     writeFileSync(configFile, JSON.stringify(config));
+    const diagnostics = await check();
+    expect(diagnostics.filter(diagnostic => diagnostic.code === 'SP206')).toHaveLength(1);
+    expect(diagnostics.find(diagnostic => diagnostic.code === 'SP206')?.message).toContain('$rows.noSuchMember');
+  });
+
+  it('uses configured string metadata for macro-only calls', async () => {
+    writeFileSync(configFile, JSON.stringify(config));
+    writeFileSync(storyFile, story.replace(':: W [widget]\n{widget "caption" @value:markup}{@value}{/widget}\n', ''));
     expect(await check()).toEqual([]);
   });
 

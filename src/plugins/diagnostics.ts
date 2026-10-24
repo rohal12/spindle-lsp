@@ -180,7 +180,7 @@ function storyReport(workspace: WorkspaceModel): StoryReport {
 function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceModel): StoryReport {
   const toolingMacros = documents[0]?.context.macros ?? workspace.macros.toolingMacros();
   const macros = toolingMacros.map((macro) => {
-    const storeVar = workspace.macros.getMacro(macro.name)?.storeVar;
+    const storeVar = workspace.getEffectiveMacro(macro.name)?.storeVar;
     return storeVar ? { ...macro, storeVar } : macro;
   });
 
@@ -198,7 +198,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
   // Configured positional annotations feed navigation; argumentDiagnostics
   // already checks their schema. Keep the runtime signature here so the
   // inferred roles do not add a second missing-destination warning.
-  const validationMacros = toolingMacros.map(macro => workspace.macros.hasConfiguredParameters(macro.name)
+  const validationMacros = toolingMacros.map(macro => workspace.macros.hasConfiguredParameters(macro.name) && !workspace.widgets.getEffectiveWidget(macro.name)
     ? { ...macro, widget: undefined } : macro);
   const found = validateStoryMarkup(
     passages.map((passage, index) => ({
@@ -534,7 +534,7 @@ function structureDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel)
 /** SP107: a macro outside the parents the registry says it needs. */
 function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[], workspace: WorkspaceModel): SpindleDiagnostic[] {
   const name = token.name.toLowerCase();
-  const parents = workspace.macros.getMacro(name)?.parents;
+  const parents = workspace.getEffectiveMacro(name)?.parents;
   if (!parents || parents.length === 0 || BRANCH_MACROS.has(name)) return [];
   // Tooling owns discovered companion branches. Built-in value children
   // and configured-only constraints stay here. Tooling treats listbox's
@@ -557,7 +557,7 @@ function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors:
 
 /** SP114, SP115: the children a container needs or allows, by the registry's constraints. */
 function childDiagnostics(passage: PassageMarkup, node: PairedNode, token: MacroToken, workspace: WorkspaceModel): SpindleDiagnostic[] {
-  const constraints = workspace.macros.getMacro(token.name)?.children;
+  const constraints = workspace.getEffectiveMacro(token.name)?.children;
   // A container that is never closed is reported as such
   if (!constraints || constraints.length === 0 || !node.body?.close) return [];
 
@@ -568,7 +568,7 @@ function childDiagnostics(passage: PassageMarkup, node: PairedNode, token: Macro
   for (const child of direct) {
     if (child.token.type !== 'macro' || child.token.isClose) continue;
     const key = child.token.name.toLowerCase();
-    if (workspace.macros.getMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
+    if (workspace.getEffectiveMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
   }
 
   const diagnostics: SpindleDiagnostic[] = [];
@@ -695,12 +695,12 @@ function statementEnd(code: string, from: number): number {
  */
 function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[], workspace: WorkspaceModel): SpindleDiagnostic[] {
   const macro = token.name.toLowerCase();
-  if ((macro !== 'computed' && macro !== 'set') || !token.rawArgs || workspace.macros.getMacro(macro)?.source !== 'builtin') return [];
+  if ((macro !== 'computed' && macro !== 'set') || !token.rawArgs || workspace.getEffectiveMacro(macro)?.source !== 'builtin') return [];
 
   let loop: Ancestor | undefined;
   for (let i = ancestors.length - 1; i >= 0; i--) {
     const ancestor = ancestors[i];
-    if (ancestor.element || workspace.macros.getMacro(ancestor.name)?.source !== 'builtin') continue;
+    if (ancestor.element || workspace.getEffectiveMacro(ancestor.name)?.source !== 'builtin') continue;
     if (DEFERRED_CONTAINERS.has(ancestor.name)) return [];
     if (ancestor.name === 'for') {
       loop = ancestor;
@@ -774,7 +774,7 @@ function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel):
 
   for (const token of passage.isMarkup ? macroTokens(passage) : []) {
     if (token.type !== 'macro' || token.isClose) continue;
-    const info = workspace.macros.getMacro(token.name);
+    const info = workspace.getEffectiveMacro(token.name);
     if (!info?.parameters || info.skipArgs || info.parameterDefs?.length) continue;
     if (SPINDLE_MACROS.has(token.name.toLowerCase()) && !workspace.macros.hasDiscoveredMacro(token.name)) continue;
 
@@ -821,8 +821,8 @@ function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace
 
   for (const token of macros) {
     if (token.isClose) continue;
-    // A macro of the same name is no widget invocation
-    if (workspace.macros.getMacro(token.name)) continue;
+    // Only an effective widget owns the invocation
+    if (workspace.getEffectiveMacro(token.name)) continue;
     const widget = story.widgets.get(token.name.toLowerCase());
     if (!widget) continue;
     // The runtime splits the arguments of an invocation with splitArgs

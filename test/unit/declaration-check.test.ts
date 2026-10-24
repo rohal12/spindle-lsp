@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readDeclarations } from '../../src/core/workspace/declaration-check.js';
+import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 
 /** The problems of one `$` line, as SP207 reports them. */
 function problems(line: string, sigil: '$' | '%' = '$') {
@@ -16,6 +17,14 @@ describe('readDeclarations', () => {
     '', '   ',
   ])('accepts %j', (line) => {
     expect(problems(line)).toEqual([]);
+  });
+
+  it.each(['$', '%'] as const)('accepts trailing JavaScript line comments with the runtime value (%s)', (sigil) => {
+    for (const comment of ['// note', '<!-- note']) {
+      const line = `${sigil}a = 1 ${comment}`;
+      expect(parseStoryVariables(line, sigil).get('a')?.default).toBe(1);
+      expect(problems(line, sigil)).toEqual([]);
+    }
   });
 
   it('does not make a problem of a name declared twice: the later one wins', () => {
@@ -46,8 +55,6 @@ describe('readDeclarations', () => {
   });
 
   it.each([
-    ['$a = 1 // note', "Unexpected token '}'"],
-    ['$a = 1 <!-- note', "Unexpected token '}'"],
     ['$a = [1,', "Unexpected token ')'"],
     ['$a = {', "Unexpected token ')'"],
     ['$a == 1', "Unexpected token '='"],

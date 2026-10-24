@@ -163,3 +163,40 @@ it('excludes discarded body references and diagnostics while retaining their sou
   expect(computeDiagnostics(setup.uri, model).filter(d => ['SP100', 'SP200', 'SP300', 'SP305'].includes(String(d.code)))).toEqual([]);
   expect(model.markup.get(setup.uri)?.passages[1].content).toBe('{$ghost}{missing}[[Hall{$x}]]\n');
 });
+
+it.each(['script', 'js'])('keeps live textbox references when %s replaces do before StoryInit (#180)', async kind => {
+  const replacement = 'Story.defineMacro({name:"do",block:true,render(){return null;}});';
+  const setup = fixture([
+    ['story.tw', `${metadata}:: StoryVariables\n$x = "old"\n${kind === 'script' ? `:: Macros [script]\n${replacement}\n` : ''}:: StoryInit\n{do}Story.defineMacro({name:"textbox",parameters:[{name:"label",type:"string"}],render(){return null;}});{/do}\n:: Start\n{textbox "$x"}\n`],
+    ...(kind === 'js' ? [['macros.js', replacement] as [string, string]] : []),
+  ]);
+  const model = workspace(setup.files);
+  expect(model.macros.hasDiscoveredMacro('textbox')).toBe(false);
+  expect(model.variables.getUsages('x')).toHaveLength(1);
+  expect(computeDiagnostics(setup.uri, model)).toEqual([]);
+  expect(await rendered(setup.directory, setup.files)).toBe('[textbox $x: "old"]');
+  const changed = renamed(setup.files, setup.uri, model);
+  expect(changed.get(setup.uri)).toContain('{textbox "$y"}');
+  expect(await rendered(setup.directory, changed)).toBe('[textbox $y: "old"]');
+});
+
+it('refreshes executable StoryInit discovery after unsaved script replacements (#180)', () => {
+  const replacement = 'Story.defineMacro({name:"do",block:true,render(){return null;}});';
+  const setup = fixture([
+    ['story.tw', ':: StoryVariables\n$x = "old"\n:: StoryInit\n{do}Story.defineMacro({name:"textbox",parameters:[{name:"label",type:"string"}],render(){return null;}});{/do}\n:: Start\n{textbox "$x"}\n'],
+    ['macros.js', replacement],
+  ]);
+  const model = workspace(setup.files);
+  const script = [...setup.files.keys()][1];
+  expect(model.macros.hasDiscoveredMacro('textbox')).toBe(false);
+  expect(model.variables.getUsages('x')).toHaveLength(1);
+  model.documents.update(script, '');
+  expect(model.macros.hasDiscoveredMacro('textbox')).toBe(true);
+  expect(model.variables.getUsages('x')).toHaveLength(0);
+  model.documents.update(script, replacement);
+  expect(model.macros.hasDiscoveredMacro('textbox')).toBe(false);
+  expect(model.variables.getUsages('x')).toHaveLength(1);
+  model.documents.close(script);
+  expect(model.macros.hasDiscoveredMacro('textbox')).toBe(true);
+  expect(model.variables.getUsages('x')).toHaveLength(0);
+});
