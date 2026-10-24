@@ -4,7 +4,7 @@ import { splitLines } from '../text.js';
 import { createRequire as createSettingsRequire } from 'node:module';
 
 /** Folder compilation walks entries by UTF-8 name, descending before the next sibling. */
-function compareSourceUris(left: string, right: string): number {
+export function compareSourceUris(left: string, right: string): number {
   const a = left.split('/').map(decodeURIComponent);
   const b = right.split('/').map(decodeURIComponent);
   for (let i = 0; i < Math.min(a.length, b.length); i++) {
@@ -25,7 +25,7 @@ export class PassageIndex {
   /** The documents' URIs in a fixed (sorted) order, so lookups never depend on the order documents were opened. */
   private sortedUris: string[] | null = null;
   private uris(): string[] {
-    return (this.sortedUris ??= [...this.byUri.keys()].sort());
+    return (this.sortedUris ??= [...this.byUri.keys()].sort(compareSourceUris));
   }
 
   /**
@@ -120,7 +120,12 @@ export class PassageIndex {
 
   /** The compiler replaces duplicate passages with the later source declaration. */
   getEffectivePassage(name: string): Passage | undefined {
-    return this.getPassages(name).sort((a, b) => compareSourceUris(a.uri, b.uri)).at(-1);
+    return this.getPassages(name).at(-1);
+  }
+
+  /** Later duplicates replace the original slot, before any runtime role exclusions. */
+  getEffectivePassages(): Passage[] {
+    return [...new Map(this.getAllPassages().map(passage => [passage.name, passage])).values()];
   }
 
   /** Get the passage containing a specific line in a document. */

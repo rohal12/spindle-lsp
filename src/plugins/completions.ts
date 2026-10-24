@@ -225,7 +225,7 @@ function linkable(name: string): boolean {
 }
 
 function getPassageNameCompletions(workspace: WorkspaceModel): CompletionItem[] {
-  return workspace.passages.getAllPassages().filter(p => isRuntimePassage(p) && linkable(p.name)).map(p => ({
+  return workspace.passages.getEffectivePassages().filter(p => isRuntimePassage(p) && linkable(p.name)).map(p => ({
     label: p.name,
     kind: 18, // CompletionItemKind.Reference
     detail: p.uri,

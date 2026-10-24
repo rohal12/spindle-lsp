@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { builtinMacros, discoverMacros, passagePieces } from '@rohal12/spindle/tooling';
 import type { DiscoveredMacro } from '@rohal12/spindle/tooling';
 import { DocumentStore } from './document-store.js';
-import { PassageIndex } from './passage-index.js';
+import { compareSourceUris, PassageIndex } from './passage-index.js';
 import { MacroRegistry } from './macro-registry.js';
 import { VariableTracker } from './variable-tracker.js';
 import { WidgetRegistry } from './widget-registry.js';
@@ -316,9 +316,11 @@ export class WorkspaceModel extends EventEmitter {
   private refreshDiscoveredMacros(): void {
     const found: DiscoveredMacro[] = [];
     const init: DiscoveredMacro[] = [];
+    const seen = new Set<string>();
+    const effective = new Map(this.passages.getEffectivePassages().map(passage => [passage.name, passage]));
 
     // Use a stable source order within each runtime phase.
-    for (const uri of this.documents.getUris().sort()) {
+    for (const uri of this.documents.getUris().sort(compareSourceUris)) {
       const text = this.documents.getText(uri);
       if (!text) continue;
 
@@ -327,17 +329,18 @@ export class WorkspaceModel extends EventEmitter {
         continue;
       }
 
-      let lines: string[] | undefined;
-      for (const passage of this.passages.getPassagesInDocument(uri)) {
+      for (const source of this.passages.getPassagesInDocument(uri)) {
+        // Replacement keeps the first passage's compiler slot, including its
+        // position relative to standalone JavaScript sources.
+        if (seen.has(source.name)) continue;
+        seen.add(source.name);
+        const passage = effective.get(source.name)!;
         if (passage.tags?.includes('Twine.private')) continue;
         const isStoryInit = passage.name === 'StoryInit' && isRuntimePassage(passage);
         const isScript = passage.tags?.includes('script') ?? false;
         if (!isStoryInit && !isScript) continue;
 
-        lines ??= text.split('\n');
-        const content = lines
-          .slice(passage.headerEnd.end.line + 1, passage.range.end.line + 1)
-          .join('\n');
+        const content = this.markup.get(passage.uri)?.passages.find(p => p.passage === passage)?.content ?? '';
         if (isScript) found.push(...discoverMacros(content));
         else init.push(...storyInitMacros(content));
       }
@@ -384,9 +387,11 @@ export class WorkspaceModel extends EventEmitter {
     // Rescan widgets: the markup pairs its tags with them once they are known
     const markups = new Map<Passage, PassageMarkup>();
     for (const doc of readDocuments()) for (const passage of doc.passages) markups.set(passage.passage, passage);
+    const effective = new Set(this.passages.getEffectivePassages());
     this.widgets.scan(
-      this.passages.getAllPassages().flatMap((passage) => markups.get(passage) ?? []),
+      [...effective].flatMap((passage) => markups.get(passage) ?? []),
       this.macros.toolingMacros(),
+      [...markups].filter(([passage]) => !effective.has(passage)).map(([, markup]) => markup),
     );
 
     // Discard the discovery context (which can contain definitions from the
@@ -397,8 +402,9 @@ export class WorkspaceModel extends EventEmitter {
     // (empty documents are scanned too, dropping their previous usages)
     this.widgets.clearInvocations();
     for (const doc of readDocuments()) {
-      this.variables.scanDocument(doc.uri, doc.text, doc);
-      this.widgets.recordInvocations(doc.uri, doc.passages);
+      const passages = doc.passages.filter(p => effective.has(p.passage));
+      this.variables.scanDocument(doc.uri, doc.text, { passages });
+      this.widgets.recordInvocations(doc.uri, passages);
     }
   }
 

@@ -18,7 +18,7 @@ import {
   type VariableDiagnosticCode,
   type WidgetDefinition,
 } from '@rohal12/spindle/tooling';
-import type { Range } from '../core/types.js';
+import type { Passage, Range } from '../core/types.js';
 import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
@@ -94,7 +94,9 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   };
 
   const story = storyReport(workspace);
+  const effective = new Set(workspace.passages.getEffectivePassages());
   for (const passage of doc.passages) {
+    if (!effective.has(passage.passage)) continue;
     attempt(() => diagnostics.push(...markupDiagnostics(passage, story, workspace)));
     attempt(() => diagnostics.push(...variableDiagnostics(passage, story)));
     attempt(() => diagnostics.push(...structureDiagnostics(passage, workspace)));
@@ -104,7 +106,10 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   attempt(() => diagnostics.push(...versionDiagnostics(uri, doc, workspace)));
   attempt(() => diagnostics.push(...storyVariablesDiagnostics(uri, doc, story, workspace)));
   attempt(() => diagnostics.push(...arrayMemberDiagnostics(uri, workspace)));
-  attempt(() => diagnostics.push(...linkDiagnostics(doc)));
+  attempt(() => diagnostics.push(...linkDiagnostics(doc).filter(diagnostic => {
+    const passage = doc.passageAt(diagnostic.range.start);
+    return passage !== undefined && effective.has(passage.passage);
+  })));
   attempt(() => diagnostics.push(...unusedWidgetDiagnostics(doc, story)));
   if (options?.maxLineLength) {
     const maxLength = options.maxLineLength;
@@ -134,6 +139,8 @@ interface DefinedWidget {
 interface StoryReport {
   /** The documents it was computed from. */
   readonly documents: readonly DocumentMarkup[];
+  /** Compiler-effective runtime passages, in their original story slots. */
+  readonly passages: readonly PassageMarkup[];
   /** The macros the story may use, with the variable an input macro binds. */
   readonly macros: readonly ToolingMacro[];
   /** `validateStoryMarkup`'s diagnostics, by the passage they are in. */
@@ -177,12 +184,14 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
     return storeVar ? { ...macro, storeVar } : macro;
   });
 
-  const passages: PassageMarkup[] = [];
+  const markups = new Map<Passage, PassageMarkup>();
   for (const doc of documents) {
     for (const passage of doc.passages) {
-      if (isRuntimePassage(passage.passage)) passages.push(passage);
+      markups.set(passage.passage, passage);
     }
   }
+  const passages = workspace.passages.getEffectivePassages()
+    .filter(isRuntimePassage).flatMap(passage => markups.get(passage) ?? []);
 
   // validateStoryMarkup hands back the `data-source-file` it was given: the index of the passage
   const markup = new Map<PassageMarkup, MarkupDiagnostic[]>();
@@ -225,6 +234,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
 
   return {
     documents,
+    passages,
     macros,
     markup,
     widgets,
@@ -417,13 +427,13 @@ const WILL_NOT_START = 'Spindle will not start the story.';
 /** Whether any ordinary passage of the story references a `$variable`. */
 function storyUsesVariables(story: StoryReport): boolean {
   const excluded = new Set(['StoryVariables', 'StoryInit', 'StoryData', 'StoryScript', 'StoryInterface']);
-  return story.documents.some((doc) => doc.passages.some((passage) =>
+  return story.passages.some((passage) =>
     passage.isMarkup && !excluded.has(passage.passage.name) &&
     validateVariableReferences(
       [{ name: passage.passage.name, content: passage.content }],
       { variables: new Map() },
       story.macros,
-    ).some((diagnostic) => diagnostic.code === 'undeclared-variable')));
+    ).some((diagnostic) => diagnostic.code === 'undeclared-variable'));
 }
 
 /**
@@ -760,7 +770,7 @@ const SPINDLE_MACROS: ReadonlySet<string> = new Set([
  */
 function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
   const diagnostics: SpindleDiagnostic[] = [];
-  const passageNames = workspace.passages.getAllPassages().filter(isRuntimePassage).map(candidate => candidate.name);
+  const passageNames = workspace.passages.getEffectivePassages().filter(isRuntimePassage).map(candidate => candidate.name);
 
   for (const token of passage.isMarkup ? macroTokens(passage) : []) {
     if (token.type !== 'macro' || token.isClose) continue;
@@ -835,7 +845,7 @@ function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace
   // expression.
   for (const piece of passage.pieces) {
     if (piece.kind !== 'passage' || piece.macro !== 'include') continue;
-    const target = workspace.passages.getPassage(piece.name);
+    const target = workspace.passages.getEffectivePassage(piece.name);
     if (!target?.tags?.includes('widget')) continue;
     const defined = story.widgetList.filter((widget) => widget.passage.passage === target).map((widget) => widget.definition.name);
     if (defined.length === 0) continue;

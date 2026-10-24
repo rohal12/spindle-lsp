@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, unlinkSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -921,6 +921,53 @@ describe('Integration: LSP server over stdio', () => {
   // -----------------------------------------------------------------------
   // #14: unsaved editor buffers stay authoritative
   // -----------------------------------------------------------------------
+
+  it.each(['file', 'directory'] as const)('excludes a linked %s from watcher ingestion until explicitly opened (#178)', async kind => {
+    const story = ':: StoryVariables\n$value = 1\n:: Start\n{$value}\n';
+    const linkedStory = ':: Linked\n{$value}\n';
+    const dir = makeTempWorkspace({ 'story.twee': story });
+    const external = makeTempWorkspace({ 'linked.twee': linkedStory });
+    const linkedPath = join(dir, kind === 'file' ? 'linked.twee' : 'linked');
+    symlinkSync(kind === 'file' ? join(external, 'linked.twee') : external, linkedPath, kind === 'file' ? 'file' : 'dir');
+    const linkedUri = uriFor(dir, kind === 'file' ? 'linked.twee' : 'linked/linked.twee');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(uriFor(dir, 'story.twee'), () => true);
+    expect(await documentSymbolNames(session, linkedUri)).toEqual([]);
+
+    for (const type of [1, 2] as const) {
+      await watchedFileChanged(session, linkedUri, type);
+      expect(await documentSymbolNames(session, linkedUri)).toEqual([]);
+      const rename = await session.conn.sendRequest('textDocument/rename', {
+        textDocument: { uri: uriFor(dir, 'story.twee') },
+        position: { line: 1, character: 2 }, newName: 'renamed',
+      }) as { changes: Record<string, unknown[]> };
+      expect(Object.keys(rename.changes)).toEqual([uriFor(dir, 'story.twee')]);
+    }
+
+    await didOpen(session, linkedUri, ':: Unsaved\nEditor text.\n');
+    expect(await documentSymbolNames(session, linkedUri)).toEqual(['Unsaved']);
+    await watchedFileChanged(session, linkedUri, 2);
+    expect(await documentSymbolNames(session, linkedUri)).toEqual(['Unsaved']);
+    await didClose(session, linkedUri);
+    expect(await documentSymbolNames(session, linkedUri)).toEqual([]);
+  });
+
+  it.each(['file', 'directory'] as const)('removes an indexed source replaced by a linked %s (#178)', async kind => {
+    const dir = makeTempWorkspace({ 'story.twee': ':: Start\n[[Local]]\n' });
+    const external = makeTempWorkspace({ 'linked.twee': ':: External\nOutside the project.\n' });
+    const sourcePath = join(dir, kind === 'file' ? 'linked.twee' : 'linked');
+    if (kind === 'directory') mkdirSync(sourcePath);
+    const sourceUri = uriFor(dir, kind === 'file' ? 'linked.twee' : 'linked/linked.twee');
+    writeFileSync(kind === 'file' ? sourcePath : join(sourcePath, 'linked.twee'), ':: Local\nProject text.\n');
+    const session = await startLsp(dir);
+    await session.waitForDiagnostics(sourceUri, () => true);
+    expect(await documentSymbolNames(session, sourceUri)).toEqual(['Local']);
+
+    rmSync(sourcePath, { recursive: true });
+    symlinkSync(kind === 'file' ? join(external, 'linked.twee') : external, sourcePath, kind === 'file' ? 'file' : 'dir');
+    await watchedFileChanged(session, sourceUri, 2);
+    expect(await documentSymbolNames(session, sourceUri)).toEqual([]);
+  });
 
   it('keeps an unsaved buffer opened before the initial scan finishes (#14)', async () => {
     const dir = makeTempWorkspace({ 'story.twee': ':: Disk\nOn disk.\n' });

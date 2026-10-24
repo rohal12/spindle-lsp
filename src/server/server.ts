@@ -7,7 +7,7 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, dirname } from 'node:path';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadPlugins } from '../core/plugin/plugin-loader.js';
@@ -20,6 +20,7 @@ import { loadConfigFromDisk } from '../core/workspace/config-loader.js';
 import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace/spindle-version.js';
 import {
   MACRO_SOURCE_GLOB,
+  canDiscoverProjectPath,
   findMacroSourceFiles,
   findProjectFiles,
   isExcludedProjectFile,
@@ -229,7 +230,8 @@ export function startServer(args: string[]): void {
       // is gone.
       try {
         const fsPath = uriToFsPath(textDocument.uri);
-        if (isExcludedProjectFile(fsPath, workspaceRoot)) {
+        if (isExcludedProjectFile(fsPath, workspaceRoot)
+          || !canDiscoverProjectPath(fsPath, workspaceRoot ?? dirname(fsPath))) {
           workspace.documents.close(textDocument.uri);
         } else {
           const text = readFileSync(fsPath, 'utf-8');
@@ -270,21 +272,24 @@ export function startServer(args: string[]): void {
         continue;
       }
 
-      // Automatic ingestion uses the same exclusions for stories and macro sources.
-      if (isExcludedProjectFile(uriToFsPath(change.uri), workspaceRoot)) {
-        continue;
-      }
-
       // The editor owns open documents: ignore disk changes/deletions until
       // didClose, which re-reads the file from disk (or removes it).
       if (documents.has(change.uri)) continue;
+
+      // Match the scan's exclusions, including links in any ancestor directory.
+      // Remove an old automatic entry if its path became a link since ingestion.
+      const fsPath = uriToFsPath(change.uri);
+      if (isExcludedProjectFile(fsPath, workspaceRoot)
+        || !canDiscoverProjectPath(fsPath, workspaceRoot ?? dirname(fsPath))) {
+        workspace.documents.close(change.uri);
+        continue;
+      }
 
       if (change.type === FileChangeType.Deleted) {
         workspace.documents.close(change.uri);
       } else {
         // Created or Changed — re-read from disk
         try {
-          const fsPath = uriToFsPath(change.uri);
           const text = readFileSync(fsPath, 'utf-8');
           if (workspace.documents.has(change.uri)) {
             workspace.documents.update(change.uri, text);
