@@ -3,6 +3,17 @@ import { parsePassageHeader } from '../parsing/passage-parser.js';
 import { splitLines } from '../text.js';
 import { createRequire as createSettingsRequire } from 'node:module';
 
+/** Folder compilation walks entries by UTF-8 name, descending before the next sibling. */
+function compareSourceUris(left: string, right: string): number {
+  const a = left.split('/').map(decodeURIComponent);
+  const b = right.split('/').map(decodeURIComponent);
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const order = Buffer.compare(Buffer.from(a[i], 'utf8'), Buffer.from(b[i], 'utf8'));
+    if (order !== 0) return order;
+  }
+  return a.length - b.length;
+}
+
 /**
  * Maintains an index of all passages across all open documents.
  * Supports lookup by name, URI, line number, and detects duplicates.
@@ -109,7 +120,7 @@ export class PassageIndex {
 
   /** The compiler replaces duplicate passages with the later source declaration. */
   getEffectivePassage(name: string): Passage | undefined {
-    return this.getPassages(name).at(-1);
+    return this.getPassages(name).sort((a, b) => compareSourceUris(a.uri, b.uri)).at(-1);
   }
 
   /** Get the passage containing a specific line in a document. */

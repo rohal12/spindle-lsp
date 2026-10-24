@@ -34,7 +34,7 @@ async function compiled(files: Map<string, string>) {
 }
 async function rendered(files: Map<string, string>) {
   const result = await compiled(files);
-  expect(result.diagnostics.filter(d => d.severity === 'error')).toEqual([]);
+  expect(result.diagnostics.filter(d => d.level === 'error')).toEqual([]);
   const session = await openPlaySession({ html: result.output, trusted: true });
   try {
     const observation = await session.observe();
