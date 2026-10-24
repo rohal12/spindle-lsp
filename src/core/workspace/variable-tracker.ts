@@ -154,7 +154,7 @@ export class VariableTracker {
    * passes the `markup` it reads the document with, which knows the project's
    * macros and widgets; without it the built-in macros decide.
    */
-  scanDocument(uri: string, text: string, markup: DocumentMarkup = standaloneMarkup(uri, text)): void {
+  scanDocument(uri: string, text: string, markup: Pick<DocumentMarkup, 'passages'> = standaloneMarkup(uri, text)): void {
     this.removeDocument(uri);
     const usages: VariableUsage[] = [];
     const transientUsages: VariableUsage[] = [];

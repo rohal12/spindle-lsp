@@ -1,4 +1,4 @@
-import { effectiveWidgetDefinitions, type ToolingMacro } from '@rohal12/spindle/tooling';
+import { effectiveWidgetDefinitions, type ToolingMacro, type WidgetDefinition } from '@rohal12/spindle/tooling';
 import type { Position, WidgetDef } from '../types.js';
 import type { PassageMarkup } from '../markup/passage-markup.js';
 import { macroTokens } from '../markup/tokens.js';
@@ -21,28 +21,51 @@ export class WidgetRegistry {
   private invokedByUri = new Map<string, Set<string>>();
 
   /**
-   * Read the widget definitions of `passages` (all of them, in workspace
-   * order). Public tooling selects the closed definitions in runtime phase
-   * order, preserving their identities so the original source is retained.
+   * Read effective story passages in compiler order. Superseded passages may
+   * supply editor navigation while a replacement is incomplete; they cannot
+   * register runtime widgets. Tooling selects definitions in runtime phase order.
    */
-  scan(passages: Iterable<PassageMarkup>, macros: Iterable<ToolingMacro>): void {
+  scan(
+    passages: Iterable<PassageMarkup>,
+    macros: Iterable<ToolingMacro>,
+    superseded: Iterable<PassageMarkup> = [],
+  ): void {
     this.widgets.clear();
     this.incomplete.clear();
-    const sources = widgetSources(passages, [...macros]);
+    const metadata = [...macros];
+    const sources = widgetSources(passages, metadata);
     const effective = new Set(effectiveWidgetDefinitions([...sources.keys()]));
+    const incompletePassages = new Map<string, string>();
+    const located = (definition: WidgetDefinition, markup: PassageMarkup): WidgetDef => ({
+      tooling: definition,
+      name: definition.name,
+      params: definition.params,
+      uri: markup.passage.uri,
+      range: markup.range(definition.start, definition.end),
+      nameRange: markup.range(definition.nameStart, definition.nameEnd),
+      block: definition.block,
+    });
     for (const [definition, markup] of sources) {
-      const widget: WidgetDef = {
-        tooling: definition,
-        name: definition.name,
-        params: definition.params,
-        uri: markup.passage.uri,
-        range: markup.range(definition.start, definition.end),
-        nameRange: markup.range(definition.nameStart, definition.nameEnd),
-        block: definition.block,
-      };
+      const widget = located(definition, markup);
       const key = definition.name.toLowerCase();
       if (effective.has(definition)) this.widgets.set(key, widget);
-      else if (definition.closeStart === undefined) this.incomplete.set(key, widget);
+      else if (definition.closeStart === undefined) {
+        this.incomplete.set(key, widget);
+        incompletePassages.set(key, markup.passage.name);
+      }
+    }
+
+    // While a replacement is half typed, retain navigation to a closed source
+    // definition of that same passage. It never enters the runtime registry.
+    if (incompletePassages.size > 0) {
+      const previous = widgetSources(superseded, metadata);
+      const candidates = [...previous.keys()].filter(definition => {
+        const name = definition.name.toLowerCase();
+        return !this.widgets.has(name) && incompletePassages.get(name) === previous.get(definition)!.passage.name;
+      });
+      for (const definition of effectiveWidgetDefinitions(candidates)) {
+        this.incomplete.set(definition.name.toLowerCase(), located(definition, previous.get(definition)!));
+      }
     }
   }
 
