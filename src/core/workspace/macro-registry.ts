@@ -218,6 +218,7 @@ export class MacroRegistry {
   toolingMacros(): ToolingMacro[] {
     return this.getAllMacros().map((m) => ({
       name: m.name,
+      source: m.source,
       block: m.block,
       subMacros: m.subMacros,
       storeVar: m.storeVar,

@@ -1,8 +1,10 @@
 import {
+  completionContext,
   pairMarkup,
   parseDeclarations,
   passagePieces,
   tokenizeMarkupTolerant,
+  type CompletionContext,
   type Declaration,
   type DeclarationError,
   type MarkupError,
@@ -133,6 +135,11 @@ export class PassageMarkup {
   /** What the markup runs and names, and where (see `passagePieces`). */
   get pieces(): Piece[] {
     return (this.cachedPieces ??= this.isMarkup ? passagePieces(this.content, this.doc.context.macros) : []);
+  }
+
+  /** Whether the cursor is executable, with decoded code mapped back to `content`. */
+  completionAt(offset: number): CompletionContext {
+    return this.isMarkup ? completionContext(this.content, offset, this.doc.context.macros) : { kind: 'literal' };
   }
 
   /** The declarations of a StoryVariables / StoryTransients passage. */

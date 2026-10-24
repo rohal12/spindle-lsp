@@ -1,5 +1,5 @@
 import type { CompletionItem } from 'vscode-languageserver';
-import { tokenizeMarkupTolerant } from '@rohal12/spindle/tooling';
+import { pieceOffset, tokenizeMarkupTolerant } from '@rohal12/spindle/tooling';
 import { widgetSources } from '../core/markup/widgets.js';
 import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
@@ -44,7 +44,6 @@ export function getCompletions(
   // stylesheet, StoryData, StoryVariables, ...) are not story syntax: offer nothing there
   if (!cursor?.passage.isMarkup) return [];
   const { passage, content, at } = cursor;
-  const before = cursor.lineBefore;
 
   /** The edit that replaces `[start, end)` of the passage with an item's text. */
   const editing = (items: CompletionItem[], start: number, end: number): CompletionItem[] => {
@@ -73,6 +72,15 @@ export function getCompletions(
   // `{_` starts a temporary-variable display, rather than a macro name.
   if (head && !head.typed.startsWith('_')) return typedEdit(getMacroCompletions(workspace), head.typed.length, /^[\w-]*/);
 
+  // The runtime owns which prefixes are executable, including unfinished
+  // expressions and decoded code nested in labels and attribute values.
+  const context = passage.completionAt(at);
+  if (context.kind !== 'code') return [];
+  const before = context.code.slice(0, context.cursor);
+  const codeOffset = (index: number): number => pieceOffset(context, index);
+  const variableEdit = (items: CompletionItem[], typed: number): CompletionItem[] =>
+    editing(items, codeOffset(context.cursor - typed), at + /^[\w$]*/.exec(content.slice(at))![0].length);
+
   // A field name that is not an identifier needs bracket access. Replace the
   // dot as well as the typed suffix/tail so accepting accesses the chosen key.
   const dotPath = /([$%])([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(before);
@@ -82,7 +90,7 @@ export function getCompletions(
     const end = at + /^[\w$]*/.exec(content.slice(at))![0].length;
     return getDotPathCompletions(sigil, dotPath[2], workspace).map(item => {
       const identifier = /^[A-Za-z_$][\w$]*$/.test(item.label);
-      const start = at - typed - (identifier ? 0 : 1);
+      const start = codeOffset(context.cursor - typed - (identifier ? 0 : 1));
       return {
         ...item,
         textEdit: {
@@ -96,25 +104,25 @@ export function getCompletions(
   // --- Context: story variable `$` ---
   const storyVar = /\$([A-Za-z_$]?[\w$]*)$/.exec(before);
   if (storyVar) {
-    return typedEdit(getVariableCompletions('$', workspace), storyVar[1].length);
+    return variableEdit(getVariableCompletions('$', workspace), storyVar[1].length);
   }
 
   // --- Context: temporary variable `_` ---
   const tempVar = /_([A-Za-z_$]?[\w$]*)$/.exec(before);
   if (tempVar) {
-    return typedEdit(getDocumentVariableCompletions('_', cursor, workspace), tempVar[1].length);
+    return variableEdit(getDocumentVariableCompletions('_', cursor, workspace), tempVar[1].length);
   }
 
   // --- Context: local variable `@` ---
   const localVar = /@([A-Za-z_$]?[\w$]*)$/.exec(before);
   if (localVar) {
-    return typedEdit(getDocumentVariableCompletions('@', cursor, workspace), localVar[1].length);
+    return variableEdit(getDocumentVariableCompletions('@', cursor, workspace), localVar[1].length);
   }
 
   // --- Context: transient variable `%` ---
   const transientVar = /%([A-Za-z_$]?[\w$]*)$/.exec(before);
   if (transientVar) {
-    return typedEdit(getVariableCompletions('%', workspace), transientVar[1].length);
+    return variableEdit(getVariableCompletions('%', workspace), transientVar[1].length);
   }
 
   return [];

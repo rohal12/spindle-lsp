@@ -138,7 +138,7 @@ export function getSignatureHelp(
   const argument = typing.length - 1;
 
   // Check builtin macros
-  const macroInfo = workspace.macros.getMacro(macroName);
+  const macroInfo = workspace.getEffectiveMacro(macroName);
   // Bundled legacy schemas are only a fallback. A project may explicitly
   // override the runtime's signature with its own schema (including []).
   const schema = macroInfo?.parameterDefs?.length && !workspace.macros.hasConfiguredParameters(macroName)

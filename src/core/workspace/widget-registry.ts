@@ -75,6 +75,11 @@ export class WidgetRegistry {
     return this.widgets.get(key) ?? this.incomplete.get(key);
   }
 
+  /** Only a registered, closed widget can override a runtime macro. */
+  getEffectiveWidget(name: string): WidgetDef | undefined {
+    return this.widgets.get(name.toLowerCase());
+  }
+
   /** Get the effective registered definitions, excluding incomplete editor declarations. */
   getAllWidgets(): WidgetDef[] {
     return Array.from(this.widgets.values());

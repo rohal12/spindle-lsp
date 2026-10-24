@@ -157,9 +157,9 @@ describe('W74: widget spelling shared by navigation and edits (#74)', () => {
     expect(findWidgetReferences('greeting', model, false).map(l => l.range.start.line)).toEqual([2]);
   });
 
-  it('C-W74: built-in macro names take precedence over widgets', () => {
+  it('C-W74: effective widgets take precedence over built-in macro names (#181)', () => {
     const model = workspace(':: StoryVariables\n:: Start\n{if true}x{/if}', [[declUri, ':: Widgets [widget]\n{widget "if"}hi{/widget}']]);
-    expect(getDefinition(uri, { line: 2, character: 2 }, model)).toBeNull();
+    expect(getDefinition(uri, { line: 2, character: 2 }, model)?.uri).toBe(declUri);
   });
 
   describe('G74: stray closers are not widget references (#74 follow-up)', () => {

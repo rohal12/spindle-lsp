@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
+import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 
 function diagnose(files: Record<string, string>, uri = 'file:///story.tw') {
   const model = new WorkspaceModel();
@@ -32,11 +33,21 @@ describe('SP207: declarations that stop Spindle from starting (#62)', () => {
     expect(diags[0].message).toContain('StoryVariables: Invalid declaration: "// starting gold". Expected: $name = value');
   });
 
-  it('reports values that do not compile, such as a trailing comment', () => {
-    const diags = sp207(':: StoryVariables\n$gold = 10 // starting gold\n$ok = "a // b"\n\n:: Start\n$gold $ok');
+  it.each([['StoryVariables', '$'], ['StoryTransients', '%']] as const)(
+    'accepts trailing line comments in %s with the runtime value', (passage, sigil) => {
+      for (const comment of ['// starting gold', '<!-- starting gold']) {
+        const line = `${sigil}gold = 10 ${comment}`;
+        expect(parseStoryVariables(line, sigil).get('gold')?.default).toBe(10);
+        expect(sp207(`:: ${passage}\n${line}\n${sigil}ok = "a // b"\n\n:: Start\n{${sigil}gold} {${sigil}ok}`)).toEqual([]);
+      }
+    },
+  );
+
+  it('reports malformed initializers that do not compile', () => {
+    const diags = sp207(':: StoryVariables\n$gold = [1,\n$ok = "a // b"\n\n:: Start\n$gold $ok');
     expect(diags).toHaveLength(1);
-    expect(diags[0].range).toEqual({ start: { line: 1, character: 0 }, end: { line: 1, character: 27 } });
-    expect(diags[0].message).toContain('Failed to evaluate "$gold = 10 // starting gold"');
+    expect(diags[0].range).toEqual({ start: { line: 1, character: 0 }, end: { line: 1, character: 11 } });
+    expect(diags[0].message).toContain('Failed to evaluate "$gold = [1,"');
   });
 
   it('reports unsupported types; null is a valid default', () => {

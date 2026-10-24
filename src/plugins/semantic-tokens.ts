@@ -127,7 +127,7 @@ export function computeSemanticTokensAbsolute(
     });
 
     for (const macro of macroTokens(passage)) {
-      push(passage, macro.nameStart, macro.nameEnd, 'function', workspace.macros.getMacro(macro.name) ? ['defaultLibrary'] : []);
+      push(passage, macro.nameStart, macro.nameEnd, 'function', workspace.getEffectiveMacro(macro.name) ? ['defaultLibrary'] : []);
     }
     for (const use of variableUses(passage)) {
       push(passage, use.start, use.end, 'variable', VARIABLE_MODIFIERS[use.sigil]);

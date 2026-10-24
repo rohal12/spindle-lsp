@@ -37,7 +37,7 @@ describe('computeInlayHints', () => {
   });
 
   it.each(['builtin', 'configured', 'discovered'] as const)(
-    'suppresses widget hints shadowed by a %s macro (#126)', source => {
+    'provides effective widget hints before a %s macro (#181)', source => {
       const name = source === 'builtin' ? 'button' : 'greet';
       const ws = createWorkspace(
         { name: 'widgets.tw', content: `:: Widgets [widget]\n{widget "${name}" @unused}{@unused}{/widget}\n` },
@@ -51,7 +51,7 @@ describe('computeInlayHints', () => {
         const hints = computeInlayHints('file:///story.tw', {
           start: { line: 0, character: 0 }, end: { line: 10, character: 0 },
         }, ws);
-        expect(hints.filter(h => h.kind === 'parameter')).toEqual([]);
+        expect(hints.filter(h => h.kind === 'parameter').map(h => h.label)).toEqual(['@unused:']);
       } finally {
         ws.dispose();
       }

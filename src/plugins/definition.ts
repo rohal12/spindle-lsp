@@ -71,8 +71,7 @@ function getWidgetDefinition(
   const doc = workspace.markup.get(uri);
   const head = doc && macroHeadAt(doc, position);
   if (!head) return null;
-  // Only if it's not a known macro
-  if (workspace.macros.getMacro(head.name)) return null;
+  if (workspace.getEffectiveMacro(head.name)) return null;
   const widget = workspace.widgets.getWidget(head.name);
   return widget ? { uri: widget.uri, range: widget.range } : null;
 }

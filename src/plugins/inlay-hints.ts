@@ -59,7 +59,7 @@ function addWidgetParamHints(
       if (token.isClose || token.rawArgs === '') continue;
       if (!inRange(passage.position(token.start).line)) continue;
 
-      if (workspace.macros.getMacro(token.name)) continue;
+      if (workspace.getEffectiveMacro(token.name)) continue;
       const widget = workspace.widgets.getWidget(token.name);
       if (!widget || widget.params.length === 0) continue;
 

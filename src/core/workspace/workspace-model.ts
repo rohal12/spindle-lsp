@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { builtinMacros, discoverMacros, passagePieces } from '@rohal12/spindle/tooling';
+import { discoverMacros } from '@rohal12/spindle/tooling';
 import type { DiscoveredMacro } from '@rohal12/spindle/tooling';
 import { DocumentStore } from './document-store.js';
 import { compareSourceUris, PassageIndex } from './passage-index.js';
@@ -35,8 +35,8 @@ export interface WorkspaceModelConfig {
  * The macros defined in the `{do}` code of a StoryInit passage's `content`
  * (the code the tooling API finds in it).
  */
-function storyInitMacros(content: string): DiscoveredMacro[] {
-  return passagePieces(content, builtinMacros)
+function storyInitMacros(passage: PassageMarkup): DiscoveredMacro[] {
+  return passage.pieces
     .flatMap((piece) => piece.kind === 'code' && piece.goal === 'statements' ? discoverMacros(piece.code) : []);
 }
 
@@ -193,10 +193,15 @@ export class WorkspaceModel extends EventEmitter {
   /**
    * Whether `{name}` opens a container that needs a `{/name}` closing tag:
    * a block macro, or a block widget (one whose body renders `{@children}`).
-   * Like Spindle's set of block macros, either source makes a name a block.
+   * A same-name block macro retains its syntax when a widget owns the call.
    */
   isContainer(name: string): boolean {
     return this.macros.isBlock(name) || (this.widgets.getWidget(name)?.block ?? false);
+  }
+
+  /** Runtime macro metadata, after effective widgets have claimed their names. */
+  getEffectiveMacro(name: string) {
+    return this.widgets.getEffectiveWidget(name) ? undefined : this.macros.getMacro(name);
   }
 
   /**
@@ -315,7 +320,7 @@ export class WorkspaceModel extends EventEmitter {
    */
   private refreshDiscoveredMacros(): void {
     const found: DiscoveredMacro[] = [];
-    const init: DiscoveredMacro[] = [];
+    const init: Passage[] = [];
     const seen = new Set<string>();
     const effective = new Map(this.passages.getEffectivePassages().map(passage => [passage.name, passage]));
 
@@ -342,12 +347,21 @@ export class WorkspaceModel extends EventEmitter {
 
         const content = this.markup.get(passage.uri)?.passages.find(p => p.passage === passage)?.content ?? '';
         if (isScript) found.push(...discoverMacros(content));
-        else init.push(...storyInitMacros(content));
+        else init.push(passage);
       }
     }
 
-    // Story JavaScript runs before StoryInit, whose definitions override it.
-    this.macros.setDiscoveredMacros([...found, ...init]);
+    // Story JavaScript and widget registration precede StoryInit. Read its
+    // executable pieces only after dropping stale discoveries and installing
+    // that phase's metadata, including the provenance of replaced macros.
+    this.macros.setDiscoveredMacros(found);
+    if (init.length === 0) return;
+    this.rescanWidgets();
+    for (const passage of init) {
+      const markup = this.markup.get(passage.uri)?.passages.find(p => p.passage === passage);
+      if (markup) found.push(...storyInitMacros(markup));
+    }
+    this.macros.setDiscoveredMacros(found);
   }
 
   /**
@@ -378,15 +392,32 @@ export class WorkspaceModel extends EventEmitter {
     if (transients) this.variables.parseStoryTransients(transients.content, transients.passage.headerEnd.end.line + 1, transients.doc.uri);
     else this.variables.clearStoryTransients();
 
-    // The markup of the story documents (JS/TS macro sources hold no passages)
-    const readDocuments = () => this.documents.getUris().flatMap((uri) => {
+    // Rescan widgets: the markup pairs its tags with them once they are known
+    this.rescanWidgets();
+
+    // Rescan variable usages and widget invocations across all story documents
+    // (empty documents are scanned too, dropping their previous usages)
+    const effective = new Set(this.passages.getEffectivePassages());
+    this.widgets.clearInvocations();
+    for (const doc of this.readDocuments()) {
+      const passages = doc.passages.filter(p => effective.has(p.passage));
+      this.variables.scanDocument(doc.uri, doc.text, { passages });
+      this.widgets.recordInvocations(doc.uri, passages);
+    }
+  }
+
+  /** The story documents' markup; JavaScript/TypeScript sources hold no passages. */
+  private readDocuments() {
+    return this.documents.getUris().flatMap(uri => {
       const markup = isMacroSource(uri) ? undefined : this.markup.get(uri);
       return markup ? [markup] : [];
     });
+  }
 
-    // Rescan widgets: the markup pairs its tags with them once they are known
+  /** Refresh widget registration before executable analysis reads its metadata. */
+  private rescanWidgets(): void {
     const markups = new Map<Passage, PassageMarkup>();
-    for (const doc of readDocuments()) for (const passage of doc.passages) markups.set(passage.passage, passage);
+    for (const doc of this.readDocuments()) for (const passage of doc.passages) markups.set(passage.passage, passage);
     const effective = new Set(this.passages.getEffectivePassages());
     this.widgets.scan(
       [...effective].flatMap((passage) => markups.get(passage) ?? []),
@@ -397,23 +428,13 @@ export class WorkspaceModel extends EventEmitter {
     // Discard the discovery context (which can contain definitions from the
     // previous scan) before any usage/code/pairing analysis is cached.
     this.markup.invalidate();
-
-    // Rescan variable usages and widget invocations across all story documents
-    // (empty documents are scanned too, dropping their previous usages)
-    this.widgets.clearInvocations();
-    for (const doc of readDocuments()) {
-      const passages = doc.passages.filter(p => effective.has(p.passage));
-      this.variables.scanDocument(doc.uri, doc.text, { passages });
-      this.widgets.recordInvocations(doc.uri, passages);
-    }
   }
 
-  /** All runtime metadata, with real macros taking precedence over widgets. */
+  /** All runtime metadata, with effective widgets taking precedence over macros. */
   private toolingMacros() {
-    const macros = this.macros.toolingMacros();
+    const macros = this.macros.toolingMacros().filter(macro => !this.widgets.getEffectiveWidget(macro.name));
     return [...macros, ...this.widgets.getAllWidgets()
-      .filter(widget => !this.macros.getMacro(widget.name))
-      .map(widget => ({ name: widget.name, block: widget.block, subMacros: [], widget: widget.tooling }))];
+      .map(widget => ({ name: widget.name, block: widget.block || this.macros.isBlock(widget.name), subMacros: [], widget: widget.tooling }))];
   }
 
   /** Coalesce analysis and diagnostics across a burst of document changes. */

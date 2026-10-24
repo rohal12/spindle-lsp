@@ -63,19 +63,24 @@ export function registerAuditFollowupContracts(test: Register): void {
       }
     }
     for (const name of ['button', 'print', 'if', 'custom']) for (const block of [false, true]) {
-      test(`W74/shadowed-declaration/${name}/${block}/${eol.length}`, () => {
+      test(`W74/widget-precedence/${name}/${block}/${eol.length}`, () => {
         const definition = `:: W [widget]\n{widget "${name}"}${block ? '{@children}' : 'body'}{/widget}\n`.replaceAll('\n', eol);
-        const call = name === 'button' ? '{BuTToN "Run"}clicked{/BuTToN}' : name === 'if' ? '{IF true}yes{/IF}' : `{${name} 123}`;
+        const container = block || name === 'button' || name === 'if';
+        const call = `{${name.toUpperCase()}}${container ? `body{/${name.toUpperCase()}}` : ''}`;
         const story = `:: StoryVariables\n:: Start\n${call}\n`.replaceAll('\n', eol);
         const files = new Map([[defs, definition], [uri, story]]);
         if (name === 'custom') files.set(scriptUri, 'Story.defineMacro({name:"custom",render(){return null;}});');
         const workspace = model(files);
         const widget = workspace.widgets.getWidget(name)!;
-        expect(findReferences(defs, widget.nameRange.start, workspace, false)).toEqual([]);
-        expect(findReferences(defs, widget.nameRange.start, workspace, true)).toHaveLength(1);
-        expect(computeCodeLenses(defs, workspace).find(l => l.range.start.line === 1)?.command.title).toBe('0 usages');
+        expect(findReferences(defs, widget.nameRange.start, workspace, false)).toHaveLength(container ? 2 : 1);
+        expect(findReferences(defs, widget.nameRange.start, workspace, true)).toHaveLength(container ? 3 : 2);
+        expect(computeCodeLenses(defs, workspace).find(l => l.range.start.line === 1)?.command.title).toBe('1 usage');
+        if (container && !block) {
+          expect(() => computeRename(defs, widget.nameRange.start, 'newWidget', workspace)).toThrow(/container body/);
+          return;
+        }
         const output = apply(files, computeRename(defs, widget.nameRange.start, 'newWidget', workspace));
-        expect(output.get(uri)).toBe(story);
+        expect(output.get(uri)).toBe(story.replaceAll(name.toUpperCase(), 'newWidget'));
         expect(output.get(defs)).toBe(definition.replace(`"${name}"`, '"newWidget"'));
         expect(computeDiagnostics(uri, model(output)).filter(d => d.severity === 'error')).toEqual([]);
       });

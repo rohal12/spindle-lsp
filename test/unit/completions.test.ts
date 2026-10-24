@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { getCompletions } from '../../src/plugins/completions.js';
+import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
+import { evaluate } from '../helpers/expression-oracle.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -274,5 +276,57 @@ describe('completion context precedence (#130)', () => {
     const output = TextDocument.applyEdits(TextDocument.create('file:///test.tw', 'twee', 1, content), [item!.textEdit as never]);
     expect(output.split('\n')[4]).toBe(marked.endsWith('}') ? '{my_widget}' : '{my_widget');
     ws.dispose();
+  });
+});
+
+// Variable and field edits belong only to code Spindle executes, including
+// expressions that are still being typed (#154).
+describe('executable variable completion contexts (#154)', () => {
+  function complete(marked: string, eol = '\n') {
+    const prefix = ':: StoryVariables\n$obj = { hp: 1, "first-name": "Ada" }\n:: StoryTransients\n%agent = { hp: 1 }\n:: Start\n{set _temp = 1}{set @local = 2}\n';
+    const content = (prefix + marked.replace('¦', '')).replace(/\n/g, eol);
+    const before = (prefix + marked.slice(0, marked.indexOf('¦'))).split('\n');
+    const workspace = createWorkspace({ name: 'test.tw', content });
+    const items = getCompletions('file:///test.tw', { line: before.length - 1, character: before.at(-1)!.length }, undefined, workspace);
+    return { items, content, workspace };
+  }
+
+  it.each([
+    '$¦', '_¦', '@¦', '%¦', '$obj.¦', '%agent.¦',
+    '{print "$obj.¦"}', "{print '$obj.¦'}", '{print /$obj.¦/}', '{print `literal $obj.¦`}',
+    '{print "$¦"}', '{print "_¦"}', '{print "@¦"}', '{print "%¦"}',
+    '<!-- $obj.¦ -->', '{print 1 /* $obj.¦ */}', '{print 1 // $obj.¦\n}',
+    '<script>const x = "$obj.¦";</script>', '<style>.x { $obj.¦ }</style>', '\\{$obj.¦}',
+    '[[plain $obj.¦->Start]]', '{button "plain $obj.¦"}x{/button}', '<span title="$obj.¦">x</span>',
+  ])('suppresses variable and field edits in literal text %s', (marked) => {
+    const { items, workspace } = complete(marked);
+    expect(items).toEqual([]);
+    workspace.dispose();
+  });
+
+  it.each([
+    ['{set $¦', '$obj'], ['{set _¦', '_temp'], ['{set @¦', '@local'], ['{set %¦', '%agent'],
+    ['{$obj.¦}', 'hp'], ['{print $obj.¦', 'hp'], ['{%agent.¦', 'hp'],
+    ['{print `${$obj.¦}`}', 'hp'], ['{print `${$¦}`}', '$obj'],
+    ['[[{print $obj.¦}->Start]]', 'hp'], ['{button "{print $obj.¦}"}x{/button}', 'hp'],
+    ['<span title="{print $obj.¦}">x</span>', 'hp'],
+  ])('keeps executable completions in %s', (marked, label) => {
+    const { items, workspace } = complete(marked);
+    expect(items.map(item => item.label)).toContain(label);
+    workspace.dispose();
+  });
+
+  it.each(['\n', '\r\n'])('applies a bracket field edit without breaking nested executable markup (%j)', (eol) => {
+    const { items, content, workspace } = complete('{button "{print $obj.¦}"}x{/button}', eol);
+    const item = items.find(item => item.label === 'first-name');
+    expect(item?.textEdit).toBeDefined();
+    const output = TextDocument.applyEdits(TextDocument.create('file:///test.tw', 'twee', 1, content), [item!.textEdit as never]);
+    expect(output.split(eol).at(-1)).toBe('{button "{print $obj[\\"first-name\\"]}"}x{/button}');
+    workspace.documents.update('file:///test.tw', output);
+    expect(computeDiagnostics('file:///test.tw', workspace).filter(d => d.code === 'SP106')).toEqual([]);
+    const expression = workspace.markup.get('file:///test.tw')!.passages.at(-1)!.pieces.find(piece => piece.kind === 'code' && piece.code.includes('first-name'));
+    expect(expression?.kind).toBe('code');
+    if (expression?.kind === 'code') expect(evaluate(expression.code, { obj: { 'first-name': 'Ada' } })).toBe('Ada');
+    workspace.dispose();
   });
 });
