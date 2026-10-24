@@ -107,6 +107,11 @@ export class PassageIndex {
     return found;
   }
 
+  /** The compiler replaces duplicate passages with the later source declaration. */
+  getEffectivePassage(name: string): Passage | undefined {
+    return this.getPassages(name).at(-1);
+  }
+
   /** Get the passage containing a specific line in a document. */
   getPassageAt(uri: string, line: number): Passage | undefined {
     const passages = this.byUri.get(uri);
@@ -146,12 +151,12 @@ export class PassageIndex {
 
   /** Get the StoryVariables passage, if any. */
   getStoryVariables(): Passage | undefined {
-    return this.getPassage('StoryVariables');
+    return this.getEffectivePassage('StoryVariables');
   }
 
   /** Get the StoryTransients passage, if any. */
   getStoryTransients(): Passage | undefined {
-    return this.getPassage('StoryTransients');
+    return this.getEffectivePassage('StoryTransients');
   }
 
   /** Get the StoryInit passage, if any. */

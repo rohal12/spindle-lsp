@@ -6,6 +6,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { encodeEnclosingMarkup } from '../core/markup/passage-refs.js';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
+import { isRuntimePassage } from '../core/parsing/passage-parser.js';
 import { markupAt, type MarkupCursor } from './markup-cursor.js';
 import { variableUses } from './markup-symbols.js';
 
@@ -224,7 +225,7 @@ function linkable(name: string): boolean {
 }
 
 function getPassageNameCompletions(workspace: WorkspaceModel): CompletionItem[] {
-  return workspace.passages.getAllPassages().filter(p => linkable(p.name)).map(p => ({
+  return workspace.passages.getAllPassages().filter(p => isRuntimePassage(p) && linkable(p.name)).map(p => ({
     label: p.name,
     kind: 18, // CompletionItemKind.Reference
     detail: p.uri,

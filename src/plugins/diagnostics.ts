@@ -499,7 +499,7 @@ function structureDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel)
       if (token.type === 'macro' && !token.isClose) {
         diagnostics.push(...parentDiagnostics(passage, token, ancestors, workspace));
         diagnostics.push(...childDiagnostics(passage, node, token, workspace));
-        diagnostics.push(...loopDiagnostics(passage, token, ancestors));
+        diagnostics.push(...loopDiagnostics(passage, token, ancestors, workspace));
       }
       if (!node.body) continue;
       const inside = [...ancestors, {
@@ -683,14 +683,14 @@ function statementEnd(code: string, from: number): number {
  * `{link}` or `{button}` between the assignment and the loop: that body runs on
  * click, not once per iteration.
  */
-function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[]): SpindleDiagnostic[] {
+function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[], workspace: WorkspaceModel): SpindleDiagnostic[] {
   const macro = token.name.toLowerCase();
-  if ((macro !== 'computed' && macro !== 'set') || !token.rawArgs) return [];
+  if ((macro !== 'computed' && macro !== 'set') || !token.rawArgs || workspace.macros.getMacro(macro)?.source !== 'builtin') return [];
 
   let loop: Ancestor | undefined;
   for (let i = ancestors.length - 1; i >= 0; i--) {
     const ancestor = ancestors[i];
-    if (ancestor.element) continue;
+    if (ancestor.element || workspace.macros.getMacro(ancestor.name)?.source !== 'builtin') continue;
     if (DEFERRED_CONTAINERS.has(ancestor.name)) return [];
     if (ancestor.name === 'for') {
       loop = ancestor;
@@ -891,7 +891,7 @@ function linkDiagnostics(doc: DocumentMarkup): SpindleDiagnostic[] {
   // SP304: the link macro, which renders every bracket link, reads its quoted
   // arguments as JavaScript string literals; a target with a line break is none,
   // and a click on the link fails (see core/parsing/link-runtime.ts).
-  for (const link of findLinkRuntimeMismatches(doc.text)) {
+  for (const link of findLinkRuntimeMismatches(doc)) {
     diagnostics.push(makeDiag(
       link.range,
       DiagnosticCode.LinkRuntimeMismatch,
@@ -905,7 +905,7 @@ function linkDiagnostics(doc: DocumentMarkup): SpindleDiagnostic[] {
   // as written. It interpolates the link's `.class#id` selectors and the markup
   // of its label, but not the passage name: `[[Go->T{$n}]]` goes to a passage
   // named `T{$n}`.
-  for (const found of findLiteralLinkInterpolations(doc.text)) {
+  for (const found of findLiteralLinkInterpolations(doc)) {
     diagnostics.push(makeDiag(
       found.range,
       DiagnosticCode.LiteralLinkInterpolation,

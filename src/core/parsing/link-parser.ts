@@ -9,8 +9,8 @@ import { documentPassageRefs } from '../markup/passage-refs.js';
 // Passage references (and the checks on them) in a text
 //
 // The reading of a passage's markup is the tooling API's (see
-// core/markup/passage-refs.ts); these functions take a text rather than a
-// workspace document, for the callers that have none (diagnostics, completion).
+// core/markup/passage-refs.ts); workspace callers supply their markup so its
+// effective macro context is preserved. Standalone callers may pass text.
 // ---------------------------------------------------------------------------
 
 const TEXT_URI = 'memory:///text.tw';
@@ -20,7 +20,8 @@ const TEXT_CONTEXT = { macros: builtinMacros, isBlock: isBlockMacro };
  * The markup of `text`: a Twee document (its passages), or a bare body (one
  * passage without a header) when it declares none.
  */
-function markupOfText(text: string): DocumentMarkup {
+function markupOfText(text: string | DocumentMarkup): DocumentMarkup {
+  if (typeof text !== 'string') return text;
   if (lastMarkup?.text === text) return lastMarkup;
   const markup = readText(text);
   lastMarkup = markup;
@@ -64,8 +65,8 @@ export interface LinkRuntimeMismatch {
  * link-runtime.ts), in order: a target with a line break, which the macro's
  * quoted target cannot carry.
  */
-export function findLinkRuntimeMismatches(text: string): LinkRuntimeMismatch[] {
-  if (!text.includes('[[')) return [];
+export function findLinkRuntimeMismatches(text: string | DocumentMarkup): LinkRuntimeMismatch[] {
+  if (!(typeof text === 'string' ? text : text.text).includes('[[')) return [];
   const found: LinkRuntimeMismatch[] = [];
   for (const ref of documentPassageRefs(markupOfText(text))) {
     if (ref.form !== 'bracket') continue;
@@ -97,7 +98,7 @@ export interface LiteralLinkInterpolation {
  * is part of the name a click navigates to. The label of a link is markup and
  * is interpolated.
  */
-export function findLiteralLinkInterpolations(text: string): LiteralLinkInterpolation[] {
+export function findLiteralLinkInterpolations(text: string | DocumentMarkup): LiteralLinkInterpolation[] {
   const found: LiteralLinkInterpolation[] = [];
   for (const ref of documentPassageRefs(markupOfText(text))) {
     if (ref.macro !== 'link' || ref.form === 'text') continue;

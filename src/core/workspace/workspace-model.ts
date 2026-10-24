@@ -365,7 +365,7 @@ export class WorkspaceModel extends EventEmitter {
 
     // Declarations use the indexed passage body, including compact boundaries.
     const declarations = (name: string) => {
-      const passage = this.passages.getPassage(name);
+      const passage = this.passages.getEffectivePassage(name);
       return passage && isRuntimePassage(passage) ? this.markup.get(passage.uri)?.passages.find(p => p.passage === passage) : undefined;
     };
     const variables = declarations('StoryVariables');
