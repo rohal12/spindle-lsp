@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { canDiscoverProjectPath, findProjectFiles, isExcludedProjectFile } from './macro-sources.js';
+import { compareSourcePaths } from './source-order.js';
 
 /**
  * Existing files are literal, even when their names contain glob syntax or
@@ -27,9 +28,9 @@ export async function resolveFiles(pattern: string, cwd: string): Promise<string
   return [...new Set(await findProjectFiles(directory, input))];
 }
 
-/** Read the whole input batch before analysis or writes; failures retain their path. */
+/** Read in compiler source order before analysis or writes; failures retain their path. */
 export function readFileContents(files: readonly string[]): Map<string, string> {
-  return new Map(files.map(file => [file, readFileSync(file, 'utf8')]));
+  return new Map([...files].sort(compareSourcePaths).map(file => [file, readFileSync(file, 'utf8')]));
 }
 
 /** Resolve overlapping CLI arguments once, using the same policy as MCP. */

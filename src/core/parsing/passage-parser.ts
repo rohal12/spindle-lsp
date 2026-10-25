@@ -33,7 +33,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   // Run regex against escaped version (neutralize backslash sequences for matching)
   // The compiler accepts BOM-prefixed headers in concatenated files too.
   // Keep every column in the client's original coordinates.
-  const bomLength = line.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const bomLength = /^\uFEFF*/.exec(line)![0].length;
   const escaped = line.replace(/\\./g, 'ec');
   // Twee uses Go/Unicode White_Space, not JavaScript whitespace (FEFF/NEL).
   const prefix = /^::\p{White_Space}*/u.exec(escaped.slice(bomLength));

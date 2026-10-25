@@ -2,17 +2,9 @@ import type { Passage } from '../types.js';
 import { parsePassageHeader } from '../parsing/passage-parser.js';
 import { splitLines } from '../text.js';
 import { createRequire as createSettingsRequire } from 'node:module';
+import { compareSourceUris } from './source-order.js';
 
-/** Folder compilation walks entries by UTF-8 name, descending before the next sibling. */
-export function compareSourceUris(left: string, right: string): number {
-  const a = left.split('/').map(decodeURIComponent);
-  const b = right.split('/').map(decodeURIComponent);
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    const order = Buffer.compare(Buffer.from(a[i], 'utf8'), Buffer.from(b[i], 'utf8'));
-    if (order !== 0) return order;
-  }
-  return a.length - b.length;
-}
+export { compareSourceUris };
 
 /**
  * Maintains an index of all passages across all open documents.

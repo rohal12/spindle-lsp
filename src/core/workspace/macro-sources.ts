@@ -5,6 +5,7 @@ import { glob } from 'glob';
 import type { Path } from 'glob';
 
 import { findConfigFile } from './config-loader.js';
+import { compareSourcePaths } from './source-order.js';
 
 /**
  * JavaScript/TypeScript files scanned for `Story.defineMacro({...})` calls.
@@ -94,7 +95,7 @@ export async function findProjectFiles(root: string, pattern: string): Promise<s
   });
   // Recheck after enumeration: files or their ancestors may have disappeared
   // or become links while glob was running.
-  return files.filter(file => canDiscoverProjectPath(file, root));
+  return files.filter(file => canDiscoverProjectPath(file, root)).sort(compareSourcePaths);
 }
 
 /** Whether `path` is `dir` or lies inside it (whole segments, not a string prefix). */

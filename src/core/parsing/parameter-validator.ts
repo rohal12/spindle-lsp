@@ -159,11 +159,11 @@ const parameterTypes: ParameterType[] = [
       try {
         const binding = parseBoundVariable(arg.text);
         if (!binding) return new TypeError('Argument is not a variable receiver');
-        // This configured schema requires an identifier path. Decode it with
-        // the runtime reader before checking the schema's permitted shape.
-        const name = `${binding.explicitSigil ? '$' : ''}${[binding.name, ...binding.path].join('.')}`;
-        if (!/^(?:\$\w|[A-Za-z_])[\w$]*(?:\.[\w$]+)*$/.test(name)) {
-          return new TypeError(`Argument is not a valid variable receiver: '${name}'`);
+        // The configured schema constrains the root's spelling; the runtime
+        // reader owns member names, including Unicode identifier escapes.
+        const root = `${binding.explicitSigil ? '$' : ''}${binding.name}`;
+        if (!/^(?:\$\w|[A-Za-z_])[\w$]*$/.test(root)) {
+          return new TypeError(`Argument is not a valid variable receiver: '${root}'`);
         }
       } catch (error) {
         return new TypeError(`Invalid story variable receiver: ${error instanceof Error ? error.message : String(error)}`);

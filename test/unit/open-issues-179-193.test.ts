@@ -10,7 +10,8 @@ import { openPlaySession } from '@rohal12/spindle/play';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { parsePassageHeader } from '../../src/core/parsing/passage-parser.js';
 import { buildLineStarts, offsetToPosition, splitLines } from '../../src/core/text.js';
-import { storyFormatOfTexts } from '../../src/core/workspace/story-format.js';
+import { findStoryFormat, findSpindleTarget, storyFormatOfTexts } from '../../src/core/workspace/story-format.js';
+import { runFormat } from '../../src/cli/format.js';
 import { computeRename, prepareRename } from '../../src/plugins/rename.js';
 import { getDefinition } from '../../src/plugins/definition.js';
 import { computeDocumentLinks } from '../../src/plugins/document-link.js';
@@ -42,6 +43,7 @@ function rename(text: string, model: WorkspaceModel, at: number, name = 'y') {
 function directory() {
   const dir = mkdtempSync(join(tmpdir(), 'spindle-issue-contracts-'));
   directories.push(dir);
+  writeFileSync(join(dir, 'package.json'), '{}');
   return dir;
 }
 async function observe(text: string) {
@@ -89,6 +91,26 @@ it('protects literal foreign-format content from MCP formatting (#189)', async (
   expect(readFileSync(join(dir, 'story.tw'), 'utf8')).toBe(text);
 });
 
+it('selects compiler-effective StoryData despite glob and CLI argument order (#189)', async () => {
+  const dir = directory();
+  const first = join(dir, 'a.tw');
+  const last = join(dir, 'z.tw');
+  const text = ':: StoryData\n{"format":"SugarCube"}\n:: Start\n<<print `a\n   b`>>\n';
+  writeFileSync(first, ':: StoryData\n{"format":"Spindle"}\n');
+  writeFileSync(last, text);
+  expect(await formatFiles('*.tw', dir)).toMatchObject({ formatted: 0, skipped: expect.stringContaining('SugarCube') });
+  expect(await runFormat([last, first])).toBe(0);
+  expect(readFileSync(last, 'utf8')).toBe(text);
+  expect(await findStoryFormat([], dir)).toEqual({ name: 'SugarCube', isSpindle: false });
+});
+
+it('selects the compiler-effective target version during project discovery (#189)', async () => {
+  const dir = directory();
+  writeFileSync(join(dir, 'a.tw'), ':: StoryData\n{"format":"Spindle","format-version":"0.1.0"}\n');
+  writeFileSync(join(dir, 'z.tw'), ':: StoryData\n{"format":"Spindle","format-version":"0.62.7"}\n');
+  expect(await findSpindleTarget([], dir)).toMatchObject({ version: '0.62.7', supported: true });
+});
+
 it.each([false, true])('navigates to effective duplicate passages across files=%s and tracks replacements (#190)', separate => {
   const first = ':: Hall\nOLD\n';
   const second = ':: Hall\nNEW\n';
@@ -124,6 +146,20 @@ it.each(['\n', '\r\n', '\r'])('keeps concatenated BOM header names and live refe
   expect(output).toContain('{$y}');
   expect((await observe(text)).text).toContain('old');
   expect((await observe(output)).text).toContain('old');
+});
+
+it.each([['leading', 0], ['concatenated', 6]] as const)('indexes %s headers behind multiple BOM characters (#191)', async (_kind, line) => {
+  const lines = splitLines(metadata + ':: StoryVariables\n$x = "old"\n:: Start\n{$x}\n');
+  lines[line] = '\uFEFF\uFEFF' + lines[line];
+  const text = lines.join('\n');
+  const model = workspace(text);
+  expect(model.passages.getAllPassages().map(p => p.name)).toEqual(parseTwee(text).passages.map(p => p.name));
+  const header = model.passages.getAllPassages().find(p => p.headerEnd.start.line === line)!;
+  expect(header.nameRange.start.character).toBe(5);
+  expect(document(text).getText(header.nameRange)).toBe(line === 0 ? 'StoryTitle' : 'Start');
+  const changed = rename(text, model, text.indexOf('$x'));
+  expect(changed).toContain('{$y}');
+  expect((await observe(changed)).text).toBe('old');
 });
 
 it.each(['\uFEFF', '\u0085', ' ', '\t'])('assigns compiler passage roles for tag separator %j (#192)', async separator => {
@@ -201,6 +237,14 @@ $x = {"field":"old"}
   expect((await observe(changed)).actions).toEqual(expect.arrayContaining([expect.objectContaining({ variable: 'y.field', value: 'old' })]));
 });
 
+it.each(['x', '"x"', '"$x"'])('keeps input binding %s valid when renaming to an underscore-leading story variable (#186)', async binding => {
+  const text = metadata + `:: StoryVariables\n$x = "old"\n:: Start\n{textbox ${binding}}\n`;
+  const changed = rename(text, workspace(text), text.indexOf('$x'), '_y');
+  const rawArgs = splitLines(changed).at(-2)!.slice('{textbox '.length, -1);
+  expect(parseBoundVariable(rawArgs)?.name).toBe('_y');
+  expect((await observe(changed)).actions).toEqual(expect.arrayContaining([expect.objectContaining({ variable: '_y', value: 'old' })]));
+});
+
 it('accepts escaped configured receiver bindings using the runtime reader (#187)', () => {
   const text = metadata + ':: StoryVariables\n$x = "old"\n:: Macros [script]\nStory.defineMacro({name:"field",storeVar:true,render(props,ctx){return String(ctx.value);}});\n:: Start\n{field "$\\u0078"}\n';
   const model = new WorkspaceModel();
@@ -208,6 +252,16 @@ it('accepts escaped configured receiver bindings using the runtime reader (#187)
   model.macros.loadConfig({ field: { parameters: ['receiver'] } });
   model.initialize(new Map([[uri, text]]));
   expect(computeDiagnostics(uri, model).filter(d => d.code === 'SP109')).toEqual([]);
+});
+
+it.each([String.raw`\u03b1`, 'α'])('accepts configured receiver member %s through the runtime reader (#187)', async member => {
+  const text = metadata + ':: StoryVariables\n$x = {"α":"old"}\n:: Macros [script]\nStory.defineMacro({name:"field",storeVar:true,render(props,ctx){return String(ctx.value);}});\n:: Start\n' + `{field "$x.${member}"}\n`;
+  const model = new WorkspaceModel();
+  models.push(model);
+  model.macros.loadConfig({ field: { parameters: ['receiver'] } });
+  model.initialize(new Map([[uri, text]]));
+  expect(computeDiagnostics(uri, model).filter(d => d.code === 'SP109')).toEqual([]);
+  expect((await observe(text)).text).toBe('old');
 });
 
 it.each(['caption', 'print', 'do'])('renames live %s widgets inside a do-widget markup body (#179)', async name => {

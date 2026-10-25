@@ -3,7 +3,7 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { readStoryData } from '../core/workspace/story-data.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { lexJs, parseDeclarations, passagePieces, pieceOffset, type Piece, type BoundVariable } from '@rohal12/spindle/tooling';
+import { lexJs, parseBoundVariable, parseDeclarations, passagePieces, pieceOffset, type Piece, type BoundVariable } from '@rohal12/spindle/tooling';
 import { collectVariableReferences } from '../core/parsing/executable-refs.js';
 import { sourceView, viewIndex } from '../core/markup/source-view.js';
 import { positionToOffset, splitLines } from '../core/text.js';
@@ -170,7 +170,14 @@ export function computeRename(
         }
         const binding = byStart.get(start);
         if (binding && binding.end === end) {
-          addEdit(ref.uri, passage.range(binding.nameStart, binding.nameEnd), bareName);
+          let spelling = bareName;
+          if (!binding.explicitSigil) {
+            // Some story-variable names need a literal $ in an input binding.
+            // Let the runtime reader decide whether the sigilless form works.
+            try { parseBoundVariable(spelling); }
+            catch { spelling = `$${spelling}`; }
+          }
+          addEdit(ref.uri, passage.range(binding.nameStart, binding.nameEnd), spelling);
           continue;
         }
         const view = sourceView(passage, start, end);
