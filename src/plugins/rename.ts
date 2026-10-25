@@ -1,6 +1,7 @@
 import { ErrorCodes, ResponseError } from 'vscode-languageserver';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
+import { readStoryData } from '../core/workspace/story-data.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { lexJs, parseDeclarations, passagePieces, pieceOffset, type Piece } from '@rohal12/spindle/tooling';
 import { sourceView, viewIndex } from '../core/markup/source-view.js';
@@ -231,9 +232,9 @@ function preserveEntryPassage(
     } catch {
       throw new RenameError('Cannot preserve the entry passage: StoryData must contain a valid JSON object.').at(declaration.uri, declaration.nameRange);
     }
-    const start = typeof data.start === 'string' && data.start ? data.start : 'Start';
+    const start = readStoryData(passage.content).start || 'Start';
     if (start !== oldName) continue;
-    if (Object.hasOwn(data, 'start') && typeof data.start !== 'string') {
+    if (Object.entries(data).some(([key, value]) => isEntryField(key) && typeof value !== 'string')) {
       throw new RenameError('Cannot preserve the entry passage: StoryData.start must be a string.').at(declaration.uri, declaration.nameRange);
     }
 
@@ -251,7 +252,7 @@ function preserveEntryPassage(
       literal(text, index) {
         if (depth !== 1 || !text.startsWith('"')) return;
         const isKey = /^\s*:/.test(passage.content.slice(index + text.length));
-        if (isKey) startValue = JSON.parse(text) === 'start';
+        if (isKey) startValue = isEntryField(JSON.parse(text));
         else if (startValue) {
           addEdit(declaration.uri, passage.range(index, index + text.length), JSON.stringify(newName));
           replaced = true;
@@ -270,6 +271,11 @@ function preserveEntryPassage(
     const eol = doc.text.includes('\r\n') ? '\r\n' : '\n';
     addEdit(declaration.uri, { start: end, end }, `${eol}${eol}:: StoryData${eol}${JSON.stringify({ start: newName })}${eol}`);
   }
+}
+
+/** Ask the compiler which source keys name the entry, including Unicode case variants. */
+function isEntryField(key: string): boolean {
+  return readStoryData(JSON.stringify({ [key]: 'Start' })).start === 'Start';
 }
 
 /**

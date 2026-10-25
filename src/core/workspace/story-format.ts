@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { stripBom } from './document-store.js';
 import type { Passage } from '../types.js';
 import { PassageIndex } from './passage-index.js';
+import { readStoryData } from './story-data.js';
 import { findProjectFiles, findProjectRoot } from './macro-sources.js';
 import { readInstalledSpindleVersion, resolveSpindleTarget } from './spindle-version.js';
 import type { SpindleTarget } from './spindle-version.js';
@@ -36,42 +37,25 @@ function isSpindleFormatName(name: string): boolean {
 }
 
 /**
- * The `format` field of a StoryData passage's JSON content, trimmed.
- * Undefined if the content does not parse as a JSON object or its `format`
- * is missing, not a string, or blank.
+ * The compiler's effective `format` for a StoryData passage, trimmed.
+ * Undefined if the content is not a JSON object or the compiler reads no
+ * nonblank format. Repeated fields and nulls follow the compiler's decoder.
  */
 export function readStoryDataFormat(content: string): string | undefined {
-  let data: unknown;
-  try {
-    data = JSON.parse(content);
-  } catch {
-    return undefined;
-  }
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
-  const format = (data as Record<string, unknown>).format;
-  if (typeof format !== 'string') return undefined;
-  return format.trim() || undefined;
+  return readStoryData(content).format.trim() || undefined;
 }
 
 /**
- * The `format-version` of a StoryData passage's JSON content, trimmed, for
- * a StoryData that names Spindle or no format. Undefined if the content does
- * not parse, names another format, or has no string `format-version`.
+ * The compiler's effective `format-version`, trimmed, for a StoryData that
+ * names Spindle or no format. Undefined if the compiler reads no version
+ * or the effective format names another story format.
  */
 function readStoryDataFormatVersion(content: string): string | undefined {
-  let data: unknown;
-  try {
-    data = JSON.parse(content);
-  } catch {
+  const metadata = readStoryData(content);
+  if (metadata.format.trim() && !isSpindleFormatName(metadata.format)) {
     return undefined;
   }
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
-  const record = data as Record<string, unknown>;
-  if (typeof record.format === 'string' && record.format.trim() && !isSpindleFormatName(record.format)) {
-    return undefined;
-  }
-  const version = record['format-version'];
-  return typeof version === 'string' && version.trim() ? version.trim() : undefined;
+  return metadata.formatVersion.trim() || undefined;
 }
 
 /**
