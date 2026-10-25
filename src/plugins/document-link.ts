@@ -31,7 +31,7 @@ export function computeDocumentLinks(uri: string, workspace: WorkspaceModel): Do
   // StoryData, ...) hold code or data, not links: they have no references
   for (const ref of documentPassageRefs(doc)) {
     if (ref.form !== 'bracket') continue;
-    const targetPassage = workspace.passages.getPassage(ref.name);
+    const targetPassage = workspace.passages.getEffectivePassage(ref.name);
     links.push({
       range: ref.range,
       target: targetPassage ? `${targetPassage.uri}#L${targetPassage.range.start.line + 1}` : undefined,

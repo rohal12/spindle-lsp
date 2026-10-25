@@ -32,7 +32,7 @@ export interface MarkupContext {
  * `content` is the passage body with its line breaks normalized to LF, as the
  * compiler hands it to the runtime. Every offset the tooling API reports is
  * an offset into `content` (UTF-16 code units); `docOffset()` and `range()`
- * map them back to the document, so CRLF documents need no special case in a
+ * map them back to the document, so CRLF and CR documents need no special case in a
  * consumer.
  *
  * The analyses are computed on first use and kept.
@@ -42,7 +42,7 @@ export class PassageMarkup {
   readonly content: string;
   /** Whether Spindle reads the body as story markup (see isMarkupPassage). */
   readonly isMarkup: boolean;
-  /** For each `content` offset, its offset in the document; null when the body has no CRLF. */
+  /** For each `content` offset, its offset in the document; null when the body has no CR. */
   private readonly toDoc: Int32Array | null;
 
   private cachedTokens?: { tokens: Token[]; errors: MarkupError[] };
@@ -60,13 +60,13 @@ export class PassageMarkup {
   ) {
     const raw = doc.text.slice(bodyStart, bodyEnd);
     this.isMarkup = isMarkupPassage(passage);
-    if (raw.includes('\r\n')) {
+    if (raw.includes('\r')) {
       const map: number[] = [];
       let content = '';
       for (let i = 0; i < raw.length; i++) {
         if (raw[i] === '\r' && raw[i + 1] === '\n') continue;
         map.push(bodyStart + i);
-        content += raw[i];
+        content += raw[i] === '\r' ? '\n' : raw[i];
       }
       map.push(bodyEnd);
       this.content = content;
@@ -117,7 +117,7 @@ export class PassageMarkup {
 
   /** The flat tokens and the malformed tags; none for a passage that is not markup. */
   get tokenization(): { tokens: Token[]; errors: MarkupError[] } {
-    return (this.cachedTokens ??= this.isMarkup ? tokenizeMarkupTolerant(this.content) : { tokens: [], errors: [] });
+    return (this.cachedTokens ??= this.isMarkup ? tokenizeMarkupTolerant(this.content, { macros: this.doc.context.macros }) : { tokens: [], errors: [] });
   }
 
   get tokens(): Token[] {

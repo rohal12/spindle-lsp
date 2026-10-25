@@ -1,3 +1,4 @@
+import { splitLines } from '../core/text.js';
 import type { Range } from '../core/types.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { builtinMacros, formatPassage, tokenizeMarkupTolerant } from '@rohal12/spindle/tooling';
@@ -69,20 +70,20 @@ export async function formatDocument(text: string, options?: FormatOptions): Pro
   if (text.charCodeAt(0) === 0xfeff) return '﻿' + await formatDocument(text.slice(1), options);
   // Format with LF endings, then give the output the document's own style
   const eol = dominantEol(text);
-  const output = await formatLf(text.replace(/\r\n/g, '\n'), options);
-  return eol === '\r\n' ? output.replace(/\n/g, '\r\n') : output;
+  const output = await formatLf(splitLines(text).join('\n'), options);
+  return output.replace(/\n/g, eol);
 }
 
 /**
- * The document's line-ending style: whichever of CRLF and LF is more common,
- * the first one found when equally common. (Spindle's compiler normalizes
- * CRLF to LF, so the choice never changes what a story does.)
+ * The most common document line ending (LF, CRLF or CR), preferring the
+ * first encountered on a tie. The compiler normalizes each form to LF.
  */
-function dominantEol(text: string): '\n' | '\r\n' {
-  const crlf = (text.match(/\r\n/g) ?? []).length;
-  const lf = (text.match(/\n/g) ?? []).length - crlf;
-  if (crlf !== lf) return crlf > lf ? '\r\n' : '\n';
-  return text.indexOf('\r\n') !== -1 && text.indexOf('\r\n') < text.indexOf('\n') ? '\r\n' : '\n';
+function dominantEol(text: string): string {
+  const counts = new Map<string, number>();
+  for (const [ending] of text.matchAll(/\r\n|[\r\n]/g)) {
+    counts.set(ending, (counts.get(ending) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '\n';
 }
 
 async function formatLf(text: string, options?: FormatOptions): Promise<string> {
@@ -179,7 +180,7 @@ export const formatPlugin: SpindlePlugin = {
       const formatted = await formatDocument(text, { ...formatOpts, filePath: params.textDocument.uri });
       if (formatted === text) return [];
 
-      const lines = text.split('\n');
+      const lines = splitLines(text);
       return [{
         range: {
           start: { line: 0, character: 0 },
@@ -201,7 +202,7 @@ export const formatPlugin: SpindlePlugin = {
       const formatted = await formatRange(text, range, { ...formatOpts, filePath: params.textDocument.uri });
       if (formatted === text) return [];
 
-      const lines = text.split('\n');
+      const lines = splitLines(text);
       return [{
         range: {
           start: { line: 0, character: 0 },
