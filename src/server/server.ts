@@ -71,6 +71,8 @@ export function startServer(args: string[]): void {
   let activePlugins: SpindlePlugin[] = [];
   let workspaceRoot: string | undefined;
   let startupWarning: string | undefined;
+  let completeInitialScan: () => void;
+  const initialScan = new Promise<void>(resolve => { completeInitialScan = resolve; });
 
   connection.onInitialize((params) => {
     console.error('[spindle-lsp] onInitialize called');
@@ -114,11 +116,14 @@ export function startServer(args: string[]): void {
     activePlugins = loadPlugins(allPlugins, config);
     console.error('[spindle-lsp] plugins loaded:', activePlugins.map(p => p.id).join(', '));
 
-    // Spindle semantics apply only to Spindle projects: while StoryData
-    // names another story format, every language feature request answers
-    // null (diagnostics are emptied in computeDiagnostics).
+    // Wait for the complete model before returning edits or deciding whether
+    // StoryData enables Spindle semantics. Foreign projects answer null
+    // (diagnostics are emptied in computeDiagnostics).
     const model = workspace;
-    const pluginConnection = gateConnection(connection, () => model.isSpindleProject());
+    const pluginConnection = gateConnection(connection, async () => {
+      await initialScan;
+      return model.initialized && model.isSpindleProject();
+    });
 
     // Initialize each plugin with context
     for (const plugin of activePlugins) {
@@ -186,6 +191,10 @@ export function startServer(args: string[]): void {
           console.error('[spindle-lsp] workspace initialized, macros:', workspace.macros.getAllMacros().length);
         } catch (err) {
           console.error('[spindle-lsp] workspace scan failed:', err);
+        } finally {
+          // Failed scans release pending requests too, without enabling edits
+          // against a partial model.
+          completeInitialScan();
         }
       });
     }

@@ -18,6 +18,7 @@ import {
   type VariableDiagnosticCode,
   type WidgetDefinition,
 } from '@rohal12/spindle/tooling';
+import { createRequire as createCompilerRequire } from 'node:module';
 import type { Passage, Range } from '../core/types.js';
 import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
@@ -59,7 +60,8 @@ import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace
  *    SP114, SP115)
  *  - arguments, against a parameter schema a project configures for a macro
  *    Spindle declares nothing for (SP108-SP111)
- *  - the Spindle version (SP001) and a missing StoryVariables (SP202)
+ *  - the Spindle version (SP001), compiler Twee syntax errors (SP002),
+ *    and a missing StoryVariables (SP202)
  *  - temporaries assigned in a loop (SP205) and array members (SP206)
  *  - widgets: argument counts, includes of widget passages, unused ones
  *    (SP301, SP302, SP303)
@@ -81,9 +83,10 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   if (!workspace.isSpindleProject()) return [];
 
   const doc = workspace.markup.get(uri);
-  if (!doc || doc.passages.length === 0) return [];
+  if (!doc || isMacroSource(uri)) return [];
 
-  const diagnostics: SpindleDiagnostic[] = [];
+  const diagnostics = [...tweeDiagnostics(doc)];
+  if (doc.passages.length === 0) return diagnostics;
   // A failure in one category still lets the others report.
   const attempt = (check: () => void) => {
     try {
@@ -118,6 +121,30 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 
   return diagnostics.sort((a, b) =>
     a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character);
+}
+
+const tweeReports = new WeakMap<DocumentMarkup, SpindleDiagnostic[]>();
+
+/** Keep tolerant editor indexing, but do not lose compiler-fatal source errors. */
+function tweeDiagnostics(doc: DocumentMarkup): SpindleDiagnostic[] {
+  const kept = tweeReports.get(doc);
+  if (kept) return kept;
+  const lines = splitLines(doc.text);
+  const indexed = new Set(doc.passages.map(p => p.passage.headerEnd.start.line));
+  // Only rejected source headers need the compiler's explanation. Keep the
+  // compiler lazy for ordinary diagnostics, like the passage index does.
+  if (!lines.some((line, i) => /^\uFEFF*::/.test(line) && !indexed.has(i))) {
+    tweeReports.set(doc, []);
+    return [];
+  }
+  const { parseTwee } = createCompilerRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
+  const diagnostics = parseTwee(doc.text).diagnostics.filter(d => d.level === 'error').map(d => {
+    const line = Math.min(Math.max((d.line ?? 1) - 1, 0), lines.length - 1);
+    return makeDiag({ start: { line, character: 0 }, end: { line, character: lines[line].length } },
+      DiagnosticCode.TweeSyntaxError, d.message);
+  });
+  tweeReports.set(doc, diagnostics);
+  return diagnostics;
 }
 
 // ---------------------------------------------------------------------------

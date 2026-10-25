@@ -12,7 +12,7 @@ import { encodeEnclosingMarkup, passageRefAt, type PassageRef } from '../core/ma
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { documentMacroHeads, macroHeadAt } from '../core/markup/macro-heads.js';
-import { isReservedPassageName, parsePassageHeader } from '../core/parsing/passage-parser.js';
+import { encodePassageName, isReservedPassageName, parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageRefs,
   findVariableReferences,
@@ -116,10 +116,13 @@ export function computeRename(
       if (isReservedPassageName(newName)) {
         throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it is a reserved passage name with a fixed meaning.`).at(uri, symbol.range);
       }
+      const encoded = encodePassageName(newName);
       for (const declaration of workspace.passages.getPassages(symbol.name)) {
-        const problem = passageHeaderProblem(newName);
-        if (problem) throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: ${problem}.`).at(declaration.uri, declaration.nameRange);
-        addEdit(declaration.uri, declaration.nameRange, escapePassageName(newName));
+        if (encoded === undefined) {
+          const reason = /[\r\n]/.test(newName) ? 'a passage header is a single line' : 'a passage header cannot represent that name exactly';
+          throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: ${reason}.`).at(declaration.uri, declaration.nameRange);
+        }
+        addEdit(declaration.uri, declaration.nameRange, encoded);
       }
       for (const { uri: refUri, ref, text } of refEdits) addEdit(refUri, ref.range, text);
       preserveEntryPassage(symbol.name, newName, workspace, addEdit);
@@ -317,14 +320,6 @@ export class RenameError extends Error {
   }
 }
 
-/** Why a passage header cannot hold `name`, or null when it can. */
-function passageHeaderProblem(name: string): string | null {
-  if (name.trim() === '') return 'a passage name cannot be empty';
-  if (/[\r\n]/.test(name)) return 'a passage header is a single line, so the name cannot contain a line break';
-  if (name !== name.trim()) return 'a passage name cannot start or end with whitespace';
-  return null;
-}
-
 function unrepresentable(newName: string, where: string): RenameError {
   return new RenameError(`Cannot rename to ${JSON.stringify(newName)}: it cannot be written inside ${where}.`);
 }
@@ -409,11 +404,6 @@ function misreadRewrite(
   const index = at === -1 ? before.length : at;
   const owner = edits.filter(edit => edit.ref.piece <= index).at(-1) ?? edits[0];
   return owner.ref;
-}
-
-/** Escape the Twee header metacharacters (`[ ] { } \`) in a passage name. */
-function escapePassageName(name: string): string {
-  return name.replace(/[[\]{}\\]/g, '\\$&');
 }
 
 // ---------------------------------------------------------------------------

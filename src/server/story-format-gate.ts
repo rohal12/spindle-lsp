@@ -59,7 +59,7 @@ type Handler = (...args: unknown[]) => unknown;
 function gateRegistrations<T extends object>(
   target: T,
   methods: readonly string[],
-  enabled: () => boolean,
+  enabled: () => boolean | Promise<boolean>,
   nested: Record<string, (value: object) => object> = {},
 ): T {
   return new Proxy(target, {
@@ -72,7 +72,11 @@ function gateRegistrations<T extends object>(
       if (methods.includes(prop) && typeof value === 'function') {
         return (handler: Handler, ...rest: unknown[]) =>
           Reflect.apply(value as Handler, obj, [
-            (...args: unknown[]) => (enabled() ? handler(...args) : null),
+            (...args: unknown[]) => {
+              const allowed = enabled();
+              const answer = (yes: boolean) => yes ? handler(...args) : null;
+              return typeof allowed === 'boolean' ? answer(allowed) : allowed.then(answer);
+            },
             ...rest,
           ]);
       }
@@ -84,15 +88,16 @@ function gateRegistrations<T extends object>(
 /**
  * Wrap the connection handed to plugins so that every language feature
  * request answers `null` while `enabled()` is false (the workspace's
- * StoryData names a story format other than Spindle). This is the single
- * gate for all request-based features; diagnostics, which the server pushes
+ * StoryData names a story format other than Spindle). An asynchronous
+ * predicate can defer requests until the initial workspace scan completes.
+ * This is the single gate for all request-based features; diagnostics, which the server pushes
  * rather than answers, are gated in computeDiagnostics().
  *
  * Plugins may register only the requests in {@link GATED_REQUESTS} and
  * {@link GATED_LANGUAGE_FEATURES}; a test runs every plugin against a
  * disabled gate to keep it that way.
  */
-export function gateConnection(connection: Connection, enabled: () => boolean): Connection {
+export function gateConnection(connection: Connection, enabled: () => boolean | Promise<boolean>): Connection {
   const languageFeatures: Record<string, (value: object) => object> = {};
   for (const [feature, methods] of Object.entries(GATED_LANGUAGE_FEATURES)) {
     languageFeatures[feature] = value => gateRegistrations(value, methods, enabled);

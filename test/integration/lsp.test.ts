@@ -853,6 +853,59 @@ describe('Integration: LSP server over stdio', () => {
     if (serverBundleDir) rmSync(serverBundleDir, { recursive: true, force: true });
   });
 
+  it('protects foreign-format files when formatting immediately after the handshake (#195)', async () => {
+    const text = ':: Start\n<<print `a\n   b`>>\n';
+    const dir = makeTempWorkspace({
+      'package.json': '{}', 'meta.tw': ':: StoryData\n{"format":"SugarCube"}\n', 'story.tw': text,
+    });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, text);
+    const params = { textDocument: { uri }, options: { tabSize: 2, insertSpaces: true } };
+    expect(await session.conn.sendRequest('textDocument/formatting', params)).toBeNull();
+    expect(session.log()).toContain('workspace initialized');
+    // Once the scan has finished the same protection applies.
+    expect(await session.conn.sendRequest('textDocument/formatting', params)).toBeNull();
+    expect(readFileSync(join(dir, 'story.tw'), 'utf8')).toBe(text);
+  });
+
+  it('publishes compiler-fatal Twee header diagnostics and clears them on repair (#197)', async () => {
+    const text = ':: StoryVariables\r\n:: Start\r\nhello\r\n:: Broken [\r\n';
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': text });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, text);
+    const diagnostics = await session.waitForDiagnostics(uri, hasCode('SP002'));
+    expect(diagnostics.find(d => d.code === 'SP002')).toMatchObject({
+      severity: 1, range: { start: { line: 3, character: 0 }, end: { line: 3, character: 11 } },
+      message: expect.stringContaining('unterminated tag block'),
+    });
+    const from = session.publishes.length;
+    await didChangeFull(session, uri, 2, text.replace(':: Broken [', ':: Fixed'));
+    await session.waitForDiagnostics(uri, lacksCode('SP002'), from);
+  });
+
+  it('includes unopened references in an immediate rename and preserves the open buffer (#195)', async () => {
+    const dir = makeTempWorkspace({
+      'package.json': '{}', 'declarations.tw': ':: StoryVariables\n$disk = 1\n', 'start.tw': ':: Start\n{$x}\n',
+    });
+    const declaration = ':: StoryVariables\n$x = 2\n';
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'declarations.tw');
+    await didOpen(session, uri, declaration);
+    const params = { textDocument: { uri }, position: { line: 1, character: 1 }, newName: 'y' };
+    const result = await session.conn.sendRequest('textDocument/rename', params) as {
+      changes: Record<string, Array<{ range: import('../../src/core/types.js').Range; newText: string }>>;
+    };
+    const usageUri = uriFor(dir, 'start.tw');
+    expect(Object.keys(result.changes).sort()).toEqual([uri, usageUri].sort());
+    expect(TextDocument.applyEdits(TextDocument.create(uri, 'twee', 1, declaration), result.changes[uri]))
+      .toBe(':: StoryVariables\n$y = 2\n');
+    expect(TextDocument.applyEdits(TextDocument.create(usageUri, 'twee', 1, ':: Start\n{$x}\n'), result.changes[usageUri]))
+      .toBe(':: Start\n{$y}\n');
+    expect(await session.conn.sendRequest('textDocument/rename', params)).toEqual(result);
+  });
+
   it.each(['path', 'uri'])('loads project config and target versions with a workspaceRoot %s (#138)', async kind => {
     const dir = makeTempWorkspace({
       'package.json': JSON.stringify({ dependencies: { '@rohal12/spindle': '0.59.0' } }),

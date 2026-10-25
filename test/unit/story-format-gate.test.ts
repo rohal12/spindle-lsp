@@ -48,6 +48,23 @@ function initializeAll(connection: Connection, workspace: WorkspaceModel): void 
 }
 
 describe('gateConnection', () => {
+  it('defers handlers until the initial scan settles and checks the resulting format (#195)', async () => {
+    for (const enabled of [true, false]) {
+      const { connection, calls } = recordingConnection();
+      let finishScan!: () => void;
+      const scan = new Promise<void>(resolve => { finishScan = resolve; });
+      let invoked = false;
+      gateConnection(connection, async () => { await scan; return enabled; })
+        .onRenameRequest(() => { invoked = true; return { changes: {} }; });
+      const pending = calls[0].handler();
+      await Promise.resolve();
+      expect(invoked).toBe(false);
+      finishScan();
+      expect(await pending).toEqual(enabled ? { changes: {} } : null);
+      expect(invoked).toBe(enabled);
+    }
+  });
+
   it('passes handlers through while enabled and answers null while disabled', () => {
     const { connection, calls } = recordingConnection();
     let enabled = true;

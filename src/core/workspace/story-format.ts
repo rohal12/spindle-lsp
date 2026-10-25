@@ -121,8 +121,6 @@ function indexStoryDataTexts(texts: Iterable<string>) {
   const index = new PassageIndex();
   const byUri = new Map<string, string>();
   for (const text of texts) {
-    // Skip the header parse for documents that cannot hold StoryData
-    if (!text.includes('StoryData')) continue;
     const uri = `story-format:${String(byUri.size).padStart(16, '0')}`;
     byUri.set(uri, text);
     index.rebuild(uri, text);
