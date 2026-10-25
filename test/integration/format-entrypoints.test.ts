@@ -77,6 +77,59 @@ it('CLI format --check preserves a sibling path sharing cwd prefix (#125)', () =
   expect(result.stdout.split('\n')[0]).toBe(file);
 });
 
+it.each([
+  '{"Format":"SugarCube"}',
+  '{"format":"SugarCube","format":null}',
+  '{"format":"Spindle","FORMAT":"SugarCube"}',
+])('protects foreign-story literal content through CLI, MCP and LSP: %s (#185)', async data => {
+  const source = `:: StoryData\n${data}\n:: Start\n<<print \`a\n   b\`>>\n`;
+  const file = join(directory, 'story.tw');
+  writeFileSync(file, source);
+  const result = spawnSync(process.execPath, [dist.executable, 'format', file], { cwd: directory, encoding: 'utf8' });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stderr).toContain('Skipped: story format is SugarCube');
+  expect(readFileSync(file, 'utf8')).toBe(source);
+
+  const client = new Client({ name: 'test', version: '0' });
+  const transport = new StdioClientTransport({
+    command: process.execPath, args: [dist.executable, 'mcp'], cwd: directory,
+    env: { ...process.env } as Record<string, string>, stderr: 'ignore',
+  });
+  await client.connect(transport);
+  try {
+    for (const name of ['spindle_format', 'spindle_format_check']) {
+      const response = await client.callTool({ name, arguments: { path: '*.tw' } });
+      const body = JSON.parse((response.content as { text: string }[])[0].text);
+      expect(body.skipped).toBe('Skipped: story format is SugarCube, not Spindle');
+      expect(readFileSync(file, 'utf8')).toBe(source);
+    }
+  } finally { await client.close(); }
+
+  const proc = spawn(process.execPath, [dist.executable], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe'] });
+  proc.stderr.resume();
+  const conn = createMessageConnection(new StreamMessageReader(proc.stdout), new StreamMessageWriter(proc.stdin));
+  conn.onRequest(() => null);
+  conn.listen();
+  try {
+    await conn.sendRequest('initialize', { processId: process.pid, rootUri: pathToFileURL(directory).toString(), capabilities: {} });
+    await conn.sendNotification('initialized', {});
+    const uri = pathToFileURL(file).toString();
+    await conn.sendNotification('textDocument/didOpen', {
+      textDocument: { uri, languageId: 'twee', version: 1, text: source },
+    });
+    for (const method of ['textDocument/formatting', 'textDocument/rangeFormatting']) {
+      expect(await conn.sendRequest(method, {
+        textDocument: { uri }, options: { tabSize: 2, insertSpaces: true },
+        range: { start: { line: 0, character: 0 }, end: { line: 5, character: 0 } },
+      })).toBeNull();
+    }
+  } finally {
+    try { await conn.sendRequest('shutdown'); await conn.sendNotification('exit'); } catch { /* gone */ }
+    conn.dispose();
+    proc.kill();
+  }
+});
+
 for (const [label, eol] of [['LF', '\n'], ['CRLF', '\r\n']] as const) {
   describe(`K66-entry ${label}: real entrypoints of the built executable`, () => {
     const source = withEol(PASSAGE, eol);
