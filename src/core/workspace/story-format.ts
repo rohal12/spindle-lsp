@@ -1,3 +1,4 @@
+import { splitLines } from '../text.js';
 import { readFileSync } from 'node:fs';
 import { stripBom } from './document-store.js';
 import type { Passage } from '../types.js';
@@ -14,14 +15,13 @@ import type { SpindleTarget } from './spindle-version.js';
  */
 export interface StoryFormat {
   /**
-   * The format named by StoryData (trimmed): the Spindle entry if one names
-   * Spindle, otherwise the first other format. Undefined if no StoryData
-   * passage names a format.
+   * The format named by the compiler-effective StoryData, trimmed.
+   * Undefined if that passage names no format.
    */
   name: string | undefined;
   /**
-   * False only if a StoryData passage names another format and none names
-   * Spindle. A missing StoryData, a missing `format` field or JSON that does
+   * False only if the effective StoryData names another format.
+   * A missing StoryData, a missing `format` field or JSON that does
    * not parse leave the project a Spindle project, so a Spindle story is
    * never silenced by accident.
    */
@@ -75,43 +75,59 @@ export function resolveStoryFormat(declared: Iterable<string | undefined>): Stor
 
 /** The content (lines after the header) of a passage in its document's text. */
 function passageContent(passage: Passage, text: string): string {
-  return text
-    .split('\n')
+  return splitLines(text)
     .slice(passage.headerEnd.end.line + 1, passage.range.end.line + 1)
     .join('\n');
 }
 
+/** StoryData replacement follows compiler source order, including missing fields. */
+function effectiveStoryData(passages: Iterable<Passage>): Passage[] {
+  const passage = [...passages].filter(p => p.name === 'StoryData').at(-1);
+  return passage ? [passage] : [];
+}
+
 /**
- * The formats declared by the StoryData passages among `passages`
- * (undefined for one that names none). `getText` returns a passage's
- * document text.
+ * The effective StoryData's format (undefined if it names none).
+ * `passages` follows compiler source order; `getText` returns document text.
  */
 export function storyDataFormats(
   passages: Iterable<Passage>,
   getText: (uri: string) => string | undefined,
 ): Array<string | undefined> {
   const formats: Array<string | undefined> = [];
-  for (const passage of passages) {
-    if (passage.name !== 'StoryData') continue;
+  for (const passage of effectiveStoryData(passages)) {
     const text = getText(passage.uri);
     formats.push(text === undefined ? undefined : readStoryDataFormat(passageContent(passage, text)));
   }
   return formats;
 }
 
-/** The first `format-version` declared by a Spindle StoryData passage among `passages`. */
+/** The effective `format-version` declared by a Spindle StoryData passage among `passages`. */
 export function storyDataFormatVersion(
   passages: Iterable<Passage>,
   getText: (uri: string) => string | undefined,
 ): string | undefined {
-  for (const passage of passages) {
-    if (passage.name !== 'StoryData') continue;
+  for (const passage of effectiveStoryData(passages)) {
     const text = getText(passage.uri);
     if (text === undefined) continue;
     const version = readStoryDataFormatVersion(passageContent(passage, text));
     if (version !== undefined) return version;
   }
   return undefined;
+}
+
+/** Index in input order, even when there are more than ten source documents. */
+function indexStoryDataTexts(texts: Iterable<string>) {
+  const index = new PassageIndex();
+  const byUri = new Map<string, string>();
+  for (const text of texts) {
+    // Skip the header parse for documents that cannot hold StoryData
+    if (!text.includes('StoryData')) continue;
+    const uri = `story-format:${String(byUri.size).padStart(16, '0')}`;
+    byUri.set(uri, text);
+    index.rebuild(uri, text);
+  }
+  return { index, byUri };
 }
 
 /**
@@ -121,15 +137,7 @@ export function storyDataFormatVersion(
 export function storyFormatOfTexts(
   texts: Iterable<string>,
 ): StoryFormat & { hasStoryData: boolean } {
-  const index = new PassageIndex();
-  const byUri = new Map<string, string>();
-  for (const text of texts) {
-    // Skip the header parse for documents that cannot hold StoryData
-    if (!text.includes('StoryData')) continue;
-    const uri = `story-format:${byUri.size}`;
-    byUri.set(uri, text);
-    index.rebuild(uri, text);
-  }
+  const { index, byUri } = indexStoryDataTexts(texts);
   const formats = storyDataFormats(index.getAllPassages(), uri => byUri.get(uri));
   return { ...resolveStoryFormat(formats), hasStoryData: formats.length > 0 };
 }
@@ -157,16 +165,9 @@ export async function findStoryFormat(texts: Iterable<string>, dir: string): Pro
   return { name, isSpindle };
 }
 
-/** The first `format-version` a Spindle StoryData among `texts` declares. */
+/** The effective `format-version` a Spindle StoryData among `texts` declares. */
 function storyFormatVersionOfTexts(texts: Iterable<string>): string | undefined {
-  const index = new PassageIndex();
-  const byUri = new Map<string, string>();
-  for (const text of texts) {
-    if (!text.includes('StoryData')) continue;
-    const uri = `story-format:${byUri.size}`;
-    byUri.set(uri, text);
-    index.rebuild(uri, text);
-  }
+  const { index, byUri } = indexStoryDataTexts(texts);
   return storyDataFormatVersion(index.getAllPassages(), uri => byUri.get(uri));
 }
 

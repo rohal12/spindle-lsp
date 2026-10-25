@@ -16,7 +16,7 @@
  *   (group)        — grouping
  */
 
-import { passageTarget, readQuoted } from '@rohal12/spindle/tooling';
+import { passageTarget, readQuoted, parseBoundVariable } from '@rohal12/spindle/tooling';
 import { ArgType, type Arg } from './argument-lexer.js';
 
 // ---------------------------------------------------------------------------
@@ -153,20 +153,20 @@ const parameterTypes: ParameterType[] = [
     // and reads the rest as a dot path into the story variables.
     name: ['receiver'],
     validate(arg) {
-      let name: string | undefined;
-      if (arg.type === ArgType.String) {
-        name = arg.text.slice(1, -1);
-      } else if (arg.type === ArgType.Bareword) {
-        name = arg.text;
-      }
-      if (name === undefined) {
+      if (arg.type !== ArgType.String && arg.type !== ArgType.Bareword) {
         return new TypeError('Argument is not a variable receiver');
       }
-      if (/^[_@%]/.test(name)) {
-        return new TypeError(`Variable receiver must be a story variable ($name), got '${name}'`);
-      }
-      if (!/^(?:\$\w|[A-Za-z_])[\w$]*(?:\.[\w$]+)*$/.test(name)) {
-        return new TypeError(`Argument is not a valid variable receiver: '${name}'`);
+      try {
+        const binding = parseBoundVariable(arg.text);
+        if (!binding) return new TypeError('Argument is not a variable receiver');
+        // This configured schema requires an identifier path. Decode it with
+        // the runtime reader before checking the schema's permitted shape.
+        const name = `${binding.explicitSigil ? '$' : ''}${[binding.name, ...binding.path].join('.')}`;
+        if (!/^(?:\$\w|[A-Za-z_])[\w$]*(?:\.[\w$]+)*$/.test(name)) {
+          return new TypeError(`Argument is not a valid variable receiver: '${name}'`);
+        }
+      } catch (error) {
+        return new TypeError(`Invalid story variable receiver: ${error instanceof Error ? error.message : String(error)}`);
       }
       return null;
     },

@@ -1,3 +1,4 @@
+import { splitLines } from '../../core/text.js';
 import { parsePassageHeader } from '../../core/parsing/passage-parser.js';
 
 export interface Passage {
@@ -11,7 +12,7 @@ export interface Passage {
  * Split a Twee document into passages by `::` headers.
  */
 export function splitPassages(text: string): Passage[] {
-  const lines = text.split('\n');
+  const lines = splitLines(text);
   // Remove trailing empty string from split (artifact of trailing \n)
   if (lines.length > 0 && lines[lines.length - 1] === '') {
     lines.pop();

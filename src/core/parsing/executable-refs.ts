@@ -1,4 +1,4 @@
-import { variableReferences } from '@rohal12/spindle/tooling';
+import { variableReferences, type BoundVariable } from '@rohal12/spindle/tooling';
 import type { PassageMarkup } from '../markup/passage-markup.js';
 
 /** A `$var.path` / `%var.path` reference a passage evaluates. */
@@ -11,6 +11,8 @@ export interface VariableReference {
   /** Offsets in the passage's `content` of the sigil and of the end of the path. */
   start: number;
   end: number;
+  /** Runtime-owned editable input-binding root span, when this is a binding. */
+  binding?: BoundVariable;
 }
 
 /**
@@ -30,5 +32,6 @@ export function collectVariableReferences(markup: PassageMarkup): VariableRefere
     path: [ref.name, ...ref.path].join('.'),
     start: ref.start,
     end: ref.end,
+    binding: ref.binding,
   }));
 }

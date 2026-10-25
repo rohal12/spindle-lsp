@@ -3,9 +3,10 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { readStoryData } from '../core/workspace/story-data.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { lexJs, parseDeclarations, passagePieces, pieceOffset, type Piece } from '@rohal12/spindle/tooling';
+import { lexJs, parseDeclarations, passagePieces, pieceOffset, type Piece, type BoundVariable } from '@rohal12/spindle/tooling';
+import { collectVariableReferences } from '../core/parsing/executable-refs.js';
 import { sourceView, viewIndex } from '../core/markup/source-view.js';
-import { positionToOffset } from '../core/text.js';
+import { positionToOffset, splitLines } from '../core/text.js';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
 import { encodeEnclosingMarkup, passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
@@ -154,13 +155,24 @@ export function computeRename(
       const refs = symbol.sigil === '%'
         ? findTransientReferences(symbol.name, workspace, true)
         : findVariableReferences(symbol.name, workspace, true);
-      // Reference ranges start with the sigil and may continue with a
-      // property path (`$player.health`): replace only the base identifier.
+      // Input bindings supply editable roots; code references retain their
+      // sigil and any property path. Read each passage's binding spans once.
+      const bindings = new Map<PassageMarkup, Map<number, BoundVariable>>();
       for (const ref of refs) {
         const doc = workspace.markup.get(ref.uri)!;
         const passage = doc.passageAt(ref.range.start)!;
         const start = passage.contentOffset(positionToOffset(ref.range.start, doc.lineStarts));
         const end = passage.contentOffset(positionToOffset(ref.range.end, doc.lineStarts));
+        let byStart = bindings.get(passage);
+        if (!byStart) {
+          byStart = new Map(collectVariableReferences(passage).flatMap(ref => ref.binding ? [[ref.start, ref.binding] as const] : []));
+          bindings.set(passage, byStart);
+        }
+        const binding = byStart.get(start);
+        if (binding && binding.end === end) {
+          addEdit(ref.uri, passage.range(binding.nameStart, binding.nameEnd), bareName);
+          continue;
+        }
         const view = sourceView(passage, start, end);
         const index = viewIndex(view, start);
         let base: [number, number] | undefined;
@@ -268,7 +280,7 @@ function preserveEntryPassage(
     const declaration = workspace.passages.getPassage(oldName)!;
     const doc = workspace.markup.get(declaration.uri)!;
     const end = doc.passages.at(-1)!.position(doc.passages.at(-1)!.content.length);
-    const eol = doc.text.includes('\r\n') ? '\r\n' : '\n';
+    const eol = /\r\n|[\r\n]/.exec(doc.text)?.[0] ?? '\n';
     addEdit(declaration.uri, { start: end, end }, `${eol}${eol}:: StoryData${eol}${JSON.stringify({ start: newName })}${eol}`);
   }
 }
@@ -417,7 +429,7 @@ function resolveSymbolAtCursor(
   const text = workspace.documents.getText(uri);
   if (text === undefined || !workspace.hasPassages(uri)) return null;
 
-  const lines = text.split('\n');
+  const lines = splitLines(text);
   if (position.line >= lines.length) return null;
   const line = lines[position.line];
 

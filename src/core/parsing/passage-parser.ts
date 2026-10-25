@@ -31,11 +31,12 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   // A line split at LF keeps a CRLF's CR: it ends the line and is not header text
   const line = withoutCr(rawLine);
   // Run regex against escaped version (neutralize backslash sequences for matching)
-  // A document's leading U+FEFF is its byte order mark: the header sits behind
-  // it, and every column stays in the client's own coordinates.
-  const bomLength = lineNumber === 0 && line.charCodeAt(0) === 0xfeff ? 1 : 0;
+  // The compiler accepts BOM-prefixed headers in concatenated files too.
+  // Keep every column in the client's original coordinates.
+  const bomLength = line.charCodeAt(0) === 0xfeff ? 1 : 0;
   const escaped = line.replace(/\\./g, 'ec');
-  const prefix = /^::\s*/.exec(escaped.slice(bomLength));
+  // Twee uses Go/Unicode White_Space, not JavaScript whitespace (FEFF/NEL).
+  const prefix = /^::\p{White_Space}*/u.exec(escaped.slice(bomLength));
   if (!prefix) return null;
 
   // A valid name contains no unescaped delimiters. Consume each section
@@ -47,8 +48,8 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   const boundary = first?.index ?? line.length;
   // Trim structural whitespace in the masked source so an escaped trailing
   // space stays in the edit range. The compiler trims the decoded name.
-  const nameEnd = escaped.slice(0, boundary).trimEnd().length;
-  const name = line.slice(nameStart, nameEnd).replace(/\\(.|$)/g, '$1').trim();
+  const nameEnd = escaped.slice(0, boundary).replace(/\p{White_Space}+$/u, '').length;
+  const name = line.slice(nameStart, nameEnd).replace(/\\(.|$)/g, '$1').replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
   if (!name) return null;
 
   let rest = boundary;
@@ -56,15 +57,15 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   if (escaped[rest] === '[') {
     const end = escaped.indexOf(']', rest + 1);
     if (end === -1 || /[\[{}]/.test(escaped.slice(rest + 1, end))) return null;
-    const decoded = line.slice(rest + 1, end).replace(/\\(.)/g, '$1').trim();
-    tags = decoded ? decoded.split(/\s+/) : [];
+    const decoded = line.slice(rest + 1, end).replace(/\\(.)/g, '$1');
+    tags = decoded.match(/[^\p{White_Space}]+/gu) ?? [];
     rest = end + 1;
-    while (rest < line.length && /\s/.test(escaped[rest])) rest++;
+    while (rest < line.length && /\p{White_Space}/u.test(escaped[rest])) rest++;
   }
 
   let meta: Record<string, unknown> | undefined;
   if (rest < line.length) {
-    const raw = line.slice(rest).trim();
+    const raw = line.slice(rest).replace(/\p{White_Space}+$/u, '');
     if (escaped[rest] !== '{' || !raw.endsWith('}')) return null;
     try {
       meta = JSON.parse(raw);

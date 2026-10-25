@@ -13,7 +13,7 @@ import { passagePieces, type Piece } from '@rohal12/spindle/tooling';
 import { documentPassageRefs, encodeEnclosingMarkup } from '../core/markup/passage-refs.js';
 import { encodePassageRefName } from './rename.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
-import { buildLineStarts, positionToOffset } from '../core/text.js';
+import { buildLineStarts, positionToOffset, offsetToPosition as textPosition, splitLines } from '../core/text.js';
 import { isRuntimePassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
@@ -239,7 +239,7 @@ function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null 
         const nl = text.indexOf('\n', offset);
         offset = nl === -1 ? text.length : nl + 1;
       }
-      const lead = offset === text.length && text.length > 0 && !text.endsWith('\n') ? '\n' : '';
+      const lead = offset === text.length && text.length > 0 && !/[\r\n]$/.test(text) ? '\n' : '';
       const pos = offsetToPosition(text, offset);
       return { range: { start: pos, end: pos }, newText: lead + entry };
     }
@@ -281,19 +281,17 @@ function addMacroToJsonConfig(text: string, macroName: string): TextEdit | null 
   }
 
   const indent = text.match(/^[ \t]+(?=")/m)?.[0] ?? '  ';
-  const newline = text.endsWith('\n') || !text.trim() ? '\n' : '';
+  const newline = /[\r\n]$/.test(text) || !text.trim() ? '\n' : '';
   return minimalEdit(text, JSON.stringify(raw, null, indent) + newline);
 }
 
 /** Zero-based column of `offset` within its line. */
 function columnOf(text: string, offset: number): number {
-  return offset - (text.lastIndexOf('\n', offset - 1) + 1);
+  return offsetToPosition(text, offset).character;
 }
 
 function offsetToPosition(text: string, offset: number): Position {
-  const before = text.slice(0, offset);
-  const lineStart = before.lastIndexOf('\n') + 1;
-  return { line: before.split('\n').length - 1, character: offset - lineStart };
+  return textPosition(offset, buildLineStarts(text));
 }
 
 /** A single edit turning `oldText` into `newText` that spans only the differing region. */
@@ -324,26 +322,26 @@ function minimalEdit(oldText: string, newText: string): TextEdit {
  * boundary. `eol` is the line ending to write (see {@link lineEndingFor}).
  */
 function insertLinesAt(text: string, line: number, body: string, eol: string): { range: Range; newText: string } {
-  const lines = text.split('\n');
+  const lines = splitLines(text);
   const normalized = body.replace(/\r?\n/g, eol);
   if (line < lines.length) {
     const pos = { line, character: 0 };
     return { range: { start: pos, end: pos }, newText: normalized };
   }
   const end = offsetToPosition(text, text.length);
-  const atBoundary = text.length === 0 || text.endsWith('\n');
+  const atBoundary = text.length === 0 || /[\r\n]$/.test(text);
   return { range: { start: end, end }, newText: (atBoundary ? '' : eol) + normalized };
 }
 
 /**
  * The line ending to write into document `uri`: its own when it has a line
- * break (CRLF if it uses any), otherwise (empty or header-only, nothing to
+ * break (CRLF if it uses any, otherwise LF or CR), otherwise (empty or header-only, nothing to
  * detect) that of the first other story document, in sorted URI order, that
  * has one, otherwise LF.
  */
 function lineEndingFor(workspace: WorkspaceModel, uri: string): string {
   const own = workspace.documents.getText(uri) ?? '';
-  const detect = (text: string) => (text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : undefined);
+  const detect = (text: string) => (text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : text.includes('\r') ? '\r' : undefined);
   const fromOwn = detect(own);
   if (fromOwn) return fromOwn;
   for (const other of [...workspace.documents.getUris()].sort()) {
@@ -369,7 +367,7 @@ function declareVariable(diag: SpindleDiagnostic, workspace: WorkspaceModel, sig
 
   const markup = workspace.markup.get(passage.uri)?.passages.find(p => p.passage === passage);
   if (!markup) return [];
-  const boundary = markup.bodyEnd === text.length ? text.split('\n').length : markup.position(markup.content.length).line;
+  const boundary = markup.bodyEnd === text.length ? splitLines(text).length : markup.position(markup.content.length).line;
   const edit = insertLinesAt(text, boundary, `${sigil}${name} = 0\n`, lineEndingFor(workspace, passage.uri));
   return [{
     title: `Declare '${sigil}${name}' in ${sigil === '$' ? 'StoryVariables' : 'StoryTransients'}`,
@@ -399,7 +397,7 @@ function fixNoStoryVariables(
   const text = workspace.documents.getText(targetUri);
   if (text === undefined) return null;
 
-  const edit = insertLinesAt(text, text.split('\n').length, '\n:: StoryVariables\n', lineEndingFor(workspace, targetUri));
+  const edit = insertLinesAt(text, splitLines(text).length, '\n:: StoryVariables\n', lineEndingFor(workspace, targetUri));
 
   return {
     title: 'Create StoryVariables passage',
@@ -467,7 +465,7 @@ function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: Workspac
   // A new passage after the last one of the document
   const header = `:: ${name.replace(/[\\[\]{}]/g, '\\$&')}`;
   if (!workspace.passages.getPassage(name) && name.trim() === name && name !== '' && !/[\r\n]/.test(name)) {
-    const edit = insertLinesAt(text, text.split('\n').length, `\n${header}\n`, lineEndingFor(workspace, uri));
+    const edit = insertLinesAt(text, splitLines(text).length, `\n${header}\n`, lineEndingFor(workspace, uri));
     actions.push({
       title: `Create passage '${name}'`,
       kind: 'quickfix',

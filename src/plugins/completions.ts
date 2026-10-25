@@ -1,10 +1,10 @@
 import type { CompletionItem } from 'vscode-languageserver';
-import { pieceOffset, tokenizeMarkupTolerant } from '@rohal12/spindle/tooling';
+import { pieceOffset, tokenizeMarkupTolerant, type CompletionContainer } from '@rohal12/spindle/tooling';
 import { widgetSources } from '../core/markup/widgets.js';
 import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
-import { encodeEnclosingMarkup } from '../core/markup/passage-refs.js';
+import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
 import { isRuntimePassage } from '../core/parsing/passage-parser.js';
 import { markupAt, type MarkupCursor } from './markup-cursor.js';
@@ -95,7 +95,7 @@ export function getCompletions(
         ...item,
         textEdit: {
           range: passage.range(start, end),
-          newText: identifier ? item.label : encodeEnclosingMarkup(passage, start, end, `[${JSON.stringify(item.label)}]`),
+          newText: identifier ? item.label : encodeCompletion(`[${JSON.stringify(item.label)}]`, context.containers),
         },
       };
     });
@@ -126,6 +126,14 @@ export function getCompletions(
   }
 
   return [];
+}
+
+/** Encode through the runtime's enclosing contexts, including unfinished labels. */
+function encodeCompletion(spelling: string, containers: readonly CompletionContainer[] = []): string {
+  for (const container of [...containers].reverse()) {
+    if (container.kind === 'string') spelling = encodeStringLiteralBody(spelling, container.quote);
+  }
+  return spelling;
 }
 
 // ---------------------------------------------------------------------------

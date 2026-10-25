@@ -7,7 +7,10 @@ import type { Position, Range } from './types.js';
 export function buildLineStarts(text: string): number[] {
   const starts = [0];
   for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\n') starts.push(i + 1);
+    if (text[i] === '\r') {
+      if (text[i + 1] === '\n') i++;
+      starts.push(i + 1);
+    } else if (text[i] === '\n') starts.push(i + 1);
   }
   return starts;
 }
@@ -40,11 +43,7 @@ export function withoutCr(line: string): string {
   return line.endsWith('\r') ? line.slice(0, -1) : line;
 }
 
-/**
- * The lines of `text`, split at LF as Twee and the rest of the server do, each
- * without its line ending: a CRLF's CR is not part of the line, so a range
- * built from a line's length never ends past the line the client sees.
- */
+/** Document lines without their LF, CRLF or CR endings, matching TextDocument and Twee. */
 export function splitLines(text: string): string[] {
-  return text.split('\n').map(withoutCr);
+  return text.split(/\r\n|[\r\n]/);
 }

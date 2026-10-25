@@ -1,3 +1,4 @@
+import { splitLines } from '../core/text.js';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
@@ -29,7 +30,7 @@ export function getDefinition(
   const text = workspace.documents.getText(uri);
   if (text === undefined || !workspace.hasPassages(uri)) return null;
 
-  const lines = text.split('\n');
+  const lines = splitLines(text);
   if (position.line >= lines.length) return null;
 
   // --- Passage name written out: [[link]] or a quoted macro argument ---
@@ -55,7 +56,7 @@ function getPassageRefDefinition(
   const doc = workspace.markup.get(uri);
   const ref = doc && passageRefAt(doc, position);
   if (!ref) return null;
-  const passage = workspace.passages.getPassage(ref.name);
+  const passage = workspace.passages.getEffectivePassage(ref.name);
   if (!passage) return null;
   return {
     uri: passage.uri,

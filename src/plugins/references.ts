@@ -1,3 +1,4 @@
+import { splitLines } from '../core/text.js';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
@@ -31,7 +32,7 @@ export function findReferences(
   const text = workspace.documents.getText(uri);
   if (text === undefined || !workspace.hasPassages(uri)) return [];
 
-  const lines = text.split('\n');
+  const lines = splitLines(text);
   if (position.line >= lines.length) return [];
   const line = lines[position.line];
 
