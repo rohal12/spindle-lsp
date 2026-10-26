@@ -620,7 +620,8 @@ function childDiagnostics(passage: PassageMarkup, node: PairedNode, token: Macro
   for (const child of direct) {
     if (child.token.type !== 'macro' || child.token.isClose) continue;
     const key = child.token.name.toLowerCase();
-    if (workspace.getEffectiveMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
+    // A same-named widget does not remove a parent's registered value clauses.
+    if (workspace.macros.getMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
   }
 
   const diagnostics: SpindleDiagnostic[] = [];
