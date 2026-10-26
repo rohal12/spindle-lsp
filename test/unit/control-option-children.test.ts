@@ -56,3 +56,13 @@ it.each(['listbox', 'cycle'])('requires direct %s choices even with an option wi
     ]);
   }
 });
+
+it.each(['stop', 'option'])('excludes a %s widget from ordinary configured child constraints', name => {
+  const model = workspace(':: StoryVariables\n:: Widgets [widget]\n'
+    + `{widget "${name}"}custom{/widget}\n:: Start\n{nobr}{${name}}{${name}}{/nobr}\n`);
+  model.macros.loadConfig({ nobr: { children: [{ name, max: 1 }] } });
+  expect(computeDiagnostics(uri, model).filter(d => d.severity === 'error')).toEqual([]);
+
+  model.macros.loadConfig({ nobr: { children: [{ name, min: 1 }] } });
+  expect(computeDiagnostics(uri, model).filter(d => d.code === 'SP115')).toHaveLength(1);
+});
