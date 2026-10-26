@@ -131,9 +131,10 @@ function tweeDiagnostics(doc: DocumentMarkup): SpindleDiagnostic[] {
   if (kept) return kept;
   const lines = splitLines(doc.text);
   const indexed = new Set(doc.passages.map(p => p.passage.headerEnd.start.line));
-  // Only rejected source headers need the compiler's explanation. Keep the
-  // compiler lazy for ordinary diagnostics, like the passage index does.
-  if (!lines.some((line, i) => /^\uFEFF*::/.test(line) && !indexed.has(i))) {
+  // The tolerant index does not validate optional-block syntax. Let the
+  // compiler check every header with delimiters, even when it was indexed;
+  // only plain indexed headers can keep the compiler lazy.
+  if (!lines.some((line, i) => /^\uFEFF*::/.test(line) && (!indexed.has(i) || /[[\]{}]/.test(line)))) {
     tweeReports.set(doc, []);
     return [];
   }

@@ -44,6 +44,23 @@ it('reports a malformed header even when no passage could be indexed (#197)', ()
   expect(computeDiagnostics(uri, model)).toMatchObject([{ code: 'SP002', severity: 'error' }]);
 });
 
+it.each(['\u0085', '\u00a0', '\u000b', '\u2028'])(
+  'reports compiler errors in indexed optional-block headers followed by %j (#197)', space => {
+    for (const block of ['[tag]', '{}']) {
+      const header = `:: Start ${block}${space}`;
+      const text = `:: StoryVariables\n${header}\nhello\n`;
+      const model = workspace(text);
+      expect(model.passages.getPassage('Start')).toBeDefined();
+      const errors = parseTwee(text).diagnostics.filter(d => d.level === 'error');
+      expect(errors).toHaveLength(1);
+      expect(computeDiagnostics(uri, model).filter(d => d.code === 'SP002')).toEqual([{
+        code: 'SP002', severity: 'error', source: 'spindle', message: errors[0].message,
+        range: { start: { line: 1, character: 0 }, end: { line: 1, character: header.length } },
+      }]);
+    }
+  },
+);
+
 it('keeps the compiler behavior for escaped headers and optional invalid metadata JSON (#197)', () => {
   for (const header of [':: StoryD\\ata', ':: A\\[B', ':: A {oops}']) {
     const text = `:: StoryVariables\n${header}\nhello\n`;

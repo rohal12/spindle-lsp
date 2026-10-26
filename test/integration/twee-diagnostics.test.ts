@@ -18,7 +18,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
-it.each([':: Broken [', '::', ':: Broken {', ':: Valid\\[Name', ':: Valid {oops}'])(
+it.each([':: Broken [', '::', ':: Broken {', ':: Broken [tag]\u00a0', ':: Broken {}\u0085', ':: Valid\\[Name', ':: Valid {oops}'])(
   'CLI and MCP preserve compiler header-error behavior for %s (#197)', async header => {
     const source = `:: StoryVariables\r\n:: Start\r\nhello\r\n${header}\r\ntext\r\n`;
     writeFileSync(join(directory, 'story.tw'), source);
