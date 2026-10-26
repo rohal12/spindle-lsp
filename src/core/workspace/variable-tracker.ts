@@ -1,4 +1,4 @@
-import { builtinMacros, isBlockMacro } from '@rohal12/spindle/tooling';
+import { builtinMacros, isBlockMacro, parseCode } from '@rohal12/spindle/tooling';
 import type { DeclaredVariable, Position, Range } from '../types.js';
 import { collectVariableReferences } from '../parsing/executable-refs.js';
 import { DocumentMarkup, type MarkupContext } from '../markup/passage-markup.js';
@@ -122,6 +122,9 @@ export class VariableTracker {
   /** Per-URI list of transient variable usages. */
   private transientUsagesByUri = new Map<string, VariableUsage[]>();
 
+  /** Executable assignments can replace a declaration's default shape anywhere in the story. */
+  private rootWritesByUri = new Map<string, Set<string>>();
+
   /**
    * Parse the StoryVariables passage content for declarations.
    * Each line like `$name = value` becomes a declaration.
@@ -158,8 +161,19 @@ export class VariableTracker {
     this.removeDocument(uri);
     const usages: VariableUsage[] = [];
     const transientUsages: VariableUsage[] = [];
+    const rootWrites = new Set<string>();
 
     for (const passage of markup.passages) {
+      for (const piece of passage.pieces) {
+        if (piece.kind !== 'code') continue;
+        try {
+          for (const ref of parseCode(piece.code, piece.goal).refs) {
+            if (ref.write && (ref.sigil === '$' || ref.sigil === '%')) rootWrites.add(ref.sigil + ref.name);
+          }
+        } catch {
+          // Syntax diagnostics own malformed code; it provides no proven write.
+        }
+      }
       for (const ref of collectVariableReferences(passage)) {
         const usage: VariableUsage = {
           uri,
@@ -173,12 +187,14 @@ export class VariableTracker {
 
     if (usages.length > 0) this.usagesByUri.set(uri, usages);
     if (transientUsages.length > 0) this.transientUsagesByUri.set(uri, transientUsages);
+    if (rootWrites.size > 0) this.rootWritesByUri.set(uri, rootWrites);
   }
 
   /** Forget the usages recorded for a document, e.g. after it was deleted. */
   removeDocument(uri: string): void {
     this.usagesByUri.delete(uri);
     this.transientUsagesByUri.delete(uri);
+    this.rootWritesByUri.delete(uri);
   }
 
   /** Get all declared variables. */
@@ -245,11 +261,12 @@ export class VariableTracker {
 
   /**
    * Get `$var.member` / `%var.member` accesses in a document where `var` is
-   * declared with an array literal default and `member` is not a property
-   * that JavaScript arrays have (so the access always yields undefined).
+   * declared with an array literal default, with no known root assignment,
+   * and `member` is not a property that JavaScript arrays have.
    */
   getArrayMemberAccesses(uri: string): ArrayMemberAccess[] {
     const results: ArrayMemberAccess[] = [];
+    const rootWrites = new Set([...this.rootWritesByUri.values()].flatMap(writes => [...writes]));
     const sources: Array<['$' | '%', VariableUsage[] | undefined, Map<string, DeclaredVariable>]> = [
       ['$', this.usagesByUri.get(uri), this.variables.declared],
       ['%', this.transientUsagesByUri.get(uri), this.transients.declared],
@@ -260,6 +277,7 @@ export class VariableTracker {
         const member = u.fullName.split('.')[1];
         if (member === undefined) continue;
         if (declared.get(u.baseName)?.type !== 'array') continue;
+        if (rootWrites.has(sigil + u.baseName)) continue;
         // Canonical array indices are properties too, including a path
         // through an element such as $rows.0.name.
         if (ARRAY_MEMBERS.has(member) || (/^(0|[1-9]\d*)$/.test(member) && Number(member) < 0xffffffff)) continue;
