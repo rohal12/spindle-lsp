@@ -609,18 +609,21 @@ function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors:
 
 /** SP114, SP115: the children a container needs or allows, by the registry's constraints. */
 function childDiagnostics(passage: PassageMarkup, node: PairedNode, token: MacroToken, workspace: WorkspaceModel): SpindleDiagnostic[] {
-  const constraints = workspace.getEffectiveMacro(token.name)?.children;
+  const macro = workspace.getEffectiveMacro(token.name);
+  const constraints = macro?.children;
   // A container that is never closed is reported as such
   if (!constraints || constraints.length === 0 || !node.body?.close) return [];
 
   // The macros directly in the body (also after a branch such as {else}); those in an element or a nested container are its own
   const direct: PairedNode[] = [...node.body.children];
   for (const branch of node.body.branches) direct.push({ token: branch.tag, start: branch.tag.start, end: branch.tag.end }, ...branch.children);
+  const consumesOptions = macro?.source === 'builtin' && ['listbox', 'cycle'].includes(token.name.toLowerCase());
   const counts: Record<string, number> = Object.create(null);
   for (const child of direct) {
     if (child.token.type !== 'macro' || child.token.isClose) continue;
     const key = child.token.name.toLowerCase();
-    if (workspace.getEffectiveMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
+    // These controls consume option values before widget dispatch; other children use effective macros.
+    if ((consumesOptions && key === 'option') || workspace.getEffectiveMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
   }
 
   const diagnostics: SpindleDiagnostic[] = [];
