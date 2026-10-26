@@ -885,6 +885,41 @@ describe('Integration: LSP server over stdio', () => {
     await session.waitForDiagnostics(uri, lacksCode('SP002'), from);
   });
 
+  it.each([
+    ['{"format":"Spindle","start":"Hall"}', 'SP004'],
+  ])('publishes and clears missing entry errors over stdio: %s (#201)', async (data, code) => {
+    const text = `:: StoryData\r\n${data}\r\n:: StoryVariables\r\n:: Start\r\nhello`;
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': text });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, text);
+    const diagnostics = await session.waitForDiagnostics(uri, hasCode(code));
+    expect(diagnostics.find(d => d.code === code)).toMatchObject({
+      severity: 1, range: { start: { line: 0, character: 3 }, end: { line: 0, character: 12 } },
+    });
+    const from = session.publishes.length;
+    await didChangeFull(session, uri, 2, text.replace(data, '{"format":"Spindle","start":"Start"}'));
+    await session.waitForDiagnostics(uri, d => d.length === 0, from);
+  });
+
+  it('republishes StoryData diagnostics when a cross-file entry is deleted and restored (#201)', async () => {
+    const text = ':: StoryData\n{"format":"Spindle","start":"Hall"}\n:: StoryVariables\n';
+    const target = ':: Hall\nhello';
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'meta.tw': text, 'target.tw': target });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'meta.tw');
+    const targetUri = uriFor(dir, 'target.tw');
+    await didOpen(session, uri, text);
+    await didOpen(session, targetUri, target);
+    await session.waitForDiagnostics(uri, d => d.length === 0);
+    let from = session.publishes.length;
+    await didChangeFull(session, targetUri, 2, ':: Other\nhello');
+    await session.waitForDiagnostics(uri, hasCode('SP004'), from);
+    from = session.publishes.length;
+    await didChangeFull(session, targetUri, 3, target);
+    await session.waitForDiagnostics(uri, d => d.length === 0, from);
+  });
+
   it('includes unopened references in an immediate rename and preserves the open buffer (#195)', async () => {
     const dir = makeTempWorkspace({
       'package.json': '{}', 'declarations.tw': ':: StoryVariables\n$disk = 1\n', 'start.tw': ':: Start\n{$x}\n',

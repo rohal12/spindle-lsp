@@ -27,13 +27,14 @@ import { DiagnosticCode, getSeverity } from '../core/diagnostic-codes.js';
 import type { DiagnosticCodeValue, DiagnosticData, SpindleDiagnostic } from '../core/diagnostic-codes.js';
 import type { DocumentMarkup, PassageMarkup } from '../core/markup/passage-markup.js';
 import { macroTokens, markupTokens } from '../core/markup/tokens.js';
-import { textAt } from '../core/markup/source-view.js';
+import { sourceView, textAt, viewIndex } from '../core/markup/source-view.js';
 import { widgetSources } from '../core/markup/widgets.js';
 import { lexArguments } from '../core/parsing/argument-lexer.js';
 import { Parameters } from '../core/parsing/parameter-validator.js';
 import { findLinkRuntimeMismatches, findLiteralLinkInterpolations } from '../core/parsing/link-parser.js';
 import { isRuntimePassage, isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
+import { readStoryData } from '../core/workspace/story-data.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace/spindle-version.js';
 
@@ -61,6 +62,7 @@ import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace
  *  - arguments, against a parameter schema a project configures for a macro
  *    Spindle declares nothing for (SP108-SP111)
  *  - the Spindle version (SP001), compiler Twee syntax errors (SP002),
+ *    missing explicit entries (SP004),
  *    and a missing StoryVariables (SP202)
  *  - temporaries assigned in a loop (SP205) and array members (SP206)
  *  - widgets: argument counts, includes of widget passages, unused ones
@@ -97,6 +99,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   };
 
   const story = storyReport(workspace);
+  diagnostics.push(...(story.metadata.get(doc) ?? []));
   const effective = new Set(workspace.passages.getEffectivePassages());
   for (const passage of doc.passages) {
     if (!effective.has(passage.passage)) continue;
@@ -167,6 +170,8 @@ interface DefinedWidget {
 interface StoryReport {
   /** The documents it was computed from. */
   readonly documents: readonly DocumentMarkup[];
+  /** Unresolved explicit entry selections, located on effective StoryData. */
+  readonly metadata: ReadonlyMap<DocumentMarkup, SpindleDiagnostic[]>;
   /** Compiler-effective runtime passages, in their original story slots. */
   readonly passages: readonly PassageMarkup[];
   /** The macros the story may use, with the variable an input macro binds. */
@@ -262,6 +267,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
 
   return {
     documents,
+    metadata: storyDataDiagnostics(documents, workspace),
     passages,
     macros,
     markup,
@@ -272,6 +278,24 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
     transients: declarationsOf(workspace, 'StoryTransients'),
     variableDiagnostics: new Map(),
   };
+}
+
+/** Keep compiler-owned decoding and effective metadata semantics, including replacements. */
+function storyDataDiagnostics(documents: readonly DocumentMarkup[], workspace: WorkspaceModel): Map<DocumentMarkup, SpindleDiagnostic[]> {
+  const found = new Map<DocumentMarkup, SpindleDiagnostic[]>();
+  const effective = workspace.passages.getEffectivePassage('StoryData');
+  for (const doc of documents) {
+    const diagnostics: SpindleDiagnostic[] = [];
+    for (const passage of doc.passages) {
+      if (passage.passage !== effective) continue;
+      const data = readStoryData(passage.content);
+      if (data.start && !workspace.passages.getEffectivePassage(data.start)) {
+        diagnostics.push(makeDiag(passage.passage.nameRange, DiagnosticCode.MissingEntryPassage, `Starting passage "${data.start}" not found.`));
+      }
+    }
+    found.set(doc, diagnostics);
+  }
+  return found;
 }
 
 /** The names the passage `name` declares with the shape of their default, or undefined if the story has no such passage. */
@@ -638,7 +662,7 @@ function temporaryRefRegex(name: string): RegExp {
  * stays, because Spindle transforms the sigils inside them like any other code.
  */
 function maskLiterals(code: string): string {
-  const chars: string[] = Array.from(code, (ch) => (ch === '\n' ? '\n' : ' '));
+  const chars: string[] = code.split('').map(ch => (ch === '\n' ? '\n' : ' '));
   const copy = (text: string, index: number) => {
     for (let i = 0; i < text.length; i++) chars[index + i] = text[i];
   };
@@ -739,13 +763,15 @@ function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: r
   if (!loop || !close) return [];
 
   const targets = macro === 'computed' ? computedTemporaryTarget(token.rawArgs) : setTemporaryTargets(token.rawArgs);
+  const view = sourceView(passage, token.argsStart, token.argsEnd);
+  const argsIndex = viewIndex(view, token.argsStart);
   const bodyStart = loop.node.token.end;
   const diagnostics: SpindleDiagnostic[] = [];
   for (const target of targets) {
     if (!isReadInBody(passage, bodyStart, close.start, target.name, token.start, token.end)) continue;
-    const start = token.argsStart + target.offset;
+    const start = argsIndex + target.offset;
     diagnostics.push(makeDiag(
-      passage.range(start, start + 1 + target.name.length),
+      passage.range(pieceOffset(view, start), pieceOffset(view, start + 1 + target.name.length)),
       DiagnosticCode.TemporaryAssignedInLoop,
       `Temporary '_${target.name}' is assigned inside {${loop.name}} and read in the loop body. ` +
         'Temporaries are shared by every iteration, so all iterations end up seeing the value ' +
