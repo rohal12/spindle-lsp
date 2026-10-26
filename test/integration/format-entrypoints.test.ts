@@ -62,6 +62,34 @@ function expectFormatted(source: string, output: string, eol: string): void {
   expect(output.startsWith(`:: Start${eol}`)).toBe(true);
 }
 
+it.each([false, true])('protects escaped foreign metadata through CLI and MCP (discovered %s, #196)', async discovered => {
+  writeFileSync(join(directory, 'package.json'), '{}');
+  const metadata = ':: StoryD\\ata\n{"format":"SugarCube"}\n';
+  const source = `${discovered ? '' : metadata}:: Start\n<<print \`a\n   b\`>>\n`;
+  if (discovered) writeFileSync(join(directory, 'meta.tw'), metadata);
+  const file = join(directory, 'story.tw');
+  writeFileSync(file, source);
+  for (const args of [['format', file], ['format', '--check', file]]) {
+    const result = spawnSync(process.execPath, [dist.executable, ...args], { cwd: directory, encoding: 'utf8' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('Skipped: story format is SugarCube');
+    expect(readFileSync(file, 'utf8')).toBe(source);
+  }
+  const client = new Client({ name: 'test', version: '0' });
+  await client.connect(new StdioClientTransport({
+    command: process.execPath, args: [dist.executable, 'mcp'], cwd: directory,
+    env: { ...process.env } as Record<string, string>, stderr: 'ignore',
+  }));
+  try {
+    for (const name of ['spindle_format', 'spindle_format_check']) {
+      const response = await client.callTool({ name, arguments: { path: 'story.tw' } });
+      const body = JSON.parse((response.content as { text: string }[])[0].text);
+      expect(body.skipped).toBe('Skipped: story format is SugarCube, not Spindle');
+      expect(readFileSync(file, 'utf8')).toBe(source);
+    }
+  } finally { await client.close(); }
+});
+
 it('CLI format --check preserves a sibling path sharing cwd prefix (#125)', () => {
   const cwd = join(directory, 'project');
   const outside = join(directory, 'project-other');

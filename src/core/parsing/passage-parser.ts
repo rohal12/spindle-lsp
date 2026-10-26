@@ -23,6 +23,16 @@ const SPECIAL_PASSAGES = new Set([
   'StoryAuthor',
 ]);
 
+/** Encode a name only when the compiler reads back exactly that identity. */
+export function encodePassageName(name: string): string | undefined {
+  if (!name || /[\r\n]/.test(name)) return undefined;
+  const encoded = name.replace(/[[\]{}\\]/g, '\\$&');
+  const { parseTwee } = createCompilerRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
+  const parsed = parseTwee(`:: ${encoded}`);
+  return parsed.passages.length === 1 && parsed.passages[0].name === name
+    && !parsed.diagnostics.some(d => d.level === 'error') ? encoded : undefined;
+}
+
 /**
  * Parse a single line as a passage header.
  * Returns null if the line is not a valid passage header.

@@ -8,6 +8,7 @@ import {
   resolveStoryFormat,
   storyFormatOfTexts,
   findStoryFormat,
+  findSpindleTarget,
 } from '../../src/core/workspace/story-format.js';
 
 function storyData(format: unknown, extra = ''): string {
@@ -173,6 +174,11 @@ describe('WorkspaceModel story format', () => {
 });
 
 describe('storyFormatOfTexts', () => {
+  it.each(['StoryData', 'StoryD\\ata', '\\StoryData'])('reads decoded special header %s (#196)', header => {
+    expect(storyFormatOfTexts([`:: ${header}\n{"format":"SugarCube"}\n`])).toEqual({
+      name: 'SugarCube', isSpindle: false, hasStoryData: true,
+    });
+  });
   it('reports whether any text has a StoryData passage', () => {
     expect(storyFormatOfTexts([':: Start\nHi\n'])).toEqual({
       name: undefined, isSpindle: true, hasStoryData: false,
@@ -201,6 +207,24 @@ describe('findStoryFormat', () => {
     }
     return dir;
   }
+
+  it.each([false, true])('detects escaped metadata in selected or discovered sources: %s (#196)', async discovered => {
+    const text = ':: StoryD\\ata\n{"format":"SugarCube"}\n';
+    const dir = project({ 'package.json': '{}', 'meta.tw': text });
+    expect(await findStoryFormat(discovered ? [':: Start\nhello'] : [text], dir))
+      .toEqual({ name: 'SugarCube', isSpindle: false });
+  });
+
+  it.each([false, true])('reads a version from escaped metadata: discovered %s (#196)', async discovered => {
+    const text = ':: StoryD\\ata\n{"format":"Spindle","format-version":"0.59.0"}\n';
+    const dir = project({
+      'package.json': '{}', 'meta.tw': text,
+      // Stop installed-package lookup, even when the temp directory has a parent node_modules.
+      'node_modules/@rohal12/spindle/package.json': '{}',
+    });
+    expect(await findSpindleTarget(discovered ? [':: Start\nhello'] : [text], dir))
+      .toMatchObject({ version: '0.59.0', source: 'story-data', supported: false });
+  });
 
   it('prefers a StoryData among the given files', async () => {
     const dir = project({

@@ -14,7 +14,7 @@ import { documentPassageRefs, encodeEnclosingMarkup } from '../core/markup/passa
 import { encodePassageRefName } from './rename.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
 import { buildLineStarts, positionToOffset, offsetToPosition as textPosition, splitLines } from '../core/text.js';
-import { isRuntimePassage } from '../core/parsing/passage-parser.js';
+import { encodePassageName, isRuntimePassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -463,9 +463,9 @@ function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: Workspac
   }
 
   // A new passage after the last one of the document
-  const header = `:: ${name.replace(/[\\[\]{}]/g, '\\$&')}`;
-  if (!workspace.passages.getPassage(name) && name.trim() === name && name !== '' && !/[\r\n]/.test(name)) {
-    const edit = insertLinesAt(text, splitLines(text).length, `\n${header}\n`, lineEndingFor(workspace, uri));
+  const encoded = encodePassageName(name);
+  if (!workspace.passages.getPassage(name) && encoded !== undefined) {
+    const edit = insertLinesAt(text, splitLines(text).length, `\n:: ${encoded}\n`, lineEndingFor(workspace, uri));
     actions.push({
       title: `Create passage '${name}'`,
       kind: 'quickfix',
