@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Dependabot auto-merge runs it for a merge that started no push workflows
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -1,7 +1,8 @@
 # Version updates for the two ecosystems in this repository: npm (the root
 # package.json and package-lock.json) and the GitHub Actions in workflows.
 # Minor and patch updates arrive as one grouped PR per ecosystem, majors one
-# PR each. Security updates skip the cooldown.
+# PR each. Security updates skip the cooldown. dependabot-auto-merge.yml
+# merges the groups below once main's checks pass, except a major update.
 version: 2
 
 updates:
@@ -52,3 +53,6 @@ updates:
       actions-minor-patch:
         patterns: ['*']
         update-types: [minor, patch]
+      actions-security:
+        applies-to: security-updates
+        patterns: ['*']
