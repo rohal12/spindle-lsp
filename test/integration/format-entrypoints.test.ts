@@ -13,6 +13,7 @@ import {
   createMessageConnection, StreamMessageReader, StreamMessageWriter, type MessageConnection,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { parseTwee, StoryBuilder } from '@rohal12/twee-ts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { tokenize } from '../helpers/tooling.js';
@@ -61,6 +62,56 @@ function expectFormatted(source: string, output: string, eol: string): void {
   // Something was formatted: the header lost its trailing spaces
   expect(output.startsWith(`:: Start${eol}`)).toBe(true);
 }
+
+it.each(['cli', 'mcp', 'lsp'])('preserves tagged compiler metadata through %s formatting (#210)', async entrypoint => {
+  const source = ':: StoryTitle [script]\nGame\n:: StoryData [stylesheet]\n{"format":"Spindle"}\n:: Code [script]\nconst   x=1\n:: Start\nHi\n';
+  const file = join(directory, 'story.tw');
+  const uri = pathToFileURL(file).href;
+  writeFileSync(file, source);
+  let output: string;
+  if (entrypoint === 'cli') {
+    const result = spawnSync(process.execPath, [dist.executable, 'format', file], { cwd: directory, encoding: 'utf8' });
+    expect(result.status, result.stderr).toBe(0);
+    output = readFileSync(file, 'utf8');
+  } else if (entrypoint === 'mcp') {
+    const client = new Client({ name: 'test', version: '0' });
+    await client.connect(new StdioClientTransport({
+      command: process.execPath, args: [dist.executable, 'mcp'], cwd: directory,
+      env: { ...process.env } as Record<string, string>, stderr: 'ignore',
+    }));
+    try {
+      const response = await client.callTool({ name: 'spindle_format', arguments: { path: 'story.tw' } });
+      expect(response.isError).not.toBe(true);
+      output = readFileSync(file, 'utf8');
+    } finally { await client.close(); }
+  } else {
+    const proc = spawn(process.execPath, [dist.executable], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe'] });
+    proc.stderr.resume();
+    const conn = createMessageConnection(new StreamMessageReader(proc.stdout), new StreamMessageWriter(proc.stdin));
+    conn.onRequest(() => null);
+    conn.listen();
+    try {
+      await conn.sendRequest('initialize', { processId: process.pid, rootUri: pathToFileURL(directory).href, capabilities: {} });
+      await conn.sendNotification('initialized', {});
+      await conn.sendNotification('textDocument/didOpen', { textDocument: { uri, languageId: 'twee', version: 1, text: source } });
+      const edits = await conn.sendRequest('textDocument/formatting', {
+        textDocument: { uri }, options: { tabSize: 2, insertSpaces: true },
+      });
+      output = TextDocument.applyEdits(TextDocument.create(uri, 'twee', 1, source), edits as never);
+    } finally {
+      try { await conn.sendRequest('shutdown'); await conn.sendNotification('exit'); } catch { /* gone */ }
+      conn.dispose();
+      proc.kill();
+    }
+  }
+  const builder = new StoryBuilder();
+  const diagnostics: Parameters<StoryBuilder['add']>[1] = [];
+  for (const passage of parseTwee(output).passages) builder.add(passage, diagnostics);
+  expect(diagnostics.filter(d => d.level === 'error')).toEqual([]);
+  expect(builder.build().name).toBe('Game');
+  expect(builder.build().twine2.format).toBe('Spindle');
+  expect(output).toContain(':: Code [script]\nconst x = 1;\n');
+});
 
 it.each([false, true])('protects escaped foreign metadata through CLI and MCP (discovered %s, #196)', async discovered => {
   writeFileSync(join(directory, 'package.json'), '{}');

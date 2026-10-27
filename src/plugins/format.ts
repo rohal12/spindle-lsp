@@ -2,7 +2,7 @@ import { splitLines } from '../core/text.js';
 import type { Range } from '../core/types.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { builtinMacros, formatPassage, tokenizeMarkupTolerant } from '@rohal12/spindle/tooling';
-import { isMarkupPassage, parsePassageHeader } from '../core/parsing/passage-parser.js';
+import { isMarkupPassage, isRuntimePassage, parsePassageHeader } from '../core/parsing/passage-parser.js';
 import { splitPassages, classifyPassage } from './format/segment.js';
 import { loadPrettier } from './format/prettier-bridge.js';
 
@@ -117,7 +117,8 @@ async function formatLf(text: string, options?: FormatOptions): Promise<string> 
     if (passage.body === '') continue;
     const role = parsePassageHeader(passage.header, passage.startLine);
     const kind = classifyPassage(passage.header);
-    const body = kind === 'normal' && role && !isMarkupPassage(role)
+    // Compiler metadata keeps its name-based role even with code tags.
+    const body = role && (!isRuntimePassage({ name: role.name }) || (kind === 'normal' && !isMarkupPassage(role)))
       ? passage.body
       : await formatPassage(passage.body, {
       kind,
