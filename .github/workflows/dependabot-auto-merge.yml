@@ -1,0 +1,70 @@
+name: Dependabot auto-merge
+
+# Merges Dependabot's grouped minor and patch updates and its security
+# updates once the main ruleset lets them in: auto-merge waits for the
+# required checks and for code scanning. A major update, and the PRs that
+# Dependabot opens one at a time (Spindle, the duplication tools), stay manual.
+#
+# A merge made with GITHUB_TOKEN starts no push workflows, so the release and
+# main's checks would not run for it. After the merge this job dispatches them
+# (workflow_dispatch is the exception), unless push runs did start.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'rohal12/spindle-lsp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      # Turn on the pull request's auto-merge
+      contents: write
+      pull-requests: write
+      # Dispatch main's workflows after the merge
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Turn on auto-merge
+        id: enable
+        if: >-
+          steps.metadata.outputs.update-type != 'version-update:semver-major' &&
+          contains(fromJSON('["npm-minor-patch", "npm-security", "actions-minor-patch", "actions-security"]'), steps.metadata.outputs.dependency-group)
+        run: gh pr merge --auto --merge "$PR_URL"
+
+      - name: Run main's push workflows for the merge
+        if: steps.enable.outcome == 'success'
+        run: |
+          state=OPEN
+          for _ in $(seq 1 120); do
+            state=$(gh pr view "$PR_URL" --json state --jq .state)
+            [ "$state" != OPEN ] && break
+            sleep 20
+          done
+          if [ "$state" != MERGED ]; then
+            echo "Not merged ($state): nothing to run."
+            exit 0
+          fi
+          sha=$(gh pr view "$PR_URL" --json mergeCommit --jq .mergeCommit.oid)
+          sleep 30
+          if [ -n "$(gh run list --commit "$sha" --event push --json databaseId --jq '.[].databaseId')" ]; then
+            echo "Push workflows started for $sha."
+            exit 0
+          fi
+          for workflow in ci.yml duplication.yml codeql.yml zizmor.yml release.yml; do
+            gh workflow run "$workflow" --ref main
+          done
+          echo "Dispatched main's workflows for $sha."
