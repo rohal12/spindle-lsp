@@ -591,11 +591,11 @@ function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors:
   const name = token.name.toLowerCase();
   const parents = workspace.getEffectiveMacro(name)?.parents;
   if (!parents || parents.length === 0 || BRANCH_MACROS.has(name)) return [];
-  // Tooling owns discovered companion branches. Built-in value children
-  // and configured-only constraints stay here. Tooling treats listbox's
-  // sub-macros as values even when a project replaces its definition.
+  // Tooling owns the sub-macros of discovered macros, also those of a
+  // project's own listbox. Built-in value children and configured-only
+  // constraints stay here.
   if (workspace.macros.getAllMacros().some(macro => macro.source === 'user' &&
-    macro.name.toLowerCase() !== 'listbox' && macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
+    macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
 
   const allowed = new Set(parents.map((parent) => parent.toLowerCase()));
   const parentList = parents.join(', ');
