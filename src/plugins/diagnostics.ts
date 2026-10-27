@@ -48,9 +48,10 @@ import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace
  * Spindle's own checks come from its tooling API, which applies the rules
  * the runtime applies when the story starts:
  *  - `validateStoryMarkup`: malformed markup (SP101, SP102, SP104, SP105),
- *    unknown macros (SP100), unquoted passage names (SP113), syntax errors in
- *    code (SP106), argument errors (SP109), misplaced branches (SP107) and
- *    passages that do not exist (SP300)
+ *    markup nested past Spindle's limit (SP116), unknown macros (SP100),
+ *    unquoted passage names (SP113), syntax errors in code (SP106), argument
+ *    errors (SP109), misplaced branches (SP107), passages that do not exist
+ *    (SP300) and navigation to special passages (SP306)
  *  - `validateVariableReferences`: undeclared variables and transients, fields
  *    of primitives, reserved names (SP200, SP201, SP203, SP208)
  *  - `parseDeclarations`, through the variable tracker: declarations Spindle
@@ -318,6 +319,7 @@ const MARKUP_CODES: Record<MarkupDiagnosticCode, DiagnosticCodeValue> = {
   'mismatched-closer': DiagnosticCode.MalformedContainer,
   'stray-closer': DiagnosticCode.MalformedContainer,
   'misplaced-branch': DiagnosticCode.InvalidChildren,
+  'nesting-limit': DiagnosticCode.NestingLimitExceeded,
   'invalid-closer': DiagnosticCode.IllegalClosingTag,
   'closer-with-selectors': DiagnosticCode.IllegalClosingTag,
   'closer-with-arguments': DiagnosticCode.IllegalClosingTag,
@@ -331,6 +333,7 @@ const MARKUP_CODES: Record<MarkupDiagnosticCode, DiagnosticCodeValue> = {
   'argument-error': DiagnosticCode.ParameterTypeError,
   'code-syntax': DiagnosticCode.CodeSyntaxError,
   'unknown-passage': DiagnosticCode.BrokenPassageLink,
+  'special-passage': DiagnosticCode.SpecialPassageNavigation,
   'unquoted-passage-name': DiagnosticCode.UnquotedPassageName,
 };
 
@@ -588,11 +591,11 @@ function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors:
   const name = token.name.toLowerCase();
   const parents = workspace.getEffectiveMacro(name)?.parents;
   if (!parents || parents.length === 0 || BRANCH_MACROS.has(name)) return [];
-  // Tooling owns discovered companion branches. Built-in value children
-  // and configured-only constraints stay here. Tooling treats listbox's
-  // sub-macros as values even when a project replaces its definition.
+  // Tooling owns the sub-macros of discovered macros, also those of a
+  // project's own listbox. Built-in value children and configured-only
+  // constraints stay here.
   if (workspace.macros.getAllMacros().some(macro => macro.source === 'user' &&
-    macro.name.toLowerCase() !== 'listbox' && macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
+    macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
 
   const allowed = new Set(parents.map((parent) => parent.toLowerCase()));
   const parentList = parents.join(', ');

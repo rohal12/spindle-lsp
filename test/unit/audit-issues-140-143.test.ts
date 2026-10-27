@@ -140,7 +140,14 @@ it('protects StoryContext from source and destination renames, preserving its ru
   expect(() => computeRename(uri, { line: 10, character: 4 }, 'StoryContext', model)).toThrow();
   const ordinary = workspace([[uri, ':: Ordinary\nHello']]);
   expect(() => computeRename(uri, { line: 0, character: 4 }, 'StoryContext', ordinary)).toThrow(/reserved passage name/);
-  const compiled = await compile({ sources: [{ filename: uri, content: text }], ...compilerOptions });
+  // The link itself is an error: Spindle refuses to navigate to a special passage
+  expect(computeDiagnostics(uri, model).filter(d => d.code === 'SP306')).toEqual([
+    expect.objectContaining({ range: { start: { line: 11, character: 2 }, end: { line: 11, character: 14 } } }),
+  ]);
+  const refused = await compile({ sources: [{ filename: uri, content: text }], ...compilerOptions });
+  await expect(openPlaySession({ html: refused.output, trusted: true })).rejects.toThrow(/special passage "StoryContext"/);
+  const playable = text.replace('\n:: Other\n[[StoryContext]]', '');
+  const compiled = await compile({ sources: [{ filename: uri, content: playable }], ...compilerOptions });
   const session = await openPlaySession({ html: compiled.output, trusted: true });
   try { expect(await session.observe()).toMatchObject({ context: 'HP: 10', errors: [] }); }
   finally { await session.close(); }

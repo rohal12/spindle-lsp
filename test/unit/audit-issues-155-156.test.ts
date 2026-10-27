@@ -137,12 +137,14 @@ describe('tooling owns custom branch diagnostics (#156)', () => {
   ])('retains value-child constraints when a project replaces listbox: %s', body => {
     const definition = 'Story.defineMacro({name:"listbox",block:true,subMacros:["option"],render(){return null;}});';
     const model = workspace(body, definition);
-    // Tooling treats listbox's sub-macros as values, not branches, even
-    // when the project replaces that macro's runtime definition.
+    // Tooling reports the sub-macros of the project's listbox where they
+    // are misplaced, as for any discovered macro, so it is mapped once.
     const macros = [...builtinMacros.filter(macro => macro.name !== 'listbox'), ...discoverMacros(definition)];
-    expect(validateStoryMarkup([{ name: 'Start', content: body }], macros, { tolerant: true })).toEqual([]);
-    expect(computeDiagnostics(uri, model)).toEqual([expect.objectContaining({
-      code: 'SP107', message: expect.stringContaining('can only be directly inside {listbox}'),
-    })]);
+    const expected = validateStoryMarkup([{ name: 'Start', content: body }], macros, { tolerant: true });
+    expect(expected.map(d => d.code)).toEqual(['misplaced-branch']);
+    const passage = model.markup.get(uri)!.passages[1];
+    expect(computeDiagnostics(uri, model)).toEqual(expected.map(d => expect.objectContaining({
+      code: 'SP107', message: d.message, range: passage.range(d.start, d.end),
+    })));
   });
 });

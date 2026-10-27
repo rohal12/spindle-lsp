@@ -63,6 +63,13 @@ describe('diagnostic codes', () => {
     expect(getSeverity(DiagnosticCode.InvalidDeclaration)).toBe('error');
   });
 
+  it('SP116 and SP306 are error severity: Spindle stops at the nesting limit, and navigating to a special passage throws', () => {
+    expect(DiagnosticCode.NestingLimitExceeded).toBe('SP116');
+    expect(DiagnosticCode.SpecialPassageNavigation).toBe('SP306');
+    expect(getSeverity(DiagnosticCode.NestingLimitExceeded)).toBe('error');
+    expect(getSeverity(DiagnosticCode.SpecialPassageNavigation)).toBe('error');
+  });
+
   it('SP303 is hint severity', () => {
     expect(getSeverity(DiagnosticCode.UnusedWidget)).toBe('hint');
   });
@@ -110,7 +117,10 @@ describe('the code of each kind of diagnostic Spindle reports', () => {
     ['argument-error', '{link Go}x{/link}', 'SP109'],
     ['code-syntax', '{$a b}', 'SP106'],
     ['unknown-passage', '[[Go->Nowhere]]', 'SP300'],
+    ['special-passage', '{goto "StoryVariables"}', 'SP306'],
+    ['special-passage (link)', '[[Go->StoryInit]]', 'SP306'],
     ['unquoted-passage-name', '{goto Other}', 'SP113'],
+    ['nesting-limit', '<b>'.repeat(257) + '</b>'.repeat(257), 'SP116'],
     ['undeclared-variable', '{$nope}', 'SP200'],
     ['undeclared-transient (with StoryTransients)', '{%nope}', 'SP203'],
     ['primitive-field', '{$a.b}', 'SP201'],

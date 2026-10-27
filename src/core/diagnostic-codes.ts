@@ -1,3 +1,6 @@
+// fallow-ignore-file code-duplication
+// One line per code in each table: fallow's semantic mode reads the severity
+// table, and the markup table in plugins/diagnostics.ts, as copies of themselves.
 import type { Diagnostic, Position, Range } from './types.js';
 
 /**
@@ -36,6 +39,8 @@ export const DiagnosticCode = {
   UnquotedPassageName: 'SP113',
   ChildMaxExceeded: 'SP114',
   ChildMinNotMet: 'SP115',
+  /** `nesting-limit`: markup nested deeper than Spindle builds and renders. */
+  NestingLimitExceeded: 'SP116',
   /** `undeclared-variable`. */
   UndeclaredVariable: 'SP200',
   /** `primitive-field`: a field of a number, string or boolean. */
@@ -55,6 +60,8 @@ export const DiagnosticCode = {
   UnusedWidget: 'SP303',
   LinkRuntimeMismatch: 'SP304',
   LiteralLinkInterpolation: 'SP305',
+  /** `special-passage`: a link or macro that navigates to a special passage (`StoryInit`), which throws. */
+  SpecialPassageNavigation: 'SP306',
   DeadEndPassage: 'SP400',
   UnreachablePassage: 'SP401',
   LineTooLong: 'SP500',
@@ -82,6 +89,7 @@ const severityMap: Record<DiagnosticCodeValue, Severity> = {
   [DiagnosticCode.UnquotedPassageName]: 'error',
   [DiagnosticCode.ChildMaxExceeded]: 'error',
   [DiagnosticCode.ChildMinNotMet]: 'error',
+  [DiagnosticCode.NestingLimitExceeded]: 'error',
   [DiagnosticCode.UndeclaredVariable]: 'error',
   [DiagnosticCode.PrimitiveFieldAccess]: 'error',
   [DiagnosticCode.NoStoryVariables]: 'info',
@@ -96,6 +104,7 @@ const severityMap: Record<DiagnosticCodeValue, Severity> = {
   [DiagnosticCode.UnusedWidget]: 'hint',
   [DiagnosticCode.LinkRuntimeMismatch]: 'warning',
   [DiagnosticCode.LiteralLinkInterpolation]: 'warning',
+  [DiagnosticCode.SpecialPassageNavigation]: 'error',
   [DiagnosticCode.DeadEndPassage]: 'hint',
   [DiagnosticCode.UnreachablePassage]: 'hint',
   [DiagnosticCode.LineTooLong]: 'warning',

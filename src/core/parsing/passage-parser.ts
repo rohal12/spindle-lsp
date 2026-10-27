@@ -1,5 +1,6 @@
 import type { Range } from '../types.js';
 import { createRequire as createCompilerRequire } from 'node:module';
+import { isSpecialPassage } from '@rohal12/spindle/tooling';
 import { withoutCr } from '../text.js';
 
 export interface ParsedPassageHeader {
@@ -9,19 +10,6 @@ export interface ParsedPassageHeader {
   headerRange: Range;
   nameRange: Range;
 }
-
-const SPECIAL_PASSAGES = new Set([
-  'StoryVariables',
-  'StoryInit',
-  'StoryData',
-  'StoryTitle',
-  'StoryBanner',
-  'StoryCaption',
-  'StoryContext',
-  'StoryMenu',
-  'StoryInterface',
-  'StoryAuthor',
-]);
 
 /** Encode a name only when the compiler reads back exactly that identity. */
 export function encodePassageName(name: string): string | undefined {
@@ -117,22 +105,22 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
 const CODE_PASSAGE_TAGS = new Set(['script', 'stylesheet']);
 
 /**
- * Passage names that carry a meaning of their own: Twee's story passages and
- * the ones Spindle reads by name at startup or around every passage. Renaming
- * such a passage (or a reference to it) silently changes the passage's role,
- * so navigation treats these names as fixed.
+ * Passage names that carry a meaning of their own: Spindle's special passages,
+ * which it reads by name at startup or around every passage (its
+ * `isSpecialPassage`), and Twee's story passages below. Renaming such a
+ * passage (or a reference to it) silently changes the passage's role, so
+ * navigation treats these names as fixed.
  */
-const RESERVED_PASSAGE_NAMES: ReadonlySet<string> = new Set([
-  ...SPECIAL_PASSAGES,
+const TWEE_PASSAGE_NAMES: ReadonlySet<string> = new Set([
+  'StoryData', 'StoryTitle', 'StoryScript',
+  'StoryBanner', 'StoryCaption', 'StoryMenu', 'StoryAuthor',
   // twee-ts also reads these legacy compiler metadata passages by name.
   'StorySettings', 'StoryIncludes',
-  'StoryTitle', 'StoryLoading', 'StoryTransients', 'StoryScript', 'SaveTitle',
-  'PassageReady', 'PassageDone', 'PassageHeader', 'PassageFooter',
 ]);
 
-/** Whether `name` is a passage name with a fixed meaning (see RESERVED_PASSAGE_NAMES). */
+/** Whether `name` is a passage name with a fixed meaning (see TWEE_PASSAGE_NAMES). */
 export function isReservedPassageName(name: string): boolean {
-  return RESERVED_PASSAGE_NAMES.has(name);
+  return isSpecialPassage(name) || TWEE_PASSAGE_NAMES.has(name);
 }
 
 /**

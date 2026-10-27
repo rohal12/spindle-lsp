@@ -65,7 +65,8 @@ export function registerAuditFollowupContracts(test: Register): void {
     for (const name of ['button', 'print', 'if', 'custom']) for (const block of [false, true]) {
       test(`W74/widget-precedence/${name}/${block}/${eol.length}`, () => {
         const definition = `:: W [widget]\n{widget "${name}"}${block ? '{@children}' : 'body'}{/widget}\n`.replaceAll('\n', eol);
-        const container = block || name === 'button' || name === 'if';
+        // The widget owns its name: a same-name container macro gives it no body
+        const container = block;
         const call = `{${name.toUpperCase()}}${container ? `body{/${name.toUpperCase()}}` : ''}`;
         const story = `:: StoryVariables\n:: Start\n${call}\n`.replaceAll('\n', eol);
         const files = new Map([[defs, definition], [uri, story]]);
@@ -75,10 +76,6 @@ export function registerAuditFollowupContracts(test: Register): void {
         expect(findReferences(defs, widget.nameRange.start, workspace, false)).toHaveLength(container ? 2 : 1);
         expect(findReferences(defs, widget.nameRange.start, workspace, true)).toHaveLength(container ? 3 : 2);
         expect(computeCodeLenses(defs, workspace).find(l => l.range.start.line === 1)?.command.title).toBe('1 usage');
-        if (container && !block) {
-          expect(() => computeRename(defs, widget.nameRange.start, 'newWidget', workspace)).toThrow(/container body/);
-          return;
-        }
         const output = apply(files, computeRename(defs, widget.nameRange.start, 'newWidget', workspace));
         expect(output.get(uri)).toBe(story.replaceAll(name.toUpperCase(), 'newWidget'));
         expect(output.get(defs)).toBe(definition.replace(`"${name}"`, '"newWidget"'));
