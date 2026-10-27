@@ -24,8 +24,8 @@ lowering a budget after reducing it is welcome, raising one needs a reason.
 A pull request merges into `main` only when the checks the `main` ruleset
 requires pass (`test (24)`, the three `duplication` jobs, `Analyze (actions)`,
 `Analyze (javascript-typescript)`, `dependency-review`, `zizmor`) and it adds no
-CodeQL or zizmor alert of high or critical security severity and no
-error-level alert. Fix such a finding, or dismiss a false positive with its
+CodeQL or zizmor alert of medium or higher security severity and no error or
+warning alert. Fix such a finding, or dismiss a false positive with its
 reason; do not work around the gate. Every action in `.github/workflows` is
 pinned to a full commit SHA with its version in a comment: the repository
 refuses to run an unpinned one, and Dependabot updates the pins.
