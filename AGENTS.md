@@ -21,6 +21,15 @@ at PMD's `bin/pmd`, and `--base <ref>` also compares with that ref). CI runs
 them in the `Duplication` workflow; a change must not add duplication, and
 lowering a budget after reducing it is welcome, raising one needs a reason.
 
+A pull request merges into `main` only when the checks the `main` ruleset
+requires pass (`test (24)`, the three `duplication` jobs, `Analyze (actions)`,
+`Analyze (javascript-typescript)`, `dependency-review`, `zizmor`) and it adds no
+CodeQL or zizmor alert of high or critical security severity and no
+error-level alert. Fix such a finding, or dismiss a false positive with its
+reason; do not work around the gate. Every action in `.github/workflows` is
+pinned to a full commit SHA with its version in a comment: the repository
+refuses to run an unpinned one, and Dependabot updates the pins.
+
 Review scope follows the user's request. A diff review reports introduced
 regressions; a full implementation audit can report existing defects and must
 identify them as such. Review does not authorize product fixes or commits.
