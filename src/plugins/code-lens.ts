@@ -45,7 +45,10 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     });
   };
 
-  const storyVarsPassage = workspace.passages.getStoryVariables();
+  const variableLines = new Map([...workspace.variables.getDeclared().keys()]
+    .flatMap(name => workspace.variables.getDeclarations(name, '$')
+      .filter(declaration => declaration.uri === uri)
+      .map(declaration => [declaration.range.start.line, name] as const)));
   const widgetLines = new Map(workspace.widgets.getAllWidgets()
     .filter(w => w.uri === uri)
     .map(w => [w.range.start.line, w.name] as const));
@@ -75,15 +78,11 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     }
 
     // --- StoryVariables declarations ---
-    if (storyVarsPassage && storyVarsPassage.uri === uri &&
-      lineNum > storyVarsPassage.range.start.line && lineNum <= storyVarsPassage.range.end.line) {
-      const varDeclMatch = line.match(/^\$(\w+)\s*=/);
-      if (varDeclMatch) {
-        const varName = varDeclMatch[1];
-        const usageCount = findVariableReferences(varName, workspace, false).length;
+    const varName = variableLines.get(lineNum);
+    if (varName !== undefined) {
+      const usageCount = findVariableReferences(varName, workspace, false).length;
 
-        addLens(lineNum, `${usageCount} usage${usageCount !== 1 ? 's' : ''}`);
-      }
+      addLens(lineNum, `${usageCount} usage${usageCount !== 1 ? 's' : ''}`);
     }
   }
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { findVariableReferences, findWidgetReferences } from '../../src/plugins/references.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
+import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
 
 function createWorkspace(...files: Array<{ name: string; content: string }>): WorkspaceModel {
   const ws = new WorkspaceModel();
@@ -78,6 +79,48 @@ describe('computeCodeLenses', () => {
       l.range.start.line === 1 && l.command.title.includes('usage'),
     );
     expect(varLens).toBeDefined();
+  });
+
+  it.each(['\n', '\r\n', '\r'])('uses declaration locations for usage lenses with %j line endings (#213)', eol => {
+    const declarations = '$health = 100\n  $mana = 20\n\t$health = 50';
+    expect([...parseStoryVariables(declarations).keys()]).toEqual(['health', 'mana']);
+    const ws = createWorkspace({
+      name: 'test.tw',
+      content: `:: StoryVariables\n${declarations}\n:: Start\n{$health} {$health} {$mana}`.replaceAll('\n', eol),
+    });
+    const lenses = computeCodeLenses('file:///test.tw', ws).filter(l => l.command.title.includes('usage'));
+    expect(lenses).toEqual([
+      { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 13 } }, command: { title: '2 usages' } },
+      { range: { start: { line: 2, character: 0 }, end: { line: 2, character: 12 } }, command: { title: '1 usage' } },
+      { range: { start: { line: 3, character: 0 }, end: { line: 3, character: 13 } }, command: { title: '2 usages' } },
+    ]);
+    ws.dispose();
+  });
+
+  it('moves declaration usage lenses with the effective StoryVariables passage and live edits (#213)', () => {
+    const ws = createWorkspace(
+      { name: 'a.tw', content: ':: StoryVariables\n$health = 100\n:: Start\n{$health}' },
+      { name: 'b.tw', content: ':: StoryVariables [replace]\n  $health = 50' },
+    );
+    const usages = (uri: string) => computeCodeLenses(uri, ws).filter(l => l.command.title.includes('usage'));
+    expect(usages('file:///a.tw')).toEqual([]);
+    expect(usages('file:///b.tw')).toEqual([
+      { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 14 } }, command: { title: '1 usage' } },
+    ]);
+    ws.documents.update('file:///b.tw', ':: StoryVariables [replace]\n\n\t$health = 25');
+    expect(usages('file:///b.tw')).toEqual([
+      { range: { start: { line: 2, character: 0 }, end: { line: 2, character: 13 } }, command: { title: '1 usage' } },
+    ]);
+    ws.documents.update('file:///b.tw', ':: Notes\n  $health = 25');
+    expect(usages('file:///b.tw')).toEqual([]);
+    expect(usages('file:///a.tw').map(l => l.command.title)).toEqual(['1 usage']);
+    ws.dispose();
+  });
+
+  it('does not show declaration usage lenses for compiler-omitted StoryVariables (#213)', () => {
+    const ws = createWorkspace({ name: 'test.tw', content: ':: StoryVariables [script]\n$health = 100\n:: Start\n{$health}' });
+    expect(computeCodeLenses('file:///test.tw', ws).filter(l => l.command.title.includes('usage'))).toEqual([]);
+    ws.dispose();
   });
 
   it('counts references to a passage whose name has escaped brackets', () => {
