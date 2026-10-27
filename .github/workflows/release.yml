@@ -5,34 +5,44 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  # npm trusted publishing (OIDC): no npm token.
-  id-token: write
+permissions: {}
+
+# Two runs at once would compute the same version: queue them instead.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      # The tag and the GitHub release
+      contents: write
+      # npm trusted publishing (OIDC): no npm token, and npm adds provenance.
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Tests and the build run dependency code: no token on disk for it.
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # OIDC publishing needs npm 11.5.1+; Node 22 ships npm 10.
           node-version: 24
           registry-url: https://registry.npmjs.org
+          # A cache written by another workflow must not reach a publish.
+          package-manager-cache: false
 
       - run: npm ci
 
       - name: Run tests
         run: npm test
 
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish
+        id: publish
         run: |
           set -e
 
@@ -79,9 +89,16 @@ jobs:
           # Publish to npm
           npm publish
 
-          # Create git tag and GitHub release
-          git tag "v${NEW_VERSION}"
-          git push origin "v${NEW_VERSION}"
-          gh release create "v${NEW_VERSION}" \
-            --title "v${NEW_VERSION}" \
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      # The only step with the token: it creates the tag on this commit too.
+      - name: Tag and GitHub release
+        if: steps.publish.outputs.version != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.publish.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --target "$GITHUB_SHA" \
+            --title "v${VERSION}" \
             --generate-notes
