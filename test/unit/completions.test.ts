@@ -23,7 +23,6 @@ describe('getCompletions', () => {
     });
     const items = getCompletions('file:///test.tw', { line: 1, character: 1 }, '{', ws);
     // Should include at least some macros from the registry
-    const macroNames = items.map(i => i.label);
     // The workspace loads builtins + supplements, so there should be macros
     expect(items.length).toBeGreaterThan(0);
     // All items should be function kind

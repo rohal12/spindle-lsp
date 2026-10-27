@@ -298,6 +298,6 @@ describe('S80: variable identifiers never overlap other semantic tokens (#80)', 
     const aLines = astral.split('\r\n');
     const av = spans(astral, 'variable');
     expect(av.map(([l, s, e]) => aLines[l].slice(s, e))).toEqual(['$s', '$a', '$z']);
-    for (const [l, s, e] of av) expect(e).toBeLessThanOrEqual(aLines[l].length);
+    for (const [l, , e] of av) expect(e).toBeLessThanOrEqual(aLines[l].length);
   });
 });
