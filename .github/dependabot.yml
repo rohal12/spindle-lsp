@@ -1,0 +1,54 @@
+# Version updates for the two ecosystems in this repository: npm (the root
+# package.json and package-lock.json) and the GitHub Actions in workflows.
+# Minor and patch updates arrive as one grouped PR per ecosystem, majors one
+# PR each. Security updates skip the cooldown.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    versioning-strategy: increase
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-patch-days: 3
+      exclude:
+        # Our own releases, made for this repo
+        - '@rohal12/*'
+    commit-message:
+      # fix(deps) for what users install, chore(deps-dev) for the rest
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      npm-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+        exclude-patterns:
+          # A Spindle release changes the LSP's rules (AGENTS.md), and a
+          # duplication tool's release can change the measurements the
+          # budget compares: each gets its own PR.
+          - '@rohal12/spindle'
+          - fallow
+          - jscpd
+      npm-security:
+        applies-to: security-updates
+        patterns: ['*']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
