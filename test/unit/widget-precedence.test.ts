@@ -99,18 +99,26 @@ it('ignores an overridden macro schema when safely renaming a passage (#181)', (
   expect(changed).toContain('{caption "Hall"}[[Room]]');
 });
 
-it.each(['builtin', 'discovered'])('rejects a rename that would lose a same-name %s macro body contract (#181)', async source => {
+it.each(['builtin', 'discovered'])('gives an inline widget no body of a same-name %s container macro (#181)', async source => {
   const directory = mkdtempSync(join(tmpdir(), 'spindle-widget-precedence-'));
   directories.push(directory);
   const name = source === 'builtin' ? 'if' : 'caption';
   const script = source === 'discovered' ? 'Story.defineMacro({name:"caption",block:true,render(){return null;}});' : undefined;
-  const text = `:: StoryTitle\nExample\n:: StoryData\n{"ifid":"7E95B777-0E72-4603-AA57-049388D05756","format":"Spindle"}\n:: Widgets [widget]\n{widget "${name}" @value}CUSTOM:{@value}{/widget}\n:: StoryVariables\n:: Start\n{${name} "hello"}ignored{/${name}}\n`;
-  const model = workspace(text, script);
-  expect(await render(directory, text, script)).toBe('CUSTOM:hello');
-  expect(computeDiagnostics('file:///story.tw', model).filter(d => d.severity === 'error')).toEqual([]);
-  expect(findReferences('file:///story.tw', { line: 8, character: 2 }, model, true)).toHaveLength(3);
-  for (const at of [{ line: 5, character: 11 }, { line: 8, character: 2 }, { line: 8, character: name.length + 20 }]) {
-    expect(() => computeRename('file:///story.tw', at, 'renamed', model)).toThrow(/container body/);
-    expect(model.documents.getText('file:///story.tw')).toBe(text);
-  }
+  const story = (start: string) => `:: StoryTitle\nExample\n:: StoryData\n{"ifid":"7E95B777-0E72-4603-AA57-049388D05756","format":"Spindle"}\n:: Widgets [widget]\n{widget "${name}" @value}CUSTOM:{@value}{/widget}\n:: StoryVariables\n:: Start\n${start}\n`;
+  // The widget owns its name, so the closer closes nothing, as at runtime
+  const closed = story(`{${name} "hello"}ignored{/${name}}`);
+  await expect(render(directory, closed, script)).rejects.toThrow(`{/${name}} closes nothing`);
+  const model = workspace(closed, script);
+  expect(computeDiagnostics('file:///story.tw', model).filter(d => d.severity === 'error')).toEqual([expect.objectContaining({
+    code: 'SP104', message: expect.stringContaining(`{/${name}} closes nothing`),
+  })]);
+  expect(findReferences('file:///story.tw', { line: 8, character: 2 }, model, true)).toHaveLength(2);
+  // Called inline it is an ordinary widget, renamed with its output kept
+  const inline = story(`{${name} "hello"}`);
+  expect(await render(directory, inline, script)).toBe('CUSTOM:hello');
+  const edits = computeRename('file:///story.tw', { line: 8, character: 2 }, 'renamed', workspace(inline, script));
+  const changed = TextDocument.applyEdits(TextDocument.create('file:///story.tw', 'twee3', 1, inline), edits.get('file:///story.tw') ?? []);
+  expect(changed).toContain('{widget "renamed"');
+  expect(changed).toContain('{renamed "hello"}');
+  expect(await render(directory, changed, script)).toBe('CUSTOM:hello');
 });

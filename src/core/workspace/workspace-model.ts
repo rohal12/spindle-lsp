@@ -196,6 +196,9 @@ export class WorkspaceModel extends EventEmitter {
    * A same-name block macro retains its syntax when a widget owns the call.
    */
   isContainer(name: string): boolean {
+    // An effective widget owns its name: it takes no body of a same-name macro
+    const widget = this.widgets.getEffectiveWidget(name);
+    if (widget) return widget.block;
     return this.macros.isBlock(name) || (this.widgets.getWidget(name)?.block ?? false);
   }
 
@@ -434,7 +437,7 @@ export class WorkspaceModel extends EventEmitter {
   private toolingMacros() {
     const macros = this.macros.toolingMacros().filter(macro => !this.widgets.getEffectiveWidget(macro.name));
     return [...macros, ...this.widgets.getAllWidgets()
-      .map(widget => ({ name: widget.name, block: widget.block || this.macros.isBlock(widget.name), subMacros: [], widget: widget.tooling }))];
+      .map(widget => ({ name: widget.name, block: widget.block, subMacros: [], widget: widget.tooling }))];
   }
 
   /** Coalesce analysis and diagnostics across a burst of document changes. */
