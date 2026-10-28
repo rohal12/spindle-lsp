@@ -19,7 +19,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@rohal12/spindle": "0.64.5",
-    "@rohal12/twee-ts": "^2.0.0",
+    "@rohal12/twee-ts": "^2.1.0",
     "glob": "^13.0.6",
     "happy-dom": "^21.0.4",
     "minimatch": "^10.2.6",
