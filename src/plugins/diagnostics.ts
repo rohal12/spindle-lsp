@@ -288,15 +288,20 @@ function storyDataDiagnostics(documents: readonly DocumentMarkup[], workspace: W
   // Keep the compiler lazy for partial stories without metadata or an omitted
   // entry. The existing runtime-role index proves an ordinary Start usable.
   if (!data && (!implicit || isRuntimePassage(implicit))) return found;
-  const { StoryBuilder, startPassageDiagnostics } = createCompilerRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
+  const { parseTwee, StoryBuilder, startPassageDiagnostics } = createCompilerRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
   const builder = new StoryBuilder();
   const sources = new Map(documents.flatMap(doc => doc.passages.map(passage => [passage.passage, passage] as const)));
+  // The compiler normalizes passage bodies before decoding special passages.
+  // Match by header line so repeated declarations keep their source identity.
+  const parsed = new Map(documents.map(doc => [doc, new Map(parseTwee(doc.text).passages.map(passage => [passage.source?.line, passage]))]));
   const effective = workspace.passages.getEffectivePassages();
   for (const source of effective) {
     const passage = sources.get(source);
     if (!passage) continue;
+    const input = parsed.get(passage.doc)?.get(source.headerEnd.start.line + 1);
+    if (!input) continue;
     const diagnostics: import('@rohal12/twee-ts').Diagnostic[] = [];
-    builder.add({ name: source.name, tags: source.tags ?? [], text: passage.content }, diagnostics);
+    builder.add(input, diagnostics);
     if (source.name === 'StoryData') {
       found.set(passage.doc, diagnostics.filter(d => d.level === 'error').map(d =>
         makeDiag(passage.range(0, passage.content.trimEnd().length), DiagnosticCode.InvalidStoryData, d.message)));

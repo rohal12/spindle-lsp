@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { StoryBuilder, startPassageDiagnostics } from '@rohal12/twee-ts';
+import { parseTwee, StoryBuilder, startPassageDiagnostics } from '@rohal12/twee-ts';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
@@ -47,6 +47,21 @@ it('reports the compiler error for an escaped StoryData header with the old inva
   const found = computeDiagnostics(uri, workspace(text)).filter(d => d.severity === 'error');
   expect(found).toMatchObject([{ code: 'SP003', message: errors[0].message }]);
   expect(TextDocument.create(uri, 'twee', 1, text).getText(found[0].range)).toBe('hello');
+});
+
+it.each(['\u00a0', '\u0085', '\u000b', '\u2028', '\u3000', '\ufeff'])('uses compiler passage normalization before checking metadata: %j', whitespace => {
+  for (const eol of ['\n', '\r\n']) {
+    for (const tags of ['', ' [script]']) {
+      const data = JSON.stringify({ ...metadata, start: 'Hidden' });
+      const text = `:: StoryData\n${whitespace}${data}${whitespace}\n:: StoryVariables\n:: Start\nhello\n:: Hidden${tags}\n`.replaceAll('\n', eol);
+      const errors: import('@rohal12/twee-ts').Diagnostic[] = [];
+      const builder = new StoryBuilder();
+      for (const passage of parseTwee(text).passages) builder.add(passage, errors);
+      const expected = [...errors, ...startPassageDiagnostics(builder.build())].filter(d => d.level === 'error');
+      const found = computeDiagnostics(uri, workspace(text)).filter(d => d.code === 'SP003' || d.code === 'SP004');
+      expect(found.map(d => d.message)).toEqual(expected.map(d => d.message));
+    }
+  }
 });
 
 it.each(['script', 'stylesheet', 'Twine.private'])('checks explicit and implicit compiler-omitted entries tagged %s (#208)', tag => {
