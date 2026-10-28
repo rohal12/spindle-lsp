@@ -13,7 +13,9 @@ export const DiagnosticCode = {
   UnsupportedSpindleVersion: 'SP001',
   /** A fatal Twee source error reported by the public compiler parser. */
   TweeSyntaxError: 'SP002',
-  /** StoryData explicitly selects an entry passage absent from the story. */
+  /** Compiler-owned errors decoding StoryData metadata. */
+  InvalidStoryData: 'SP003',
+  /** The selected entry passage is absent or omitted from compiled story data. */
   MissingEntryPassage: 'SP004',
   /** `unknown-macro`: a macro that is none of the built-in, configured or defined ones. */
   UndefinedMacro: 'SP100',
@@ -74,6 +76,7 @@ type Severity = 'error' | 'warning' | 'info' | 'hint';
 const severityMap: Record<DiagnosticCodeValue, Severity> = {
   [DiagnosticCode.UnsupportedSpindleVersion]: 'warning',
   [DiagnosticCode.TweeSyntaxError]: 'error',
+  [DiagnosticCode.InvalidStoryData]: 'error',
   [DiagnosticCode.MissingEntryPassage]: 'error',
   [DiagnosticCode.UndefinedMacro]: 'warning',
   [DiagnosticCode.MalformedContainer]: 'error',

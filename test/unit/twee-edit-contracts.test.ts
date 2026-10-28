@@ -63,7 +63,10 @@ it.each(['\u0085', '\u00a0', '\u000b', '\u2028'])(
 
 it('keeps the compiler behavior for escaped headers and optional invalid metadata JSON (#197)', () => {
   for (const header of [':: StoryD\\ata', ':: A\\[B', ':: A {oops}']) {
-    const text = `:: StoryVariables\n${header}\nhello\n`;
+    // #200's maintainer decision: keep testing header acceptance with valid
+    // metadata; malformed StoryData bodies have their own compiler regression.
+    const body = header === ':: StoryD\\ata' ? '{}' : 'hello';
+    const text = `:: StoryVariables\n${header}\n${body}\n`;
     expect(parseTwee(text).diagnostics.filter(d => d.level === 'error')).toEqual([]);
     expect(computeDiagnostics(uri, workspace(text)).filter(d => d.severity === 'error')).toEqual([]);
   }

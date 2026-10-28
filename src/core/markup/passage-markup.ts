@@ -1,13 +1,16 @@
 import {
   completionContext,
+  macroCalls,
   pairMarkup,
   parseDeclarations,
   passagePieces,
   tokenizeMarkupTolerant,
+  widgetDefinitions,
   type CompletionContext,
   type Declaration,
   type DeclarationError,
   type MarkupError,
+  type MacroToken,
   type PairedNode,
   type PairingError,
   type Piece,
@@ -48,6 +51,7 @@ export class PassageMarkup {
   private cachedTokens?: { tokens: Token[]; errors: MarkupError[] };
   private cachedPairing?: { nodes: PairedNode[]; errors: PairingError[] };
   private cachedPieces?: Piece[];
+  private cachedInvocations?: MacroToken[];
   private cachedDeclarations?: { declarations: Declaration[]; errors: DeclarationError[] };
 
   constructor(
@@ -135,6 +139,19 @@ export class PassageMarkup {
   /** What the markup runs and names, and where (see `passagePieces`). */
   get pieces(): Piece[] {
     return (this.cachedPieces ??= this.isMarkup ? passagePieces(this.content, this.doc.context.macros) : []);
+  }
+
+  /** Contextual calls, excluding parent-owned clauses and widget registration heads. */
+  get invocations(): readonly MacroToken[] {
+    if (!this.cachedInvocations) {
+      const macros = this.doc.context.macros;
+      const definitions = widgetDefinitions([{ ...this.passage, content: this.content }], macros);
+      const registration = new Set(definitions.map(definition => definition.start));
+      this.cachedInvocations = this.isMarkup ? macroCalls(this.content, macros)
+        .filter(call => call.kind === 'invocation' && !registration.has(call.token.start))
+        .map(call => call.token) : [];
+    }
+    return this.cachedInvocations;
   }
 
   /** Whether the cursor is executable, with decoded code mapped back to `content`. */

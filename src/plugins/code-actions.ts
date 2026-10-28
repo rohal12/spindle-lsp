@@ -6,6 +6,8 @@ import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { DiagnosticCode, type SpindleDiagnostic } from '../core/diagnostic-codes.js';
+import { computeDiagnostics } from './diagnostics.js';
+import { isDeepStrictEqual } from 'node:util';
 import { findConfigFile } from '../core/workspace/config-loader.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
@@ -58,8 +60,17 @@ export function computeCodeActions(
   options: CodeActionOptions = {},
 ): CodeAction[] {
   const actions: CodeAction[] = [];
+  const current = computeDiagnostics(uri, workspace);
 
   for (const diag of diagnostics) {
+    // Client diagnostic data can still contain positions from an earlier
+    // publication, even when the editor has moved the visible range.
+    const fresh = current.find(candidate => candidate.code === diag.code
+      && isDeepStrictEqual(candidate.range, diag.range)
+      && isDeepStrictEqual(candidate.data, diag.data));
+    // SP202 uses no saved location or data: its fix derives the owner and
+    // verifies the missing declaration from the current complete workspace.
+    if (!fresh && diag.code !== DiagnosticCode.NoStoryVariables) continue;
     switch (diag.code) {
       case DiagnosticCode.UndefinedMacro:
         actions.push(...fixUndefinedMacro(uri, diag, workspace, options));

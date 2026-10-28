@@ -34,7 +34,6 @@ import { Parameters } from '../core/parsing/parameter-validator.js';
 import { findLinkRuntimeMismatches, findLiteralLinkInterpolations } from '../core/parsing/link-parser.js';
 import { isRuntimePassage, isScriptOrStylesheetPassage } from '../core/parsing/passage-parser.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
-import { readStoryData } from '../core/workspace/story-data.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace/spindle-version.js';
 
@@ -63,7 +62,7 @@ import { unsupportedVersionMessage, type SpindleTarget } from '../core/workspace
  *  - arguments, against a parameter schema a project configures for a macro
  *    Spindle declares nothing for (SP108-SP111)
  *  - the Spindle version (SP001), compiler Twee syntax errors (SP002),
- *    missing explicit entries (SP004),
+ *    invalid StoryData (SP003), missing or omitted entries (SP004),
  *    and a missing StoryVariables (SP202)
  *  - temporaries assigned in a loop (SP205) and array members (SP206)
  *  - widgets: argument counts, includes of widget passages, unused ones
@@ -261,8 +260,8 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
   const invoked = new Set<string>();
   for (const passage of passages) {
     if (!passage.isMarkup) continue;
-    for (const token of macroTokens(passage)) {
-      if (!token.isClose) invoked.add(token.name.toLowerCase());
+    for (const token of passage.invocations) {
+      invoked.add(token.name.toLowerCase());
     }
   }
 
@@ -284,17 +283,36 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
 /** Keep compiler-owned decoding and effective metadata semantics, including replacements. */
 function storyDataDiagnostics(documents: readonly DocumentMarkup[], workspace: WorkspaceModel): Map<DocumentMarkup, SpindleDiagnostic[]> {
   const found = new Map<DocumentMarkup, SpindleDiagnostic[]>();
-  const effective = workspace.passages.getEffectivePassage('StoryData');
-  for (const doc of documents) {
-    const diagnostics: SpindleDiagnostic[] = [];
-    for (const passage of doc.passages) {
-      if (passage.passage !== effective) continue;
-      const data = readStoryData(passage.content);
-      if (data.start && !workspace.passages.getEffectivePassage(data.start)) {
-        diagnostics.push(makeDiag(passage.passage.nameRange, DiagnosticCode.MissingEntryPassage, `Starting passage "${data.start}" not found.`));
-      }
+  const data = workspace.passages.getEffectivePassage('StoryData');
+  const implicit = workspace.passages.getEffectivePassage('Start');
+  // Keep the compiler lazy for partial stories without metadata or an omitted
+  // entry. The existing runtime-role index proves an ordinary Start usable.
+  if (!data && (!implicit || isRuntimePassage(implicit))) return found;
+  const { StoryBuilder, startPassageDiagnostics } = createCompilerRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
+  const builder = new StoryBuilder();
+  const sources = new Map(documents.flatMap(doc => doc.passages.map(passage => [passage.passage, passage] as const)));
+  const effective = workspace.passages.getEffectivePassages();
+  for (const source of effective) {
+    const passage = sources.get(source);
+    if (!passage) continue;
+    const diagnostics: import('@rohal12/twee-ts').Diagnostic[] = [];
+    builder.add({ name: source.name, tags: source.tags ?? [], text: passage.content }, diagnostics);
+    if (source.name === 'StoryData') {
+      found.set(passage.doc, diagnostics.filter(d => d.level === 'error').map(d =>
+        makeDiag(passage.range(0, passage.content.trimEnd().length), DiagnosticCode.InvalidStoryData, d.message)));
     }
-    found.set(doc, diagnostics);
+  }
+  const story = builder.build();
+  const entry = workspace.passages.getEffectivePassage(story.twine2.start || 'Start');
+  // Partial editor workspaces need not yet have Start. A source-present
+  // implicit Start must still be checked for compiler omission.
+  const owner = story.twine2.start ? workspace.passages.getEffectivePassage('StoryData') : entry;
+  const markup = owner && sources.get(owner);
+  if (markup) {
+    const diagnostics = found.get(markup.doc) ?? [];
+    diagnostics.push(...startPassageDiagnostics(story).map(d =>
+      makeDiag(markup.passage.nameRange, DiagnosticCode.MissingEntryPassage, d.message)));
+    found.set(markup.doc, diagnostics);
   }
   return found;
 }
@@ -879,8 +897,7 @@ function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace
   const diagnostics: SpindleDiagnostic[] = [];
   const macros = [...macroTokens(passage)];
 
-  for (const token of macros) {
-    if (token.isClose) continue;
+  for (const token of passage.invocations) {
     // Only an effective widget owns the invocation
     if (workspace.getEffectiveMacro(token.name)) continue;
     const widget = story.widgets.get(token.name.toLowerCase());

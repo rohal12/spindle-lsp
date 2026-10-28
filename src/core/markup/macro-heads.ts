@@ -14,6 +14,8 @@ import { walkNodes } from './tree.js';
 export interface MacroHead {
   name: string;
   closing: boolean;
+  /** Whether the opening head dispatches a call, rather than registering or supplying a clause. */
+  invocation: boolean;
   passage: PassageMarkup;
   /** The name's characters in `passage.content`: `[start, end)`. */
   start: number;
@@ -25,6 +27,7 @@ export interface MacroHead {
 interface Span {
   name: string;
   closing: boolean;
+  opener: number;
   start: number;
   end: number;
 }
@@ -41,15 +44,15 @@ const kept = new WeakMap<PassageMarkup, readonly MacroHead[]>();
 function* pairedHeads(paired: PairedMarkup, tokens: readonly Token[]): Generator<Span> {
   const unclosed: Array<{ name: string; start: number }> = [];
   for (const node of walkNodes(paired.nodes)) {
-    if (node.token.type === 'macro') yield { name: node.token.name, closing: false, start: node.token.nameStart, end: node.token.nameEnd };
+    if (node.token.type === 'macro') yield { name: node.token.name, closing: false, opener: node.token.start, start: node.token.nameStart, end: node.token.nameEnd };
     for (const branch of node.body?.branches ?? []) {
-      yield { name: branch.tag.name, closing: false, start: branch.tag.nameStart, end: branch.tag.nameEnd };
+      yield { name: branch.tag.name, closing: false, opener: branch.tag.start, start: branch.tag.nameStart, end: branch.tag.nameEnd };
     }
     // A closer that names another element than the one it closes is rejected (mismatched): it is no call
     const close = node.body?.close;
     if (node.token.type !== 'macro') continue;
     if (close?.type === 'macro' && close.name.toLowerCase() === node.token.name.toLowerCase()) {
-      yield { name: close.name, closing: true, start: close.nameStart, end: close.nameEnd };
+      yield { name: close.name, closing: true, opener: node.token.start, start: close.nameStart, end: close.nameEnd };
     } else if (node.body && !close) {
       unclosed.push({ name: node.token.name.toLowerCase(), start: node.token.start });
     }
@@ -61,8 +64,9 @@ function* pairedHeads(paired: PairedMarkup, tokens: readonly Token[]): Generator
     const token = byStart.get(error.start);
     if (error.code !== 'stray-closer' || token?.type !== 'macro' || !token.isClose) continue;
     const name = token.name.toLowerCase();
-    if (unclosed.some((open) => open.name === name && open.start < error.start)) {
-      yield { name: token.name, closing: true, start: token.nameStart, end: token.nameEnd };
+    const open = unclosed.find((open) => open.name === name && open.start < error.start);
+    if (open) {
+      yield { name: token.name, closing: true, opener: open.start, start: token.nameStart, end: token.nameEnd };
     }
   }
 }
@@ -78,9 +82,10 @@ function passageMacroHeads(passage: PassageMarkup): readonly MacroHead[] {
     if (piece.kind !== 'text') continue;
     found.push(...pairedHeads(pairMarkup(piece.tokens, { isBlock }), piece.tokens));
   }
+  const invocations = new Set(passage.invocations.map(token => token.start));
   heads = found
     .sort((a, b) => a.start - b.start)
-    .map((head) => ({ ...head, passage, range: passage.range(head.start, head.end) }));
+    .map(({ opener, ...head }) => ({ ...head, invocation: invocations.has(opener), passage, range: passage.range(head.start, head.end) }));
   kept.set(passage, heads);
   return heads;
 }

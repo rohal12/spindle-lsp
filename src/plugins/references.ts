@@ -59,7 +59,7 @@ export function findReferences(
 
   const doc = workspace.markup.get(uri);
   const head = doc && macroHeadAt(doc, position);
-  if (head) {
+  if (head?.invocation) {
     const widget = workspace.widgets.getWidget(head.name);
     if (!workspace.getEffectiveMacro(head.name) && widget && (!head.closing || workspace.isContainer(head.name))) {
       return findWidgetReferences(head.name, workspace, includeDeclaration);
@@ -215,18 +215,15 @@ export function findWidgetReferences(
   const lowerName = widgetName.toLowerCase();
   const isBlock = workspace.isContainer(widgetName);
 
-  for (const docUri of workspace.documents.getUris()) {
-    const doc = workspace.markup.get(docUri);
-    if (!doc) continue;
-    for (const head of documentMacroHeads(doc)) {
-      if (head.closing && (!isBlock || !includeClosingTags)) continue;
-      if (head.name.toLowerCase() === lowerName) {
-        locations.push({ uri: docUri, range: head.range });
-      }
-    }
-  }
+  const calls = workspace.documents.getUris().flatMap(uri => {
+    const doc = workspace.markup.get(uri);
+    return doc ? documentMacroHeads(doc)
+      .filter(head => head.invocation && head.name.toLowerCase() === lowerName
+        && (!head.closing || (isBlock && includeClosingTags)))
+      .map(head => ({ uri, range: head.range })) : [];
+  });
 
-  return locations;
+  return locations.concat(calls);
 }
 
 // ---------------------------------------------------------------------------

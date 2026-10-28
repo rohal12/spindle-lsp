@@ -71,7 +71,7 @@ function getWidgetDefinition(
 ): DefinitionResult | null {
   const doc = workspace.markup.get(uri);
   const head = doc && macroHeadAt(doc, position);
-  if (!head) return null;
+  if (!head?.invocation) return null;
   if (workspace.getEffectiveMacro(head.name)) return null;
   const widget = workspace.widgets.getWidget(head.name);
   return widget ? { uri: widget.uri, range: widget.range } : null;
