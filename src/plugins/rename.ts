@@ -450,7 +450,7 @@ function resolveSymbolAtCursor(
   // --- Widget invocation: {widgetName ...} or block widget closing tag {/widgetName} ---
   const doc = workspace.markup.get(uri);
   const head = doc && macroHeadAt(doc, position);
-  if (head) {
+  if (head?.invocation) {
     const widget = workspace.widgets.getWidget(head.name);
     if (!workspace.getEffectiveMacro(head.name) && widget && (!head.closing || workspace.isContainer(head.name))) {
       return { kind: 'widget', name: head.name, range: head.range };

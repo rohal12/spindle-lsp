@@ -1,5 +1,5 @@
 import type { CompletionItem } from 'vscode-languageserver';
-import { pieceOffset, tokenizeMarkupTolerant, type CompletionContainer } from '@rohal12/spindle/tooling';
+import { isSpecialPassage, pieceOffset, tokenizeMarkupTolerant, type CompletionContainer } from '@rohal12/spindle/tooling';
 import { widgetSources } from '../core/markup/widgets.js';
 import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
@@ -241,7 +241,7 @@ function linkable(name: string): boolean {
 }
 
 function getPassageNameCompletions(workspace: WorkspaceModel): CompletionItem[] {
-  return workspace.passages.getEffectivePassages().filter(p => isRuntimePassage(p) && linkable(p.name)).map(p => ({
+  return workspace.passages.getEffectivePassages().filter(p => isRuntimePassage(p) && !isSpecialPassage(p.name) && linkable(p.name)).map(p => ({
     label: p.name,
     kind: 18, // CompletionItemKind.Reference
     detail: p.uri,

@@ -920,6 +920,56 @@ describe('Integration: LSP server over stdio', () => {
     await session.waitForDiagnostics(uri, d => d.length === 0, from);
   });
 
+  it.each([
+    ['{"format":"Spindle","start":42}', 'SP003'],
+    ['{"format":"Spindle","start":"StoryData"}', 'SP004'],
+  ])('publishes and clears compiler metadata/entry errors: %s (#200, #208)', async (data, code) => {
+    const text = `:: StoryData\r\n${data}\r\n:: StoryVariables\r\n:: Start\r\nhello`;
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': text });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, text);
+    const diagnostics = await session.waitForDiagnostics(uri, hasCode(code));
+    expect(diagnostics.find(d => d.code === code)?.severity).toBe(1);
+    const from = session.publishes.length;
+    await didChangeFull(session, uri, 2, text.replace(data, '{"format":"Spindle"}'));
+    await session.waitForDiagnostics(uri, d => d.length === 0, from);
+  });
+
+  it.each([
+    ['{prnit "hello"}', 'SP100', "Change to '{print}'"],
+    ['{if true}hello', 'SP101', 'Insert {/if}'],
+  ])('revalidates quick fixes after edits before publication: %s (#228)', async (body, code, title) => {
+    const text = `:: StoryVariables\n:: Start\n${body}`;
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': text });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, text);
+    const diagnostic = (await session.waitForDiagnostics(uri, hasCode(code))).find(d => d.code === code)!;
+    const request = (diagnostics: LspDiagnostic[]) => session.conn.sendRequest('textDocument/codeAction', {
+      textDocument: { uri }, range: diagnostics[0].range, context: { diagnostics },
+    }) as Promise<Array<{ title: string; edit: { changes: Record<string, Array<{ range: LspDiagnostic['range']; newText: string }>> } }>>;
+    const actions = await request([diagnostic]);
+    const fix = actions.find(action => action.title === title)!;
+    expect(fix).toBeDefined();
+    const applied = TextDocument.applyEdits(TextDocument.create(uri, 'twee', 1, text), fix.edit.changes[uri]);
+    expect(applied).toContain(code === 'SP100' ? '{print "hello"}' : '{if true}hello{/if}');
+    const changed = text.replace(body, `prefix ${body}`);
+    await didChangeFull(session, uri, 2, changed);
+    // The editor may shift the outer range while leaving opaque data intact.
+    const shifted = { ...diagnostic, range: {
+      start: { ...diagnostic.range.start, character: diagnostic.range.start.character + 7 },
+      end: { ...diagnostic.range.end, character: diagnostic.range.end.character + 7 },
+    } };
+    for (const stale of [diagnostic, shifted]) {
+      expect(await request([stale])).toEqual([]);
+    }
+    const from = session.publishes.length;
+    await didChangeFull(session, uri, 3, changed + '\n');
+    const fresh = (await session.waitForDiagnostics(uri, hasCode(code), from)).find(d => d.code === code)!;
+    expect((await request([fresh])).map(action => action.title)).toContain(title);
+  });
+
   it('includes unopened references in an immediate rename and preserves the open buffer (#195)', async () => {
     const dir = makeTempWorkspace({
       'package.json': '{}', 'declarations.tw': ':: StoryVariables\n$disk = 1\n', 'start.tw': ':: Start\n{$x}\n',

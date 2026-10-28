@@ -1,7 +1,6 @@
 import { effectiveWidgetDefinitions, type ToolingMacro, type WidgetDefinition } from '@rohal12/spindle/tooling';
 import type { Position, WidgetDef } from '../types.js';
 import type { PassageMarkup } from '../markup/passage-markup.js';
-import { macroTokens } from '../markup/tokens.js';
 import { widgetSources } from '../markup/widgets.js';
 
 /**
@@ -103,8 +102,8 @@ export class WidgetRegistry {
   recordInvocations(uri: string, passages: readonly PassageMarkup[]): void {
     const names = new Set<string>();
     for (const passage of passages) {
-      for (const macro of macroTokens(passage)) {
-        if (!macro.isClose) names.add(macro.name.toLowerCase());
+      for (const macro of passage.invocations) {
+        names.add(macro.name.toLowerCase());
       }
     }
     this.invokedByUri.set(uri, names);

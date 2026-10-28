@@ -1,15 +1,18 @@
 # StoryData diagnostics
 
-StoryData is compiler metadata. Checks in the editor, CLI and MCP now report
-missing explicit entry passages as errors:
+StoryData is compiler metadata. Checks in the editor, CLI and MCP report
+invalid metadata and unusable entry passages as errors:
 
 | Code | Meaning |
 | --- | --- |
-| SP004 | The effective StoryData selects a starting passage that does not exist in the complete workspace. |
+| SP003 | The compiler rejects explicit StoryData: malformed JSON, invalid field types or an invalid IFID. |
+| SP004 | The effective starting passage is missing or the compiler omits it from story data. |
 
-The error points to the StoryData passage name. It clears after the entry
-selection is repaired or the missing destination is restored, including
-destinations in other files. CLI checks exit with status 1 when it is present.
+Metadata errors point to the StoryData body. Entry errors point to the
+StoryData passage name for an explicit selection, or to an implicit Start
+that the compiler omits (for example, one tagged `script`). They clear after
+metadata or destination roles are repaired, including unsaved edits and
+replacements in other files. CLI checks exit with status 1 for these errors.
 
 Metadata decoding uses the compiler's case folding, repeated-field, null and
 replacement semantics. Partial metadata does not require an IFID or an explicit
