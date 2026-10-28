@@ -4,7 +4,6 @@ import type { Range, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
-import { macroTokens } from '../core/markup/tokens.js';
 
 // ---------------------------------------------------------------------------
 // Core inlay hints function (no LSP dependency)
@@ -55,7 +54,7 @@ function addWidgetParamHints(
 
   for (const passage of passages) {
     // Invocations in the labels and attribute values that hold markup count too
-    for (const token of macroTokens(passage)) {
+    for (const token of passage.invocations) {
       if (token.isClose || token.rawArgs === '') continue;
       if (!inRange(passage.position(token.start).line)) continue;
 

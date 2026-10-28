@@ -13,6 +13,7 @@ import {
   type Diagnostic as LspDiagnostic,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import type { Hover, InlayHint, SignatureHelp } from 'vscode-languageserver';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getCompletions } from '../../src/plugins/completions.js';
@@ -1551,6 +1552,38 @@ describe('Integration: LSP server over stdio', () => {
   // Closing-macro completion and SP202 fix through the real server (framed
   // JSON-RPC over stdio): the response is applied, not just inspected.
   // -----------------------------------------------------------------------
+
+  it.each(['listbox', 'cycle'])('respects parent-owned %s options in widget help over stdio (#234)', async control => {
+    const text = ':: StoryVariables\n$x = "A"\n:: W [widget]\n'
+      + '{widget "option" @widgetOnly}Widget:{@widgetOnly}{/widget}\n:: Start\n{option "standalone"}\n'
+      + `{${control} "$x"}{option "A"}{option "B"}{/${control}}`;
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': text });
+    const storyUri = uriFor(dir, 'story.tw');
+    const session = await startLsp(dir);
+    await didOpen(session, storyUri, text);
+    await session.waitForDiagnostics(storyUri, diags => diags.length === 0);
+    const doc = TextDocument.create(storyUri, 'twee', 1, text);
+    const textDocument = { uri: storyUri };
+    const range = { start: doc.positionAt(text.indexOf(':: Start')), end: doc.positionAt(text.length) };
+    const hints = await session.conn.sendRequest('textDocument/inlayHint', { textDocument, range }) as InlayHint[];
+    expect(hints.map(hint => hint.label)).toEqual(['@widgetOnly:']);
+    for (const value of ['"A"', '"B"', '"standalone"']) {
+      const start = text.indexOf(value, text.indexOf(':: Start'));
+      const hover = await session.conn.sendRequest('textDocument/hover', {
+        textDocument, position: doc.positionAt(start - 3),
+      }) as Hover | null;
+      const signature = await session.conn.sendRequest('textDocument/signatureHelp', {
+        textDocument, position: doc.positionAt(start + 1),
+      }) as SignatureHelp | null;
+      if (value === '"standalone"') {
+        expect(JSON.stringify(hover)).toContain('widgetOnly');
+        expect(signature?.signatures[0].label).toBe('{option @widgetOnly}');
+      } else {
+        expect(JSON.stringify(hover)).not.toContain('widgetOnly');
+        expect(signature).toBeNull();
+      }
+    }
+  });
 
   it('completes {/if} after "{/i" through the server and the applied textEdit closes the block', async () => {
     const text = ':: Start\n{if true}\nbody\n{/i\n';
