@@ -5,7 +5,8 @@ import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 
 const uri = 'file:///story.tw';
-const valid = '{"ifid":"7E95B777-0E72-4603-AA57-049388D05756","format":"Spindle"}';
+const metadata = { ifid: '7E95B777-0E72-4603-AA57-049388D05756', format: 'Spindle' };
+const valid = JSON.stringify(metadata);
 const models: WorkspaceModel[] = [];
 afterEach(() => models.splice(0).forEach(model => model.dispose()));
 function workspace(text: string) {
@@ -16,9 +17,9 @@ function workspace(text: string) {
 }
 
 it.each([
-  valid.replace('}', ',}'),
-  valid.replace('}', ',"start":42}'),
-  valid.replace('7E95B777-0E72-4603-AA57-049388D05756', 'invalid'),
+  `${valid.slice(0, -1)},}`,
+  JSON.stringify({ ...metadata, start: 42 }),
+  JSON.stringify({ ...metadata, ifid: 'invalid' }),
 ])('forwards compiler StoryData errors with source ranges and clears them on repair: %s (#200)', data => {
   const errors: import('@rohal12/twee-ts').Diagnostic[] = [];
   const builder = new StoryBuilder();
@@ -51,7 +52,7 @@ it('reports the compiler error for an escaped StoryData header with the old inva
 it.each(['script', 'stylesheet', 'Twine.private'])('checks explicit and implicit compiler-omitted entries tagged %s (#208)', tag => {
   for (const explicit of [false, true]) {
     const name = explicit ? 'Hidden' : 'Start';
-    const data = explicit ? valid.replace('}', ',"start":"Hidden"}') : valid;
+    const data = explicit ? JSON.stringify({ ...metadata, start: 'Hidden' }) : valid;
     const text = `:: StoryData\n${data}\n:: StoryVariables\n:: ${name} [${tag}]\n`;
     const builder = new StoryBuilder();
     builder.add({ name: 'StoryData', tags: [], text: data }, []);
@@ -66,7 +67,7 @@ it.each(['script', 'stylesheet', 'Twine.private'])('checks explicit and implicit
 });
 
 it.each(['StoryData', 'StoryTitle', 'StorySettings'])('checks compiler-owned omission of an explicit %s entry (#208)', name => {
-  const data = valid.replace('}', `,"start":"${name}"}`);
+  const data = JSON.stringify({ ...metadata, start: name });
   const text = `:: StoryData\n${data}\n:: StoryTitle\nExample\n:: StorySettings\n:: StoryVariables\n:: Start\nhello`;
   const found = computeDiagnostics(uri, workspace(text)).filter(d => d.code === 'SP004');
   expect(found).toHaveLength(1);
@@ -74,7 +75,7 @@ it.each(['StoryData', 'StoryTitle', 'StorySettings'])('checks compiler-owned omi
 });
 
 it('tracks effective metadata and entry replacement roles across documents (#200, #208)', () => {
-  const model = workspace(`:: StoryData\n${valid.replace('}', ',"start":"Hall"}')}\n:: StoryVariables\n:: Hall\nhello`);
+  const model = workspace(`:: StoryData\n${JSON.stringify({ ...metadata, start: 'Hall' })}\n:: StoryVariables\n:: Hall\nhello`);
   const replacement = 'file:///z.tw';
   model.documents.open(replacement, ':: Hall [script]\nvoid 0;');
   expect(computeDiagnostics(uri, model).filter(d => d.code === 'SP004')).toHaveLength(1);
