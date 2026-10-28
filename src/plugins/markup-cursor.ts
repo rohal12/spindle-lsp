@@ -41,6 +41,8 @@ export interface Region {
 export interface EnclosingMacro {
   name: string;
   argsBefore: string;
+  /** Contextual dispatch of a complete token; unknown for a head still being typed. */
+  invocation?: boolean;
 }
 
 /** A macro name (`{na`) or a closer (`{/na`) being typed. */
@@ -135,7 +137,7 @@ export class MarkupCursor {
       const found: Array<EnclosingMacro & { start: number }> = [];
       for (const token of region.tokens) {
         if (token.type !== 'macro' || token.isClose || token.nameEnd >= at || at >= token.end) continue;
-        found.push({ start: token.start, name: token.name, argsBefore: at >= token.argsStart ? region.view.text.slice(viewIndex(region.view, token.argsStart), viewIndex(region.view, at)) : '' });
+        found.push({ start: token.start, name: token.name, invocation: this.passage.invocations.some(call => call.start === token.start), argsBefore: at >= token.argsStart ? region.view.text.slice(viewIndex(region.view, token.argsStart), viewIndex(region.view, at)) : '' });
       }
       for (const error of region.errors) {
         const source = region.view.text;
@@ -145,7 +147,7 @@ export class MarkupCursor {
         if (name && name[0] !== '/') found.push({ start: error.offset, name, argsBefore: source.slice(end, viewIndex(region.view, at)).trimStart() });
       }
       const innermost = found.filter(macro => known(macro.name)).sort((a, b) => b.start - a.start)[0];
-      if (innermost) return { name: innermost.name, argsBefore: innermost.argsBefore };
+      if (innermost) return innermost;
     }
     return undefined;
   }

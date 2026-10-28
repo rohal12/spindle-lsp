@@ -5,6 +5,7 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
 import { positionToOffset } from '../core/text.js';
 import { macroTokens } from '../core/markup/tokens.js';
+import { macroHeadAt } from '../core/markup/macro-heads.js';
 import { variableUses, type VariableUse } from './markup-symbols.js';
 
 // ---------------------------------------------------------------------------
@@ -68,7 +69,7 @@ function getMacroHover(passage: PassageMarkup, at: number, workspace: WorkspaceM
     }
 
     const widget = workspace.widgets.getWidget(macro.name);
-    if (widget) return buildWidgetHover(widget, range);
+    if (widget && macroHeadAt(passage.doc, passage.position(at))?.invocation) return buildWidgetHover(widget, range);
   }
   return null;
 }

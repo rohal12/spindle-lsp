@@ -194,6 +194,7 @@ export function getSignatureHelp(
   }
 
   // Check widgets
+  if (enclosing.invocation === false) return null;
   const widget = workspace.widgets.getWidget(macroName);
   if (widget && widget.params.length > 0) {
     const paramLabels = widget.params;

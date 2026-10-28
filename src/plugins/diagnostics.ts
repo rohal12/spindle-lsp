@@ -101,12 +101,14 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   const story = storyReport(workspace);
   diagnostics.push(...(story.metadata.get(doc) ?? []));
   const effective = new Set(workspace.passages.getEffectivePassages());
+  let passageNames: string[] | undefined;
+  const getPassageNames = () => passageNames ??= [...effective].filter(isRuntimePassage).map(passage => passage.name);
   for (const passage of doc.passages) {
     if (!effective.has(passage.passage)) continue;
     attempt(() => diagnostics.push(...markupDiagnostics(passage, story, workspace)));
     attempt(() => diagnostics.push(...variableDiagnostics(passage, story)));
     attempt(() => diagnostics.push(...structureDiagnostics(passage, workspace)));
-    attempt(() => diagnostics.push(...argumentDiagnostics(passage, workspace)));
+    attempt(() => diagnostics.push(...argumentDiagnostics(passage, workspace, getPassageNames)));
     attempt(() => diagnostics.push(...widgetDiagnostics(passage, story, workspace)));
   }
   attempt(() => diagnostics.push(...versionDiagnostics(uri, doc, workspace)));
@@ -851,9 +853,8 @@ const SPINDLE_MACROS: ReadonlySet<string> = new Set([
  * registry's format instead, and the language server checks its arguments
  * against those.
  */
-function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
+function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel, getPassageNames: () => string[]): SpindleDiagnostic[] {
   const diagnostics: SpindleDiagnostic[] = [];
-  const passageNames = workspace.passages.getEffectivePassages().filter(isRuntimePassage).map(candidate => candidate.name);
 
   for (const token of passage.isMarkup ? macroTokens(passage) : []) {
     if (token.type !== 'macro' || token.isClose) continue;
@@ -879,7 +880,7 @@ function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel):
       continue;
     }
 
-    const result = params.validate(args, { passages: passageNames });
+    const result = params.validate(args, { passages: getPassageNames() });
     if (result.variantIndex === null) continue;
     for (const error of result.errors) {
       const code = error.message.startsWith('Too many arguments') ? DiagnosticCode.TooManyArguments : DiagnosticCode.ParameterTypeError;

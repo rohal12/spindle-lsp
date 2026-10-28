@@ -9,6 +9,9 @@ import { findReferences, findWidgetReferences } from '../../src/plugins/referenc
 import { getDefinition } from '../../src/plugins/definition.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getCompletions } from '../../src/plugins/completions.js';
+import { getHoverInfo } from '../../src/plugins/hover.js';
+import { getSignatureHelp } from '../../src/plugins/signature.js';
+import { computeInlayHints } from '../../src/plugins/inlay-hints.js';
 
 const uri = 'file:///story.tw';
 const metadata = ':: StoryTitle\nExample\n:: StoryData\n'
@@ -75,6 +78,35 @@ it('retains genuine nested, label and attribute calls and respects replacement c
   expect(findWidgetReferences('option', model, false)).toHaveLength(4);
   model.documents.close(extra);
   expect(findWidgetReferences('option', model, false)).toHaveLength(3);
+});
+
+it.each(['listbox', 'cycle'])('only shows option widget help on genuine invocations inside %s (#234)', control => {
+  const text = metadata + ':: StoryVariables\n$x = "A"\n:: W [widget]\n'
+    + '{widget "option" @widgetOnly}Widget:{@widgetOnly}{/widget}\n:: Start\n'
+    + '{option "standalone"}\n'
+    + `{${control} "$x"}{option "A"}{OpTiOn "B"}<span>{option "nested"}</span>{/${control}}\n`
+    + '<span title="{option \'attribute\'}">x</span>\n{button "{option \'label\'}"}x{/button}';
+  const model = workspace(text);
+  const doc = TextDocument.create(uri, 'twee', 1, text);
+  for (const value of ['"A"', '"B"']) {
+    const start = text.indexOf(value, text.indexOf(`{${control}`));
+    expect(getHoverInfo(uri, doc.positionAt(start - 3), model)?.contents ?? '').not.toContain('widgetOnly');
+    expect(getSignatureHelp(uri, doc.positionAt(start + 1), model)).toBeNull();
+  }
+  const range = { start: doc.positionAt(text.indexOf(':: Start')), end: doc.positionAt(text.length) };
+  expect(computeInlayHints(uri, range, model).filter(h => h.label === '@widgetOnly:')).toHaveLength(4);
+  for (const value of ['"standalone"', '"nested"', "'attribute'", "'label'"]) {
+    const start = text.indexOf(value);
+    expect(getHoverInfo(uri, doc.positionAt(start - 3), model)?.contents).toContain('widgetOnly');
+    expect(getSignatureHelp(uri, doc.positionAt(start + 1), model)?.signatures[0].label).toContain('@widgetOnly');
+  }
+  // Replacing the built-in control makes its former option clause a widget call.
+  model.documents.open('file:///z.tw', `:: Controls [widget]\n{widget "${control}" @name}{@children}{/widget}`);
+  const option = text.indexOf('"A"', text.indexOf(`{${control}`));
+  expect(getSignatureHelp(uri, doc.positionAt(option + 1), model)?.signatures[0].label).toContain('@widgetOnly');
+  expect(computeInlayHints(uri, range, model).filter(h => h.label === '@widgetOnly:')).toHaveLength(6);
+  model.documents.close('file:///z.tw');
+  expect(getSignatureHelp(uri, doc.positionAt(option + 1), model)).toBeNull();
 });
 
 it.each(['\n', '\r\n'])('preserves registration syntax for a widget named widget (EOL %j, #229)', async eol => {
