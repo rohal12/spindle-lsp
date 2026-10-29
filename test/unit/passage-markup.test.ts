@@ -55,11 +55,81 @@ describe('PassageMarkup (the tooling API through the workspace)', () => {
     expect(start.contentOffset(start.docOffset(link.start))).toBe(link.start);
   });
 
-  it('is read again when the text or the macros change', () => {
+  it('is read again when the text changes', () => {
     const ws = workspace(SOURCE);
     const first = ws.markup.get('file:///story.tw')!;
     expect(ws.markup.get('file:///story.tw')).toBe(first);
     ws.documents.open('file:///story.tw', SOURCE + '{goto "Start"}\n');
     expect(ws.markup.get('file:///story.tw')).not.toBe(first);
+    ws.dispose();
+  });
+
+  it('uses new header objects after reindexing unchanged text (#236)', () => {
+    const uri = 'file:///story.tw';
+    const ws = workspace(SOURCE);
+    const first = ws.markup.get(uri)!;
+    ws.passages.rebuild(uri, SOURCE);
+    const fresh = ws.markup.get(uri)!;
+    expect(fresh).not.toBe(first);
+    expect(fresh.passages.map(p => p.passage)).toEqual(ws.passages.getPassagesInDocument(uri));
+    expect(fresh.passages[1].passage).toBe(ws.passages.getPassagesInDocument(uri)[1]);
+    expect(fresh.passages[1].passage).not.toBe(first.passages[1].passage);
+    expect(ws.markup.get(uri)).toBe(fresh);
+    ws.dispose();
+  });
+
+  it('reuses headerless markup and reads newly added headers (#236)', () => {
+    const uri = 'file:///story.tw';
+    const ws = workspace('prose without a header');
+    const first = ws.markup.get(uri)!;
+    expect(first.passages).toEqual([]);
+    expect(ws.markup.get(uri)).toBe(first);
+    ws.documents.update(uri, ':: Start\n[[Next]]');
+    expect(ws.markup.get(uri)!.passages[0].passage.name).toBe('Start');
+    ws.documents.update(uri, '');
+    const empty = ws.markup.get(uri)!;
+    expect(empty.text).toBe('');
+    expect(empty.passages).toEqual([]);
+    expect(ws.markup.get(uri)).toBe(empty);
+    ws.dispose();
+  });
+
+  it('discards markup after closing and reopening identical text (#236)', () => {
+    const uri = 'file:///story.tw';
+    const ws = workspace(SOURCE);
+    const first = ws.markup.get(uri)!;
+    ws.documents.close(uri);
+    expect(ws.markup.get(uri)).toBeUndefined();
+    ws.documents.open(uri, SOURCE);
+    const fresh = ws.markup.get(uri)!;
+    expect(fresh).not.toBe(first);
+    expect(fresh.passages[0].passage).toBe(ws.passages.getPassagesInDocument(uri)[0]);
+    ws.dispose();
+  });
+
+  it('re-pairs unchanged text when macro metadata changes (#236)', () => {
+    const uri = 'file:///story.tw';
+    const ws = workspace(':: Start\n{panel}body{/panel}');
+    const first = ws.markup.get(uri)!;
+    expect(first.passages[0].pairing.nodes[0].body?.close).toBeUndefined();
+    ws.macros.addMacro({ name: 'panel', block: true });
+    const fresh = ws.markup.get(uri)!;
+    expect(fresh).not.toBe(first);
+    expect(fresh.passages[0].pairing.nodes[0].body?.close?.name).toBe('panel');
+    ws.dispose();
+  });
+
+  it('re-pairs unchanged text when widget metadata changes (#236)', () => {
+    const uri = 'file:///story.tw';
+    const widgetUri = 'file:///widgets.tw';
+    const ws = workspace(':: Start\n{panel}body{/panel}');
+    ws.documents.open(widgetUri, ':: Widgets [widget]\n{widget "panel"}body{/widget}');
+    const first = ws.markup.get(uri)!;
+    expect(first.passages[0].pairing.nodes[0].body?.close).toBeUndefined();
+    ws.documents.update(widgetUri, ':: Widgets [widget]\n{widget "panel"}{@children}{/widget}');
+    const fresh = ws.markup.get(uri)!;
+    expect(fresh).not.toBe(first);
+    expect(fresh.passages[0].pairing.nodes[0].body?.close?.name).toBe('panel');
+    ws.dispose();
   });
 });

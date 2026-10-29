@@ -15,6 +15,31 @@ function createWorkspace(...files: Array<{ name: string; content: string }>): Wo
 }
 
 describe('computeCodeLenses', () => {
+  it.each([64, 128])('bounds cached header reads for %i passage lenses (#236)', count => {
+    const uri = 'file:///test.tw';
+    const content = Array.from({ length: count }, (_, i) => `:: P${i}\n[[P0]]\n`).join('');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    try {
+      computeCodeLenses(uri, ws);
+      const headers = ws.passages.getPassagesInDocument(uri);
+      let headerReads = 0;
+      // Instrument the real index, retaining its array and header identities.
+      // Any full header comparison now costs one read per passage.
+      headers.forEach((header, i) => Object.defineProperty(headers, i, {
+        configurable: true,
+        get: () => { headerReads++; return header; },
+      }));
+
+      const lenses = computeCodeLenses(uri, ws);
+      expect(lenses).toHaveLength(count);
+      expect(lenses[0].command.title).toBe(`${count} references`);
+      expect(lenses.slice(1).every(lens => lens.command.title === '0 references')).toBe(true);
+      expect(headerReads).toBeLessThanOrEqual(count * 2);
+    } finally {
+      ws.dispose();
+    }
+  });
+
   it('shows reference count for passage headers', () => {
     const ws = createWorkspace({
       name: 'test.tw',
@@ -32,6 +57,21 @@ describe('computeCodeLenses', () => {
     const nextLens = lenses.find(l => l.range.start.line === 3);
     expect(nextLens).toBeDefined();
     expect(nextLens!.command.title).toContain('reference');
+  });
+
+  it('refreshes cached reference counts and ranges after header and link edits (#236)', () => {
+    const uri = 'file:///test.tw';
+    const ws = createWorkspace({ name: 'test.tw', content: ':: Start\n[[Next]]\n:: Next\nEnd' });
+    const counts = () => computeCodeLenses(uri, ws).map(lens => [lens.range.start.line, lens.command.title]);
+    try {
+      expect(counts()).toEqual([[0, '0 references'], [2, '1 reference']]);
+      ws.documents.update(uri, ':: Start\n[[Next]]\n\n:: Renamed\nEnd');
+      expect(counts()).toEqual([[0, '0 references'], [3, '0 references']]);
+      ws.documents.update(uri, ':: Start\n[[Renamed]] [[Renamed]]\n\n:: Renamed\nEnd');
+      expect(counts()).toEqual([[0, '0 references'], [3, '2 references']]);
+    } finally {
+      ws.dispose();
+    }
   });
 
   it('shows usage count for widget definitions', () => {

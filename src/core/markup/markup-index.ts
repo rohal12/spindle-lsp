@@ -4,7 +4,8 @@ import { DocumentMarkup, type MarkupContext } from './passage-markup.js';
 /** What the index reads from the workspace. */
 export interface MarkupSources {
   text(uri: string): string | undefined;
-  passages(uri: string): Passage[];
+  /** Reuse the indexed array until a rebuild; replace it when headers change. */
+  passages(uri: string): readonly Passage[];
   context(): MarkupContext;
 }
 
@@ -14,7 +15,7 @@ export interface MarkupSources {
  * (tokens, the paired tree, pieces) instead of scanning text themselves.
  */
 export class MarkupIndex {
-  private readonly cache = new Map<string, DocumentMarkup>();
+  private readonly cache = new Map<string, { markup: DocumentMarkup; headers: readonly Passage[] }>();
   private context: MarkupContext | undefined;
 
   constructor(private readonly sources: MarkupSources) {}
@@ -25,10 +26,13 @@ export class MarkupIndex {
     if (text === undefined) return undefined;
     const kept = this.cache.get(uri);
     const passages = this.sources.passages(uri);
-    if (kept && kept.text === text && sameHeaders(kept.passages.map(p => p.passage), passages)) return kept;
+    // PassageIndex replaces its array on rebuild. Empty results may be fresh
+    // arrays, but have no header identities to invalidate.
+    if (kept && kept.markup.text === text && (kept.headers === passages ||
+      (kept.headers.length === 0 && passages.length === 0))) return kept.markup;
     this.context ??= this.sources.context();
     const fresh = new DocumentMarkup(uri, text, passages, this.context);
-    this.cache.set(uri, fresh);
+    this.cache.set(uri, { markup: fresh, headers: passages });
     return fresh;
   }
 
@@ -37,8 +41,4 @@ export class MarkupIndex {
     this.cache.clear();
     this.context = undefined;
   }
-}
-
-function sameHeaders(a: readonly Passage[], b: readonly Passage[]): boolean {
-  return a.length === b.length && a.every((p, i) => p === b[i]);
 }
