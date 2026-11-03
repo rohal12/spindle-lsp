@@ -20,9 +20,9 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@rohal12/spindle": "0.64.11",
     "@rohal12/twee-ts": "^2.1.0",
-    "glob": "^13.0.6",
+    "glob": "^14.0.2",
     "happy-dom": "^21.0.4",
-    "minimatch": "^10.2.6",
+    "minimatch": "^11.0.1",
     "vscode-languageserver": "^10.1.2",
     "vscode-languageserver-textdocument": "^1.0.16",
     "yaml": "^2.9.1"
