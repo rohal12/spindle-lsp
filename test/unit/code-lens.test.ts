@@ -15,6 +15,61 @@ function createWorkspace(...files: Array<{ name: string; content: string }>): Wo
 }
 
 describe('computeCodeLenses', () => {
+  it.each([64, 128])('bounds declaration and usage reads for %i variable lenses (#239)', count => {
+    const uri = 'file:///test.tw';
+    const content = ':: StoryVariables\n'
+      + Array.from({ length: count }, (_, i) => `$v${i} = 0\n`).join('')
+      + ':: Start\n' + Array.from({ length: count }, (_, i) => `{$v${i}}`).join('');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    try {
+      computeCodeLenses(uri, ws);
+      let declarationReads = 0;
+      for (const declaration of ws.variables.getAllDeclarations('$')) {
+        const name = declaration.name;
+        Object.defineProperty(declaration, 'name', { get: () => { declarationReads++; return name; } });
+      }
+      // Count the real tracker's visits without adding a production instrumentation API.
+      const { usagesByUri } = ws.variables as unknown as { usagesByUri: Map<string, Array<{ baseName: string }>> };
+      let usageReads = 0;
+      for (const usages of usagesByUri.values()) {
+        for (const usage of usages) {
+          const name = usage.baseName;
+          Object.defineProperty(usage, 'baseName', { get: () => { usageReads++; return name; } });
+        }
+      }
+      const lenses = computeCodeLenses(uri, ws);
+      expect(lenses).toHaveLength(count + 2);
+      expect(lenses.filter(lens => lens.command.title === '1 usage')).toHaveLength(count);
+      expect(declarationReads).toBeGreaterThanOrEqual(count);
+      expect(declarationReads).toBeLessThanOrEqual(count * 2);
+      expect(usageReads).toBeGreaterThanOrEqual(count);
+      expect(usageReads).toBeLessThanOrEqual(count * 3);
+    } finally {
+      ws.dispose();
+    }
+  });
+
+  it('refreshes aggregate variable counts after cross-document edits and removals (#239)', () => {
+    const uri = 'file:///vars.tw';
+    const ws = createWorkspace(
+      { name: 'vars.tw', content: ':: StoryVariables\n$x = 0\n$x = 1\n$y = 0' },
+      { name: 'story.tw', content: ':: Start\n{$x} {$x} {$y}' },
+      { name: 'other.tw', content: ':: Other\n{$x} {%x}' },
+    );
+    const titles = () => computeCodeLenses(uri, ws).slice(1).map(lens => lens.command.title);
+    try {
+      expect(titles()).toEqual(['3 usages', '3 usages', '1 usage']);
+      ws.documents.update('file:///story.tw', ':: Start\n{$y} {$y}');
+      expect(titles()).toEqual(['1 usage', '1 usage', '2 usages']);
+      ws.documents.close('file:///other.tw');
+      expect(titles()).toEqual(['0 usages', '0 usages', '2 usages']);
+      ws.documents.update(uri, ':: StoryVariables\n\n$y = 0');
+      expect(titles()).toEqual(['2 usages']);
+    } finally {
+      ws.dispose();
+    }
+  });
+
   it.each([64, 128])('bounds cached header reads for %i passage lenses (#236)', count => {
     const uri = 'file:///test.tw';
     const content = Array.from({ length: count }, (_, i) => `:: P${i}\n[[P0]]\n`).join('');

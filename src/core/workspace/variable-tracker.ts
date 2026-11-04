@@ -207,10 +207,23 @@ export class VariableTracker {
     return usagesOf(this.usagesByUri, name);
   }
 
+  /** Count every story binding's executable usages in one workspace pass. */
+  getUsageCounts(): ReadonlyMap<string, number> {
+    const counts = new Map<string, number>();
+    for (const usages of this.usagesByUri.values()) {
+      for (const usage of usages) counts.set(usage.baseName, (counts.get(usage.baseName) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  /** All declaration occurrences, including repeated defaults, in source order. */
+  getAllDeclarations(sigil: DeclarationSigil): readonly DeclaredVariable[] {
+    return (sigil === '$' ? this.variables : this.transients).occurrences;
+  }
+
   /** Every declaration location of a story or transient binding, in source order. */
   getDeclarations(name: string, sigil: DeclarationSigil): Array<{ uri: string; range: Range }> {
-    const declarations = sigil === '$' ? this.variables : this.transients;
-    return declarations.occurrences.flatMap(d =>
+    return this.getAllDeclarations(sigil).flatMap(d =>
       d.name === name && d.declarationUri !== undefined && d.declarationRange
         ? [{ uri: d.declarationUri, range: d.declarationRange }] : []);
   }

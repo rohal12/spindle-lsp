@@ -2,7 +2,9 @@ import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, unlinkSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { compile } from '@rohal12/twee-ts';
+import { openPlaySession } from '@rohal12/spindle/play';
 import { spawn } from 'node:child_process';
 import { build } from 'esbuild';
 import {
@@ -13,7 +15,7 @@ import {
   type Diagnostic as LspDiagnostic,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import type { Hover, InlayHint, SignatureHelp } from 'vscode-languageserver';
+import type { CompletionItem, Hover, InlayHint, SignatureHelp } from 'vscode-languageserver';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { getCompletions } from '../../src/plugins/completions.js';
@@ -1552,6 +1554,88 @@ describe('Integration: LSP server over stdio', () => {
   // Closing-macro completion and SP202 fix through the real server (framed
   // JSON-RPC over stdio): the response is applied, not just inspected.
   // -----------------------------------------------------------------------
+
+  it.each([
+    [String.raw`{print $fo¦\u006f}`, '$foobar', '{print $foobar}', 'chosen'],
+    [String.raw`{print $obj.fo¦\u{6f}}`, 'first-name', '{print $obj["first-name"]}', 'chosen'],
+    ['{print 5 % %co¦unt}', '%count', '{print 5 % %count}', '1'],
+  ])('applies safe completion edits over stdio and plays the result: %s (#232, #238)', async (marked, label, expected, rendered) => {
+    const prefix = ':: StoryTitle\nCompletions\n:: StoryData\n'
+      + '{"ifid":"7E95B777-0E72-4603-AA57-049388D05756","format":"Spindle"}\n'
+      + ':: StoryVariables\n$foo = "old"\n$foobar = "chosen"\n$obj = {foo:"old", "first-name":"chosen"}\n'
+      + ':: StoryTransients\n%count = 2\n:: Start\n';
+    const text = prefix + marked.replace('¦', '');
+    const dir = makeTempWorkspace({ 'story.tw': text });
+    const storyUri = uriFor(dir, 'story.tw');
+    const session = await startLsp(dir);
+    await didOpen(session, storyUri, text);
+    const doc = TextDocument.create(storyUri, 'twee', 1, text);
+    const items = await session.conn.sendRequest('textDocument/completion', {
+      textDocument: { uri: storyUri }, position: doc.positionAt(prefix.length + marked.indexOf('¦')),
+    }) as CompletionItem[];
+    const item = items.find(item => item.label === label);
+    expect(item?.textEdit).toBeDefined();
+    const edited = TextDocument.applyEdits(doc, [item!.textEdit as never]);
+    expect(edited).toBe(prefix + expected);
+    const published = session.publishes.length;
+    await didChangeFull(session, storyUri, 2, edited);
+    await session.waitForDiagnostics(storyUri, diagnostics => diagnostics.every(d => d.severity !== 1), published);
+    const compiled = await compile({
+      sources: [{ filename: storyUri, content: edited }], formatId: 'pkg',
+      formatPaths: [fileURLToPath(new URL('../../node_modules/@rohal12/spindle/dist/', import.meta.url))],
+      noRemote: true, useTweegoPath: false,
+    });
+    expect(compiled.diagnostics.filter(d => d.level === 'error')).toEqual([]);
+    const play = await openPlaySession({ html: compiled.output, trusted: true });
+    try {
+      const observation = await play.observe();
+      expect(observation.errors).toEqual([]);
+      expect(observation.text).toBe(rendered);
+    } finally { await play.close(); }
+  });
+
+  it('rejects modulo and identifier substring completions over stdio (#238)', async () => {
+    const prefix = ':: StoryVariables\n$foo = 1\n:: StoryTransients\n%count = 2\n'
+      + ':: Start\n{set _hello = 1}\n';
+    const marked = '{print 5 %¦2} {print ({foo_bar:3}).foo_¦bar} {print ({$foo:3}).$¦foo}';
+    const text = prefix + marked.replaceAll('¦', '');
+    const dir = makeTempWorkspace({ 'story.tw': text });
+    const storyUri = uriFor(dir, 'story.tw');
+    const session = await startLsp(dir);
+    await didOpen(session, storyUri, text);
+    const doc = TextDocument.create(storyUri, 'twee', 1, text);
+    let removed = 0;
+    for (let i = 0; i < marked.length; i++) {
+      if (marked[i] !== '¦') continue;
+      const items = await session.conn.sendRequest('textDocument/completion', {
+        textDocument: { uri: storyUri }, position: doc.positionAt(prefix.length + i - removed++),
+      });
+      expect(items).toEqual([]);
+    }
+  });
+
+  it.each(['listbox', 'cycle'])('suppresses unrelated widget signatures in unfinished %s options over stdio (#234)', async control => {
+    const prefix = ':: StoryVariables\n$x = "A"\n:: W [widget]\n'
+      + '{widget "option" @widgetOnly}Widget:{@widgetOnly}{/widget}\n:: Start\n';
+    const dir = makeTempWorkspace();
+    const storyUri = uriFor(dir, 'story.tw');
+    const session = await startLsp(dir);
+    await didOpen(session, storyUri, prefix);
+    let version = 1;
+    for (const [body, expected] of [
+      ['{option "A', '{option @widgetOnly}'],
+      [`{${control} "$x"}{option "A`, null],
+      [`{${control} "$x"}{button "label"}{option "A`, '{option @widgetOnly}'],
+    ]) {
+      const text = prefix + body;
+      await didChangeFull(session, storyUri, ++version, text);
+      const doc = TextDocument.create(storyUri, 'twee', version, text);
+      const signature = await session.conn.sendRequest('textDocument/signatureHelp', {
+        textDocument: { uri: storyUri }, position: doc.positionAt(text.length),
+      }) as SignatureHelp | null;
+      expect(signature?.signatures[0].label ?? null).toBe(expected);
+    }
+  });
 
   it.each(['listbox', 'cycle'])('respects parent-owned %s options in widget help over stdio (#234)', async control => {
     const text = ':: StoryVariables\n$x = "A"\n:: W [widget]\n'

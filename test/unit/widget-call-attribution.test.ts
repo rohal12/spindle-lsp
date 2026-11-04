@@ -166,3 +166,30 @@ it('offers navigable bracket destinations while retaining special passages for i
   model.documents.update(uri, applied.replace('[[Hall]]', '{include "StoryInit"}'));
   expect(computeDiagnostics(uri, model).filter(d => d.severity === 'error')).toEqual([]);
 });
+
+it.each(['listbox', 'cycle'])('uses runtime ownership for unfinished %s option signatures (#234)', control => {
+  const header = metadata + ':: StoryVariables\n$x = "A"\n:: W [widget]\n'
+    + '{widget "option" @widgetOnly}Widget:{@widgetOnly}{/widget}\n:: Start\n';
+  for (const [body, invocation] of [
+    ['{option "A', true],
+    [`{${control} "$x"}{option "A`, false],
+    [`{${control} "$x"}{OpTiOn "A`, false],
+    [`{${control} "$x"}{button "label"}{option "A`, true],
+    [`{${control} "$x"}{button "{option \\"A`, true],
+    [`{${control} "$x"}<span title='{option "A`, true],
+    [`<span title='{${control} "$x"}{option "A`, false],
+    [`{${control} "$x"}[[{option "A`, true],
+  ] as const) {
+    const text = header + body;
+    const model = workspace(text);
+    const doc = TextDocument.create(uri, 'twee', 1, text);
+    const help = () => getSignatureHelp(uri, doc.positionAt(text.length), model);
+    if (invocation) expect(help()?.signatures[0].label, body).toBe(body.includes('OpTiOn') ? '{OpTiOn @widgetOnly}' : '{option @widgetOnly}');
+    else expect(help(), body).toBeNull();
+    // Effective widget replacement removes the built-in parent's ownership.
+    model.documents.open('file:///control.tw', `:: Controls [widget]\n{widget "${control}" @name}{@children}{/widget}`);
+    expect(help()?.signatures[0].label, body).toBe(body.includes('OpTiOn') ? '{OpTiOn @widgetOnly}' : '{option @widgetOnly}');
+    model.documents.close('file:///control.tw');
+    if (!invocation) expect(help(), body).toBeNull();
+  }
+});

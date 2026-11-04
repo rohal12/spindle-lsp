@@ -179,6 +179,7 @@ describe('getSignatureHelp finds the enclosing macro', () => {
   });
 
   it('returns null after the macro has closed', () => {
+    expect(help(':: Start\n{counter 1}')).toBeNull();
     expect(help(':: Start\n{counter {a: 1}} after ')).toBeNull();
     expect(help(':: Start\n{counter "}"} after ')).toBeNull();
   });
@@ -230,6 +231,15 @@ describe('getSignatureHelp in labels and attribute values (macros there are real
   it('finds the macro that holds a label when the cursor is in the label outside any inner macro', () => {
     const result = helpAt('{link "Go ', 10);
     expect(result?.signatures[0].label).toContain('link');
+  });
+
+  it.each([
+    '{link "Go {unknown 1¦}" "Start"}',
+    '{link "Go {counter¦ 1}" "Start"}',
+    '{link "Go {counter 1}¦" "Start"}',
+  ])('falls back to the enclosing known macro in %s', marked => {
+    const result = helpAt(marked.replace('¦', ''), marked.indexOf('¦'));
+    expect(result?.signatures[0].label).toMatch(/^\{link /);
   });
 
   it('offers nothing in the name of the macro, after it has closed, or in a comment', () => {

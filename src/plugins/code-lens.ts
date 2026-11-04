@@ -5,7 +5,6 @@ import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js'
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageReferences,
-  findVariableReferences,
   findWidgetReferences,
 } from './references.js';
 
@@ -45,10 +44,13 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     });
   };
 
-  const variableLines = new Map([...workspace.variables.getDeclared().keys()]
-    .flatMap(name => workspace.variables.getDeclarations(name, '$')
-      .filter(declaration => declaration.uri === uri)
-      .map(declaration => [declaration.range.start.line, name] as const)));
+  const variableLines = new Map<number, string>();
+  for (const declaration of workspace.variables.getAllDeclarations('$')) {
+    if (declaration.declarationUri === uri && declaration.declarationRange) {
+      variableLines.set(declaration.declarationRange.start.line, declaration.name);
+    }
+  }
+  const variableCounts = variableLines.size > 0 ? workspace.variables.getUsageCounts() : new Map<string, number>();
   const widgetLines = new Map(workspace.widgets.getAllWidgets()
     .filter(w => w.uri === uri)
     .map(w => [w.range.start.line, w.name] as const));
@@ -80,7 +82,7 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     // --- StoryVariables declarations ---
     const varName = variableLines.get(lineNum);
     if (varName !== undefined) {
-      const usageCount = findVariableReferences(varName, workspace, false).length;
+      const usageCount = variableCounts.get(varName) ?? 0;
 
       addLens(lineNum, `${usageCount} usage${usageCount !== 1 ? 's' : ''}`);
     }
