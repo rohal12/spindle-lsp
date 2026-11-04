@@ -11,7 +11,7 @@ import { bracketLinkMismatch } from '../core/parsing/link-runtime.js';
 import { encodeEnclosingMarkup, passageRefAt, type PassageRef } from '../core/markup/passage-refs.js';
 import type { PassageMarkup } from '../core/markup/passage-markup.js';
 import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
-import { documentMacroHeads, macroHeadAt } from '../core/markup/macro-heads.js';
+import { workspaceMacroHeads, macroHeadAt } from '../core/markup/macro-heads.js';
 import { encodePassageName, isReservedPassageName, parsePassageHeader } from '../core/parsing/passage-parser.js';
 import {
   findPassageRefs,
@@ -83,14 +83,10 @@ export function computeRename(
       if (workspace.passages.getPassage(newName)) {
         throw new RenameError(`Cannot rename to ${JSON.stringify(newName)}: a passage with that name already exists.`).at(uri, symbol.range);
       }
-      for (const documentUri of workspace.documents.getUris()) {
-        const doc = workspace.markup.get(documentUri);
-        if (!doc) continue;
-        for (const head of documentMacroHeads(doc)) {
-          if (!head.closing && workspace.getEffectiveMacro(head.name) && workspace.macros.hasUnsafeConfiguredPassages(head.name)) {
-            throw new RenameError(`Cannot rename: {${head.name}} has configured passage parameters whose positions are ambiguous, repeated or conflict with its runtime signature.`)
-              .at(documentUri, head.range);
-          }
+      for (const { uri: documentUri, head } of workspaceMacroHeads(workspace)) {
+        if (!head.closing && workspace.getEffectiveMacro(head.name) && workspace.macros.hasUnsafeConfiguredPassages(head.name)) {
+          throw new RenameError(`Cannot rename: {${head.name}} has configured passage parameters whose positions are ambiguous, repeated or conflict with its runtime signature.`)
+            .at(documentUri, head.range);
         }
       }
       const refEdits: Array<{ uri: string; ref: PassageRef; text: string }> = [];

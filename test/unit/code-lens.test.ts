@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
+import { documentMacroHeads } from '../../src/core/markup/macro-heads.js';
 import { findVariableReferences, findWidgetReferences } from '../../src/plugins/references.js';
 import { computeCodeLenses } from '../../src/plugins/code-lens.js';
 import { parseStoryVariables } from '../helpers/story-variables-oracle.js';
@@ -15,6 +16,89 @@ function createWorkspace(...files: Array<{ name: string; content: string }>): Wo
 }
 
 describe('computeCodeLenses', () => {
+  it.each([64, 128])('bounds macro-head reads for %i widget lenses (#245)', count => {
+    const uri = 'file:///test.tw';
+    const content = ':: StoryVariables\n:: Widgets [widget]\n'
+      + Array.from({ length: count }, (_, i) => `{widget "w${i}"}X{/widget}\n`).join('')
+      + ':: Start\n' + Array.from({ length: count }, (_, i) => `{w${i}}`).join('');
+    const ws = createWorkspace({ name: 'test.tw', content });
+    try {
+      computeCodeLenses(uri, ws);
+      const heads = documentMacroHeads(ws.markup.get(uri)!);
+      let headReads = 0;
+      // The real cached heads are shared by each enumeration of this document.
+      for (const head of heads) {
+        const invocation = head.invocation;
+        Object.defineProperty(head, 'invocation', { get: () => { headReads++; return invocation; } });
+      }
+      const lenses = computeCodeLenses(uri, ws);
+      expect(lenses).toHaveLength(count + 3);
+      expect(lenses.filter(lens => lens.command.title === '1 usage')).toHaveLength(count);
+      expect(headReads).toBeGreaterThanOrEqual(heads.length);
+      expect(headReads).toBeLessThanOrEqual(heads.length * 2);
+    } finally {
+      ws.dispose();
+    }
+  });
+
+  it('counts contextual widget calls, labels and attributes without registration heads or closers (#245)', () => {
+    const ws = createWorkspace(
+      { name: 'widgets.tw', content: ':: Widgets [widget]\n'
+        + '{widget "card"}{@children}{/widget}\n'
+        + '{widget "option" @value}{@value}{/widget}\n'
+        + '{widget "widget" @value}{@value}{@children}{/widget}\n'
+        + '{widget "print" @value}{@value}{/widget}\n'
+        + '{widget "unused"}X{/widget}' },
+      { name: 'story.tw', content: ':: StoryVariables\n$x = "A"\n:: Start\n'
+        + '{CARD}body{/card}\n{option "standalone"}\n'
+        + '{listbox "$x"}{option "A"}{OpTiOn "B"}<span>{option "nested"}</span>{/listbox}\n'
+        + '<span title="{option \'attribute\'}">x</span>\n{button "{option \'label\'}"}x{/button}\n'
+        + '{widget "hello"}Body{/widget}\n{PRINT "value"}' },
+    );
+    const titles = () => computeCodeLenses('file:///widgets.tw', ws).slice(1).map(lens => lens.command.title);
+    try {
+      expect(titles()).toEqual(['1 usage', '4 usages', '1 usage', '1 usage', '0 usages']);
+      // Replacing the built-in control turns its option clauses into widget calls.
+      ws.documents.open('file:///controls.tw', ':: Controls [widget]\n{widget "listbox" @name}{@children}{/widget}');
+      expect(titles()).toEqual(['1 usage', '6 usages', '1 usage', '1 usage', '0 usages']);
+      ws.documents.close('file:///controls.tw');
+      expect(titles()).toEqual(['1 usage', '4 usages', '1 usage', '1 usage', '0 usages']);
+    } finally {
+      ws.dispose();
+    }
+  });
+
+  it('refreshes widget counts and effective definitions after cross-document changes (#245)', () => {
+    const uri = 'file:///widgets.tw';
+    const ws = createWorkspace(
+      { name: 'widgets.tw', content: ':: Widgets [widget]\n{widget "card"}{@children}{/widget}' },
+      { name: 'story.tw', content: ':: Start\n{card}body{/card}\n{CARD}other{/CARD}' },
+      { name: 'other.tw', content: ':: Other\n{card}more{/card}' },
+    );
+    const titles = (target = uri) => computeCodeLenses(target, ws).filter(lens => lens.command.title.includes('usage'))
+      .map(lens => [lens.range.start.line, lens.command.title]);
+    try {
+      expect(titles()).toEqual([[1, '3 usages']]);
+      ws.documents.update('file:///story.tw', ':: Start\n{card}body{/card}');
+      expect(titles()).toEqual([[1, '2 usages']]);
+      ws.documents.close('file:///other.tw');
+      expect(titles()).toEqual([[1, '1 usage']]);
+      ws.documents.open('file:///z-replacement.tw', ':: Widgets [widget replace]\n\n{widget "CaRd"}X{/widget}');
+      expect(titles()).toEqual([]);
+      expect(titles('file:///z-replacement.tw')).toEqual([[2, '1 usage']]);
+      ws.documents.close('file:///z-replacement.tw');
+      expect(titles()).toEqual([[1, '1 usage']]);
+      ws.documents.update('file:///story.tw', ':: Start\nNo calls');
+      expect(titles()).toEqual([[1, '0 usages']]);
+      ws.documents.update(uri, ':: Widgets [widget]\n{widget "newCard"}X{/widget}');
+      expect(titles()).toEqual([[1, '0 usages']]);
+      ws.documents.update('file:///story.tw', ':: Start\n{NEWCARD}');
+      expect(titles()).toEqual([[1, '1 usage']]);
+    } finally {
+      ws.dispose();
+    }
+  });
+
   it.each([64, 128])('bounds declaration and usage reads for %i variable lenses (#239)', count => {
     const uri = 'file:///test.tw';
     const content = ':: StoryVariables\n'

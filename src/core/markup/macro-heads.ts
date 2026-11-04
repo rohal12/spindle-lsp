@@ -1,5 +1,6 @@
 import { pairMarkup, type PairedMarkup, type Token } from '@rohal12/spindle/tooling';
 import type { Position, Range } from '../types.js';
+import type { WorkspaceModel } from '../workspace/workspace-model.js';
 import type { DocumentMarkup, PassageMarkup } from './passage-markup.js';
 import { walkNodes } from './tree.js';
 
@@ -93,6 +94,15 @@ function passageMacroHeads(passage: PassageMarkup): readonly MacroHead[] {
 /** The macro heads of a document. */
 export function documentMacroHeads(doc: DocumentMarkup): MacroHead[] {
   return doc.passages.flatMap((passage) => passage.isMarkup ? [...passageMacroHeads(passage)] : []);
+}
+
+/** Enumerate each workspace document's macro heads once, retaining their source URI. */
+export function* workspaceMacroHeads(workspace: WorkspaceModel): Generator<{ uri: string; head: MacroHead }> {
+  for (const uri of workspace.documents.getUris()) {
+    const doc = workspace.markup.get(uri);
+    if (!doc) continue;
+    for (const head of documentMacroHeads(doc)) yield { uri, head };
+  }
 }
 
 /** The macro head whose name contains `position` (the end of a name included). */
