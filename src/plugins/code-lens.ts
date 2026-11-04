@@ -3,10 +3,8 @@ import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
-import {
-  findPassageReferences,
-  findWidgetReferences,
-} from './references.js';
+import { workspaceMacroHeads } from '../core/markup/macro-heads.js';
+import { findPassageReferences } from './references.js';
 
 // ---------------------------------------------------------------------------
 // Core code lens function (no LSP dependency)
@@ -54,6 +52,19 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
   const widgetLines = new Map(workspace.widgets.getAllWidgets()
     .filter(w => w.uri === uri)
     .map(w => [w.range.start.line, w.name] as const));
+  const widgetCounts = new Map<string, number>();
+  for (const name of widgetLines.values()) {
+    if (!workspace.getEffectiveMacro(name)) widgetCounts.set(name.toLowerCase(), 0);
+  }
+  // Aggregate once for all widget lenses, using the tooling's invocation attribution.
+  if (widgetCounts.size > 0) {
+    for (const { head } of workspaceMacroHeads(workspace)) {
+      if (!head.invocation || head.closing) continue;
+      const name = head.name.toLowerCase();
+      const count = widgetCounts.get(name);
+      if (count !== undefined) widgetCounts.set(name, count + 1);
+    }
+  }
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const line = lines[lineNum];
@@ -74,7 +85,7 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     // --- Widget definitions ---
     const widgetName = widgetLines.get(lineNum);
     if (widgetName !== undefined) {
-      const usageCount = findWidgetReferences(widgetName, workspace, false, false).length;
+      const usageCount = widgetCounts.get(widgetName.toLowerCase()) ?? 0;
 
       addLens(lineNum, `${usageCount} usage${usageCount !== 1 ? 's' : ''}`);
     }
