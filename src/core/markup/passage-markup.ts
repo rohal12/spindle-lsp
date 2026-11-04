@@ -1,12 +1,14 @@
 import {
-  completionContext,
+  completionTarget,
+  macroCallAt,
   macroCalls,
   pairMarkup,
   parseDeclarations,
   passagePieces,
   tokenizeMarkupTolerant,
   widgetDefinitions,
-  type CompletionContext,
+  type CompletionTarget,
+  type MacroCall,
   type Declaration,
   type DeclarationError,
   type MarkupError,
@@ -155,8 +157,13 @@ export class PassageMarkup {
   }
 
   /** Whether the cursor is executable, with decoded code mapped back to `content`. */
-  completionAt(offset: number): CompletionContext {
-    return this.isMarkup ? completionContext(this.content, offset, this.doc.context.macros) : { kind: 'literal' };
+  completionAt(offset: number): CompletionTarget {
+    return this.isMarkup ? completionTarget(this.content, offset, this.doc.context.macros) : { kind: 'literal' };
+  }
+
+  /** Contextual dispatch at a complete or unfinished macro head. */
+  macroCallAt(offset: number): MacroCall | undefined {
+    return this.isMarkup ? macroCallAt(this.content, offset, this.doc.context.macros) : undefined;
   }
 
   /** The declarations of a StoryVariables / StoryTransients passage. */

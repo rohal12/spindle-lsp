@@ -1,16 +1,16 @@
 import {
   pairMarkup,
-  parseSelectors,
   pieceOffset,
   tokenizeMarkupTolerant,
   type MacroToken,
+  type MacroCall,
   type MarkupError,
   type PairedNode,
   type Token,
 } from '@rohal12/spindle/tooling';
 import { PassageMarkup } from '../core/markup/passage-markup.js';
 import { walkNodes } from '../core/markup/tree.js';
-import { viewIndex, type SourceView } from '../core/markup/source-view.js';
+import { sourceView, viewIndex, type SourceView } from '../core/markup/source-view.js';
 import { positionToOffset } from '../core/text.js';
 import type { Passage, Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
@@ -18,9 +18,8 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 /**
  * The markup around a cursor, for the features that act on half-typed text
  * (completion, signature help). Every decision is made from the tooling
- * API's tokens, errors and pairing of the cursor's passage; a macro that is
- * still being typed is recovered from the offsets of the `MarkupError` the
- * tolerant tokenizer reports for it.
+ * API's tokens, pairing and cursor queries, including contextual ownership
+ * of a macro whose head is still being typed.
  */
 
 /** A run of markup the tokenizer read as one: the passage itself, or a label or attribute value that holds markup of its own. */
@@ -41,8 +40,8 @@ export interface Region {
 export interface EnclosingMacro {
   name: string;
   argsBefore: string;
-  /** Contextual dispatch of a complete token; unknown for a head still being typed. */
-  invocation?: boolean;
+  /** Contextual dispatch, including a head still being typed. */
+  invocation: boolean;
 }
 
 /** A macro name (`{na`) or a closer (`{/na`) being typed. */
@@ -125,31 +124,44 @@ export class MarkupCursor {
     return (this.cachedRegions = regions.reverse());
   }
 
-  /**
-   * The innermost macro whose arguments the cursor is in and that `known`
-   * accepts. A macro still being typed has no token: it is the macro of an
-   * `unclosed-macro` error, whose `offset` is its `{` and whose `end` the end
-   * of its name.
-   */
+  /** The runtime's contextual dispatch of the macro arguments being typed. */
   enclosingMacro(known: (name: string) => boolean): EnclosingMacro | undefined {
-    const { at } = this;
-    for (const region of this.regions) {
-      const found: Array<EnclosingMacro & { start: number }> = [];
-      for (const token of region.tokens) {
-        if (token.type !== 'macro' || token.isClose || token.nameEnd >= at || at >= token.end) continue;
-        found.push({ start: token.start, name: token.name, invocation: this.passage.invocations.some(call => call.start === token.start), argsBefore: at >= token.argsStart ? region.view.text.slice(viewIndex(region.view, token.argsStart), viewIndex(region.view, at)) : '' });
+    let call = this.passage.macroCallAt(this.at);
+    // The tooling query includes a head's end boundary. Signature help ends
+    // after a completed tag, while an unfinished head at EOF stays active.
+    const active = (candidate: MacroCall | undefined): candidate is MacroCall => !!candidate
+      && candidate.token.nameEnd < this.at && known(candidate.token.name)
+      && !(candidate.token.end === this.at && this.regions.some(region => region.tokens.some(token =>
+        token.type === 'macro' && token.start === candidate.token.start && token.end === this.at)));
+    if (!active(call)) {
+      // An unknown inner head, its name, or its closing boundary can still
+      // belong to a known outer macro's label. Keep that enclosing help.
+      call = undefined;
+      const consider = (start: number, nameEnd: number): void => {
+        if (nameEnd >= this.at) return;
+        const candidate = this.passage.macroCallAt(nameEnd + 1);
+        if (candidate?.token.start === start && active(candidate) && (!call || start > call.token.start)) call = candidate;
+      };
+      for (const region of this.regions) {
+        for (const token of region.tokens) {
+          if (token.type === 'macro' && !token.isClose && token.start < this.at && this.at < token.end) {
+            consider(token.start, token.nameEnd);
+          }
+        }
+        for (const error of region.errors) {
+          if (error.code === 'unclosed-macro' && error.offset < this.at && error.end < this.at) consider(error.offset, error.end);
+        }
       }
-      for (const error of region.errors) {
-        const source = region.view.text;
-        const end = viewIndex(region.view, error.end);
-        if (error.code !== 'unclosed-macro' || error.offset >= at || error.end >= at || !/\s/.test(source[end] ?? '')) continue;
-        const name = source.slice(parseSelectors(source, viewIndex(region.view, error.offset) + 1).end, end);
-        if (name && name[0] !== '/') found.push({ start: error.offset, name, argsBefore: source.slice(end, viewIndex(region.view, at)).trimStart() });
-      }
-      const innermost = found.filter(macro => known(macro.name)).sort((a, b) => b.start - a.start)[0];
-      if (innermost) return innermost;
+      if (!call) return undefined;
     }
-    return undefined;
+    // rawArgs is decoded and trimmed. Preserve a trailing separator for the
+    // active parameter, including one encoded in an enclosing widget label.
+    const { token } = call;
+    const view = sourceView(this.passage, token.argsStart, this.at);
+    const argsBefore = this.at >= token.argsEnd
+      ? token.rawArgs + (token.argsEnd < this.at ? ' ' : '')
+      : view.text.slice(viewIndex(view, token.argsStart), viewIndex(view, this.at));
+    return { name: call.token.name, invocation: call.kind === 'invocation', argsBefore };
   }
 
   /**

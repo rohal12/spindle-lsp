@@ -1,5 +1,5 @@
 import type { CompletionItem } from 'vscode-languageserver';
-import { isSpecialPassage, pieceOffset, tokenizeMarkupTolerant, type CompletionContainer } from '@rohal12/spindle/tooling';
+import { isSpecialPassage, lexJs, pieceOffset, tokenizeMarkupTolerant, type CompletionContainer } from '@rohal12/spindle/tooling';
 import { widgetSources } from '../core/markup/widgets.js';
 import type { Position } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
@@ -76,53 +76,41 @@ export function getCompletions(
   // expressions and decoded code nested in labels and attribute values.
   const context = passage.completionAt(at);
   if (context.kind !== 'code') return [];
-  const before = context.code.slice(0, context.cursor);
+  const identifier = context.identifier;
+  if (!identifier) return [];
   const codeOffset = (index: number): number => pieceOffset(context, index);
-  const variableEdit = (items: CompletionItem[], typed: number): CompletionItem[] =>
-    editing(items, codeOffset(context.cursor - typed), at + /^[\w$]*/.exec(content.slice(at))![0].length);
+  const end = codeOffset(identifier.end);
 
-  // A field name that is not an identifier needs bracket access. Replace the
-  // dot as well as the typed suffix/tail so accepting accesses the chosen key.
-  const dotPath = /([$%])([\w$]+)\.([A-Za-z_$][\w$]*)?$/.exec(before);
-  if (dotPath) {
-    const sigil = dotPath[1] as '$' | '%';
-    const typed = (dotPath[3] ?? '').length;
-    const end = at + /^[\w$]*/.exec(content.slice(at))![0].length;
-    return getDotPathCompletions(sigil, dotPath[2], workspace).map(item => {
-      const identifier = /^[A-Za-z_$][\w$]*$/.test(item.label);
-      const start = codeOffset(context.cursor - typed - (identifier ? 0 : 1));
+  // The tooling tokenizer owns both token attribution and the full escaped
+  // suffix. A member only uses a declaration's fields for a direct root access.
+  if (identifier.kind === 'member' && identifier.dotStart !== undefined) {
+    let root: { sigil: '$' | '%'; name: string } | undefined;
+    lexJs(context.code.slice(0, identifier.dotStart), {
+      variable(sigil, name, _start, _nesting, end) {
+        if ((sigil === '$' || sigil === '%') && end === identifier.dotStart) root = { sigil, name };
+      },
+    }, context.goal);
+    if (!root) return [];
+    return getDotPathCompletions(root.sigil, root.name, workspace).map(item => {
+      const isIdentifier = /^[A-Za-z_$][\w$]*$/.test(item.label);
+      const start = codeOffset(isIdentifier ? identifier.start : identifier.dotStart!);
+      const optional = context.code.slice(identifier.dotStart, identifier.start).startsWith('?.') ? '?.' : '';
       return {
         ...item,
         textEdit: {
           range: passage.range(start, end),
-          newText: identifier ? item.label : encodeCompletion(`[${JSON.stringify(item.label)}]`, context.containers),
+          newText: encodeCompletion(isIdentifier ? item.label : `${optional}[${JSON.stringify(item.label)}]`, context.containers),
         },
       };
     });
   }
 
-  // --- Context: story variable `$` ---
-  const storyVar = /\$([A-Za-z_$]?[\w$]*)$/.exec(before);
-  if (storyVar) {
-    return variableEdit(getVariableCompletions('$', workspace), storyVar[1].length);
-  }
-
-  // --- Context: temporary variable `_` ---
-  const tempVar = /_([A-Za-z_$]?[\w$]*)$/.exec(before);
-  if (tempVar) {
-    return variableEdit(getDocumentVariableCompletions('_', cursor, workspace), tempVar[1].length);
-  }
-
-  // --- Context: local variable `@` ---
-  const localVar = /@([A-Za-z_$]?[\w$]*)$/.exec(before);
-  if (localVar) {
-    return variableEdit(getDocumentVariableCompletions('@', cursor, workspace), localVar[1].length);
-  }
-
-  // --- Context: transient variable `%` ---
-  const transientVar = /%([A-Za-z_$]?[\w$]*)$/.exec(before);
-  if (transientVar) {
-    return variableEdit(getVariableCompletions('%', workspace), transientVar[1].length);
+  if (identifier.kind === 'root') {
+    const sigil = context.code[identifier.start];
+    const items = sigil === '$' || sigil === '%'
+      ? getVariableCompletions(sigil, workspace)
+      : sigil === '_' || sigil === '@' ? getDocumentVariableCompletions(sigil, cursor, workspace) : [];
+    return editing(items, codeOffset(identifier.start + 1), end);
   }
 
   return [];
