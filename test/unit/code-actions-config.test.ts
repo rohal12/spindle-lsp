@@ -139,6 +139,34 @@ describe('SP100 quick fix targets the project config', () => {
     expect(sp100Action()).toBeUndefined();
   });
 
+  it.each([
+    ['a macros mapping', 'defaults: &settings\n  macros:\n    existing: {}\n'],
+    ['an aliased macros mapping', 'definitions: &macros\n  existing: {}\ndefaults: &settings\n  macros: *macros\n'],
+    ['no macros mapping', 'defaults: &settings\n  enums:\n    mood: happy|sad\n'],
+  ])('adds a macro through an aliased legacy wrapper with %s (#251)', (_label, definitions) => {
+    const original = definitions + 'spindle-0: *settings\nother: *settings\n';
+    const path = join(dir, 'spindle.config.yaml');
+    writeFileSync(path, original);
+    const ws = new WorkspaceModel();
+    ws.macros.loadConfig(parseConfig(original, 'yaml').macros);
+    const action = sp100Action('nosuch', { ws });
+    expect(action!.title).toBe("Add 'nosuch' to spindle.config.yaml");
+    const result = applyEdits(original, action!, pathToFileURL(path).toString());
+    const before = parseYaml(original);
+    const after = parseYaml(result);
+    expect(macrosOf(result, 'yaml')).toEqual({ ...before.defaults.macros, nosuch: { description: '' } });
+    expect(after.defaults).toEqual(before.defaults);
+    expect(after.other).toEqual(before.other);
+    expect(after['spindle-0'].enums).toEqual(before.defaults.enums);
+    expect(after.definitions).toEqual(before.definitions);
+  });
+
+  it('offers no edit for a macro already defined through an aliased legacy wrapper (#251)', () => {
+    writeFileSync(join(dir, 'spindle.config.yaml'),
+      'defaults: &settings\n  macros:\n    NoSuch: {}\nspindle-0: *settings\n');
+    expect(sp100Action()).toBeUndefined();
+  });
+
   it('handles a config without a trailing newline or with trailing comments', () => {
     expect(macrosOf(fixConfig('spindle.config.yaml', 'macros:\n  foo: {}'), 'yaml'))
       .toEqual({ foo: {}, nosuch: { description: '' } });

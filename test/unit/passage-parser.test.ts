@@ -93,6 +93,39 @@ describe('parsePassageHeader', () => {
     expect(result!.meta).toBeUndefined();
   });
 
+  const internalSpaces = ' '.repeat(40_000);
+  it.each([
+    ['internal spaces', `A${internalSpaces}B`, `A${internalSpaces}B`, ''],
+    ['ordinary long name', 'A'.repeat(40_000), 'A'.repeat(40_000), ''],
+    ['escaped name', `\\[A${internalSpaces}B\\]\\ `, `[A${internalSpaces}B]`, ''],
+    ['Unicode whitespace', `A${'\u0085'.repeat(40_000)}B`, `A${'\u0085'.repeat(40_000)}B`, ''],
+    ['metadata string', 'Name', 'Name', ` {"note":"A${internalSpaces}B"}`],
+  ])('parses %s without quadratic trimming (#250)', (_label, sourceName, name, suffix) => {
+    const line = `:: \u0085${sourceName}\u0085\u2003${suffix}`;
+    const started = performance.now();
+    const result = parsePassageHeader(line, 3);
+    const elapsed = performance.now() - started;
+    expect(result!.name).toBe(name);
+    expect(result!.name).toBe(parseTwee(line).passages[0].name);
+    expect(result!.nameRange).toEqual({
+      start: { line: 3, character: 4 },
+      end: { line: 3, character: 4 + sourceName.length },
+    });
+    expect(result!.meta).toEqual(suffix ? { note: `A${internalSpaces}B` } : undefined);
+    // Generous for loaded CI; the old trailing search takes several seconds.
+    expect(elapsed).toBeLessThan(1_000);
+  });
+
+  it('preserves BOM characters inside names while trimming Unicode White_Space', () => {
+    const line = ':: \u0085\uFEFFName\uFEFF\u0085\u2003';
+    const result = parsePassageHeader(line, 0)!;
+    expect(result.name).toBe(parseTwee(line).passages[0].name);
+    expect(result.name).toBe('\uFEFFName\uFEFF');
+    expect(result.nameRange).toEqual({
+      start: { line: 0, character: 4 }, end: { line: 0, character: 10 },
+    });
+  });
+
   it.each(['{not valid json}', '{"position":}'])('keeps the compiler header when metadata %s cannot be decoded', metadata => {
     const line = `:: Name [widget nobr] ${metadata}`;
     const compiled = parseTwee(`${line}\nbody`);

@@ -21,6 +21,12 @@ export function encodePassageName(name: string): string | undefined {
     && !parsed.diagnostics.some(d => d.level === 'error') ? encoded : undefined;
 }
 
+/** Scan the trailing edge once, using the compiler's Unicode White_Space set. */
+function trimmedEnd(text: string, end = text.length): number {
+  while (end > 0 && /\p{White_Space}/u.test(text[end - 1])) end--;
+  return end;
+}
+
 /**
  * Parse a single line as a passage header.
  * Returns null if the line is not a valid passage header.
@@ -46,8 +52,9 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   const boundary = first?.index ?? line.length;
   // Trim structural whitespace in the masked source so an escaped trailing
   // space stays in the edit range. The compiler trims the decoded name.
-  const nameEnd = escaped.slice(0, boundary).replace(/\p{White_Space}+$/u, '').length;
-  const name = line.slice(nameStart, nameEnd).replace(/\\(.|$)/g, '$1').replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
+  const nameEnd = trimmedEnd(escaped, boundary);
+  const decodedName = line.slice(nameStart, nameEnd).replace(/\\(.|$)/g, '$1').replace(/^\p{White_Space}+/u, '');
+  const name = decodedName.slice(0, trimmedEnd(decodedName));
   if (!name) return null;
 
   let rest = boundary;
@@ -63,7 +70,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
 
   let meta: Record<string, unknown> | undefined;
   if (rest < line.length) {
-    const raw = line.slice(rest).replace(/\p{White_Space}+$/u, '');
+    const raw = line.slice(rest, trimmedEnd(line));
     if (escaped[rest] !== '{' || !raw.endsWith('}')) return null;
     try {
       meta = JSON.parse(raw);
