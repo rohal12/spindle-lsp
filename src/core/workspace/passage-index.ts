@@ -152,7 +152,7 @@ export class PassageIndex {
   getAllPassages(): Passage[] {
     const result: Passage[] = [];
     for (const uri of this.uris()) {
-      result.push(...this.byUri.get(uri)!);
+      for (const passage of this.byUri.get(uri)!) result.push(passage);
     }
     return result;
   }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PassageIndex } from '../../src/core/workspace/passage-index.js';
+import { parseTwee } from '@rohal12/twee-ts';
 
 const sampleDoc = `:: Start
 Welcome to the story!
@@ -19,6 +20,25 @@ The end.
 `;
 
 describe('PassageIndex', () => {
+  it('aggregates compiler-accepted files larger than the argument limit in source order (#255)', () => {
+    const count = 140_000;
+    const source = Array.from({ length: count }, (_, i) => `:: P${i}\n`).join('');
+    const parsed = parseTwee(source);
+    expect(parsed.diagnostics).toEqual([]);
+    expect(parsed.passages).toHaveLength(count);
+    const index = new PassageIndex();
+    index.rebuild('file:///z.tw', ':: P0\nreplacement');
+    index.rebuild('file:///a.tw', source);
+    const all = index.getAllPassages();
+    expect(all.map(p => p.name)).toEqual([...parsed.passages.map(p => p.name), 'P0']);
+    expect(all[0].uri).toBe('file:///a.tw');
+    expect(all.at(-1)?.uri).toBe('file:///z.tw');
+    const effective = index.getEffectivePassages();
+    expect(effective).toHaveLength(count);
+    expect(effective[0]).toBe(all.at(-1));
+    expect(effective.at(-1)).toBe(all[count - 1]);
+  });
+
   it('indexes passages from a document', () => {
     const index = new PassageIndex();
     index.rebuild('file:///story.tw', sampleDoc);

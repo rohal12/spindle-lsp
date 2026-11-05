@@ -856,6 +856,23 @@ describe('Integration: LSP server over stdio', () => {
     if (serverBundleDir) rmSync(serverBundleDir, { recursive: true, force: true });
   });
 
+  it('enables editor features after ingesting a file above the argument limit and deleting it (#255)', async () => {
+    const source = Array.from({ length: 140_000 }, (_, i) => `:: P${i}\n`).join('');
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'large.tw': source });
+    const session = await startLsp(dir, { disabledPlugins: ['diagnostics'] });
+    const uri = uriFor(dir, 'editor.tw');
+    await didOpen(session, uri, ':: Start\n{pr');
+    const complete = () => session.conn.sendRequest('textDocument/completion', {
+      textDocument: { uri }, position: { line: 1, character: 3 },
+    }) as Promise<CompletionItem[] | null>;
+    expect((await complete())?.map(item => item.label)).toContain('print');
+    expect(session.log()).toContain('workspace initialized');
+    expect(session.log()).not.toContain('workspace scan failed');
+    unlinkSync(join(dir, 'large.tw'));
+    await watchedFileChanged(session, uriFor(dir, 'large.tw'), 3);
+    expect((await complete())?.map(item => item.label)).toContain('print');
+  });
+
   it('protects foreign-format files when formatting immediately after the handshake (#195)', async () => {
     const text = ':: Start\n<<print `a\n   b`>>\n';
     const dir = makeTempWorkspace({

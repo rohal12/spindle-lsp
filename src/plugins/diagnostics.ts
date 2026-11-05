@@ -363,10 +363,17 @@ const MARKUP_CODES: Record<MarkupDiagnosticCode, DiagnosticCodeValue> = {
 };
 
 function markupDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
-  return (story.markup.get(passage) ?? []).map((found) => fromMarkup(passage, found, workspace));
+  const found = story.markup.get(passage) ?? [];
+  const tokens = new Map<number, MacroToken>();
+  // Tooling offsets also identify macros in labels and attribute values.
+  // Read their tokens once, rather than rescanning for every diagnostic.
+  if (found.some(diagnostic => diagnostic.code === 'unknown-macro')) {
+    for (const token of macroTokens(passage)) tokens.set(token.start, token);
+  }
+  return found.map(diagnostic => fromMarkup(passage, diagnostic, workspace, tokens));
 }
 
-function fromMarkup(passage: PassageMarkup, found: MarkupDiagnostic, workspace: WorkspaceModel): SpindleDiagnostic {
+function fromMarkup(passage: PassageMarkup, found: MarkupDiagnostic, workspace: WorkspaceModel, tokens: ReadonlyMap<number, MacroToken>): SpindleDiagnostic {
   const range = passage.range(...visibleSpan(passage.content, found.start, found.end));
   const name = text(found.data?.name);
   let code = MARKUP_CODES[found.code];
@@ -374,7 +381,7 @@ function fromMarkup(passage: PassageMarkup, found: MarkupDiagnostic, workspace: 
 
   switch (found.code) {
     case 'unknown-macro': {
-      const token = [...macroTokens(passage)].find((candidate) => candidate.start === found.start);
+      const token = tokens.get(found.start);
       data = {
         kind: 'unknown-macro',
         name,

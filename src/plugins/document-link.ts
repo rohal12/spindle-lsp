@@ -27,11 +27,12 @@ export function computeDocumentLinks(uri: string, workspace: WorkspaceModel): Do
   if (!doc) return [];
 
   const links: DocumentLinkItem[] = [];
+  const targets = new Map(workspace.passages.getEffectivePassages().map(passage => [passage.name, passage]));
   // Passages Spindle does not tokenize as markup (script, stylesheet,
   // StoryData, ...) hold code or data, not links: they have no references
   for (const ref of documentPassageRefs(doc)) {
     if (ref.form !== 'bracket') continue;
-    const targetPassage = workspace.passages.getEffectivePassage(ref.name);
+    const targetPassage = targets.get(ref.name);
     links.push({
       range: ref.range,
       target: targetPassage ? `${targetPassage.uri}#L${targetPassage.range.start.line + 1}` : undefined,
