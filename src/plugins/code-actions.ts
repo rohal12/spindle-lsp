@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseDocument, isMap, isScalar, stringify as stringifyYaml } from 'yaml';
+import { parseDocument, isAlias, isMap, isScalar, stringify as stringifyYaml } from 'yaml';
 import type { Position, Range } from '../core/types.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
@@ -232,7 +232,12 @@ function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null 
 
   const path = macrosPath(doc.toJS());
   const parent = path.length > 1 ? doc.getIn(path.slice(0, -1), true) : doc.contents;
-  const macros = doc.getIn(path, true);
+  let macros = doc.getIn(path, true);
+  if (isAlias(macros)) {
+    // Materialize only this reference; other users of the anchor stay unchanged.
+    macros = doc.createNode(macros.toJS(doc));
+    doc.setIn(path, macros);
+  }
   if (isMap(macros) && definesMacro(macros.toJS(doc), macroName)) return null;
 
   if (isMap(parent) && isMap(macros) && !macros.flow && macros.items.length > 0 && macros.range) {

@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { compile } from '@rohal12/twee-ts';
+import { openPlaySession } from '@rohal12/spindle/play';
 import { WorkspaceModel, type WorkspaceModelConfig } from '../../src/core/workspace/workspace-model.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import type { Diagnostic } from '../../src/core/types.js';
@@ -324,6 +327,53 @@ describe('container child constraints ignore capitalization', () => {
 
   it('still flags a mixed-case child outside its parent', () => {
     expect(codes(diagnose(':: Start\n{CASE 1}\n'))).toEqual(['SP107']);
+  });
+});
+
+describe('paired branches retain their parent ownership with same-named widgets (#248)', () => {
+  const widgets = ':: StoryVariables\n:: Widgets [widget]\n'
+    + '{widget "case" @value}Standalone:{@value}{/widget}\n';
+
+  it('accepts the same paired cases as the runtime', async () => {
+    const text = ':: StoryTitle\nExample\n:: StoryData\n'
+      + '{"ifid":"7E95B777-0E72-4603-AA57-049388D05756","format":"Spindle"}\n'
+      + `${widgets}:: Start\n{switch 1}{CaSe 1}Matched{/switch}\n`;
+    const result = await compile({
+      sources: [{ filename: 'story.tw', content: text }], formatId: 'pkg',
+      formatPaths: [fileURLToPath(new URL('../../node_modules/@rohal12/spindle/dist/', import.meta.url))],
+      noRemote: true, useTweegoPath: false,
+    });
+    expect(result.diagnostics.filter(d => d.level === 'error')).toEqual([]);
+    const session = await openPlaySession({ html: result.output, trusted: true });
+    try {
+      const observed = await session.observe();
+      expect(observed.errors).toEqual([]);
+      expect(observed.text).toBe('Matched');
+    } finally {
+      await session.close();
+    }
+    expect(diagnose(text).filter(d => d.severity === 'error')).toEqual([]);
+  });
+
+  it('still requires a case belonging to the switch', () => {
+    const diags = diagnose(`${widgets}:: Start\n{switch 1}No cases{/switch}\n`).filter(d => d.severity === 'error');
+    expect(codes(diags)).toEqual(['SP115']);
+    expect(diags[0].message).toContain('min 1, found 0');
+  });
+
+  it.each([
+    [{ name: 'Case', min: 2 }, '{case 1}One{CASE 2}Two', []],
+    [{ name: 'Case', min: 2 }, '{case 1}One', ['SP115']],
+    [{ name: 'Case', max: 1 }, '{case 1}One{CASE 2}Two', ['SP114']],
+  ])('applies configured branch constraints %j', (constraint, body, expected) => {
+    const workspace = new WorkspaceModel();
+    try {
+      workspace.macros.loadConfig({ switch: { children: [constraint] } });
+      workspace.initialize(new Map([['file:///test.tw', `${widgets}:: Start\n{switch 1}${body}{/switch}\n`]]));
+      expect(codes(computeDiagnostics('file:///test.tw', workspace).filter(d => d.severity === 'error'))).toEqual(expected);
+    } finally {
+      workspace.dispose();
+    }
   });
 });
 

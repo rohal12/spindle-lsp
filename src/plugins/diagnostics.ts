@@ -645,13 +645,14 @@ function childDiagnostics(passage: PassageMarkup, node: PairedNode, token: Macro
   // The macros directly in the body (also after a branch such as {else}); those in an element or a nested container are its own
   const direct: PairedNode[] = [...node.body.children];
   for (const branch of node.body.branches) direct.push({ token: branch.tag, start: branch.tag.start, end: branch.tag.end }, ...branch.children);
+  const branchTags = new Set(node.body.branches.map(branch => branch.tag));
   const consumesOptions = macro?.source === 'builtin' && ['listbox', 'cycle'].includes(token.name.toLowerCase());
   const counts: Record<string, number> = Object.create(null);
   for (const child of direct) {
     if (child.token.type !== 'macro' || child.token.isClose) continue;
     const key = child.token.name.toLowerCase();
-    // These controls consume option values before widget dispatch; other children use effective macros.
-    if ((consumesOptions && key === 'option') || workspace.getEffectiveMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
+    // Paired branches and control option values belong to the parent, before widget dispatch.
+    if (branchTags.has(child.token) || (consumesOptions && key === 'option') || workspace.getEffectiveMacro(key)) counts[key] = (counts[key] ?? 0) + 1;
   }
 
   const diagnostics: SpindleDiagnostic[] = [];

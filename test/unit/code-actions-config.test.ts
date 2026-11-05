@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeCodeActions } from '../../src/plugins/code-actions.js';
 import type { CodeAction } from '../../src/plugins/code-actions.js';
@@ -113,6 +114,29 @@ describe('SP100 quick fix targets the project config', () => {
   it('matches the existing indentation', () => {
     const result = fixConfig('spindle.config.yml', 'macros:\n    foo:\n        description: x\n');
     expect(result).toBe('macros:\n    foo:\n        description: x\n    nosuch:\n        description: ""\n');
+  });
+
+  it.each([
+    ['block mapping', 'macros: *shared\n'],
+    ['legacy mapping', 'spindle-0:\n  macros: *shared\n'],
+  ])('preserves aliased macro definitions in a %s (#247)', (_label, mapping) => {
+    const original = 'definitions: &shared\n'
+      + '  existing: &metadata\n    description: Keep this macro\n'
+      + '  another: *metadata\n'
+      + mapping;
+    const result = fixConfig('spindle.config.yaml', original);
+    expect(macrosOf(result, 'yaml')).toEqual({
+      existing: { description: 'Keep this macro' },
+      another: { description: 'Keep this macro' },
+      nosuch: { description: '' },
+    });
+    expect(parseYaml(result).definitions).toEqual(parseYaml(original).definitions);
+  });
+
+  it('offers no edit for a macro already defined through a YAML alias (#247)', () => {
+    writeFileSync(join(dir, 'spindle.config.yaml'),
+      'definitions: &shared\n  NoSuch: {}\nmacros: *shared\n');
+    expect(sp100Action()).toBeUndefined();
   });
 
   it('handles a config without a trailing newline or with trailing comments', () => {
