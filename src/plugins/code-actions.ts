@@ -231,13 +231,26 @@ function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null 
   if (doc.contents !== null && !isMap(doc.contents)) return null;
 
   const path = macrosPath(doc.toJS());
-  const parent = path.length > 1 ? doc.getIn(path.slice(0, -1), true) : doc.contents;
-  let macros = doc.getIn(path, true);
-  if (isAlias(macros)) {
-    // Materialize only this reference; other users of the anchor stay unchanged.
-    macros = doc.createNode(macros.toJS(doc));
-    doc.setIn(path, macros);
+  for (let depth = 1; depth <= path.length; depth++) {
+    const prefix = path.slice(0, depth);
+    const node = doc.getIn(prefix, true);
+    if (isAlias(node)) {
+      // Materialize only this reference, including aliased ancestors such as
+      // spindle-0; other users of each anchor stay unchanged.
+      let value = node.toJS(doc);
+      if (depth < path.length && isMap(node.resolve(doc))) {
+        const key = path[depth];
+        const child = value[key];
+        if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
+          // Detach the next mapping before createNode recreates shared anchors.
+          value = { ...value, [key]: { ...child } };
+        }
+      }
+      doc.setIn(prefix, doc.createNode(value));
+    }
   }
+  const parent = path.length > 1 ? doc.getIn(path.slice(0, -1), true) : doc.contents;
+  const macros = doc.getIn(path, true);
   if (isMap(macros) && definesMacro(macros.toJS(doc), macroName)) return null;
 
   if (isMap(parent) && isMap(macros) && !macros.flow && macros.items.length > 0 && macros.range) {
