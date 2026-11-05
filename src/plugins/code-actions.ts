@@ -237,7 +237,16 @@ function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null 
     if (isAlias(node)) {
       // Materialize only this reference, including aliased ancestors such as
       // spindle-0; other users of each anchor stay unchanged.
-      doc.setIn(prefix, doc.createNode(node.toJS(doc)));
+      let value = node.toJS(doc);
+      if (depth < path.length && isMap(node.resolve(doc))) {
+        const key = path[depth];
+        const child = value[key];
+        if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
+          // Detach the next mapping before createNode recreates shared anchors.
+          value = { ...value, [key]: { ...child } };
+        }
+      }
+      doc.setIn(prefix, doc.createNode(value));
     }
   }
   const parent = path.length > 1 ? doc.getIn(path.slice(0, -1), true) : doc.contents;

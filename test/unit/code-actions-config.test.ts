@@ -142,6 +142,8 @@ describe('SP100 quick fix targets the project config', () => {
   it.each([
     ['a macros mapping', 'defaults: &settings\n  macros:\n    existing: {}\n'],
     ['an aliased macros mapping', 'definitions: &macros\n  existing: {}\ndefaults: &settings\n  macros: *macros\n'],
+    ['an internally shared macros mapping', 'defaults: &settings\n  macros: &macros\n    existing: {}\n  other: *macros\n'],
+    ['an internally aliased macros mapping', 'defaults: &settings\n  other: &macros\n    existing: {}\n  macros: *macros\n'],
     ['no macros mapping', 'defaults: &settings\n  enums:\n    mood: happy|sad\n'],
   ])('adds a macro through an aliased legacy wrapper with %s (#251)', (_label, definitions) => {
     const original = definitions + 'spindle-0: *settings\nother: *settings\n';
@@ -158,6 +160,7 @@ describe('SP100 quick fix targets the project config', () => {
     expect(after.defaults).toEqual(before.defaults);
     expect(after.other).toEqual(before.other);
     expect(after['spindle-0'].enums).toEqual(before.defaults.enums);
+    expect(after['spindle-0'].other).toEqual(before.defaults.other);
     expect(after.definitions).toEqual(before.definitions);
   });
 
