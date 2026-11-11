@@ -229,6 +229,27 @@ describe('SP100 quick fix targets the project config', () => {
     expect(readFileSync(path, 'utf-8')).toBe('macros:\n  ondisk: {}\n');
   });
 
+  it.each(['disk', 'buffer'])('retains spelling fixes when a YAML alias in the %s cannot resolve (#265)', source => {
+    const path = join(dir, 'spindle.config.yaml');
+    const configUri = pathToFileURL(path).toString();
+    const docUri = pathToFileURL(join(dir, 'story.tw')).toString();
+    const invalid = 'macros: *unfinished\n';
+    writeFileSync(path, source === 'disk' ? invalid : 'macros: {}\n');
+    const ws = new WorkspaceModel();
+    try {
+      ws.initialize(new Map([[docUri, ':: StoryVariables\n:: Start\n{prnit}\n']]));
+      if (source === 'buffer') ws.documents.open(configUri, invalid);
+      const diags = computeDiagnostics(docUri, ws).filter(d => d.code === 'SP100');
+      expect(diags).toHaveLength(1);
+      const actions = computeCodeActions(docUri, diags, ws, { workspaceRoot: dir });
+      expect(actions.map(action => action.title)).toEqual(["Change to '{print}'"]);
+      expect(actions[0].edits).toMatchObject([{ uri: docUri, newText: 'print' }]);
+      expect(readFileSync(path, 'utf8')).toBe(source === 'disk' ? invalid : 'macros: {}\n');
+    } finally {
+      ws.dispose();
+    }
+  });
+
   it('finds the nearest config above the document when no workspace root is known', () => {
     writeFileSync(join(dir, 'spindle.config.yaml'), 'macros:\n  foo: {}\n');
     mkdirSync(join(dir, 'src', 'chapters'), { recursive: true });

@@ -89,39 +89,42 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 
   const diagnostics = [...tweeDiagnostics(doc)];
   if (doc.passages.length === 0) return diagnostics;
-  // A failure in one category still lets the others report.
-  const attempt = (check: () => void) => {
+  // A failure in one check still lets the others report. Append outside the
+  // guard, without passing an unbounded batch as function arguments.
+  const attempt = (check: () => SpindleDiagnostic[]) => {
+    let batch: SpindleDiagnostic[];
     try {
-      check();
+      batch = check();
     } catch {
-      // continue with the other checks
+      return;
     }
+    for (const diagnostic of batch) diagnostics.push(diagnostic);
   };
 
   const story = storyReport(workspace);
-  diagnostics.push(...(story.metadata.get(doc) ?? []));
+  for (const diagnostic of story.metadata.get(doc) ?? []) diagnostics.push(diagnostic);
   const effective = new Set(workspace.passages.getEffectivePassages());
   let passageNames: string[] | undefined;
   const getPassageNames = () => passageNames ??= [...effective].filter(isRuntimePassage).map(passage => passage.name);
   for (const passage of doc.passages) {
     if (!effective.has(passage.passage)) continue;
-    attempt(() => diagnostics.push(...markupDiagnostics(passage, story, workspace)));
-    attempt(() => diagnostics.push(...variableDiagnostics(passage, story)));
-    attempt(() => diagnostics.push(...structureDiagnostics(passage, workspace)));
-    attempt(() => diagnostics.push(...argumentDiagnostics(passage, workspace, getPassageNames)));
-    attempt(() => diagnostics.push(...widgetDiagnostics(passage, story, workspace)));
+    attempt(() => markupDiagnostics(passage, story, workspace));
+    attempt(() => variableDiagnostics(passage, story));
+    attempt(() => structureDiagnostics(passage, story, workspace));
+    attempt(() => argumentDiagnostics(passage, workspace, getPassageNames));
+    attempt(() => widgetDiagnostics(passage, story, workspace));
   }
-  attempt(() => diagnostics.push(...versionDiagnostics(uri, doc, workspace)));
-  attempt(() => diagnostics.push(...storyVariablesDiagnostics(uri, doc, story, workspace)));
-  attempt(() => diagnostics.push(...arrayMemberDiagnostics(uri, workspace)));
-  attempt(() => diagnostics.push(...linkDiagnostics(doc).filter(diagnostic => {
+  attempt(() => versionDiagnostics(uri, doc, workspace));
+  attempt(() => storyVariablesDiagnostics(uri, doc, story, workspace));
+  attempt(() => arrayMemberDiagnostics(uri, workspace));
+  attempt(() => linkDiagnostics(doc).filter(diagnostic => {
     const passage = doc.passageAt(diagnostic.range.start);
     return passage !== undefined && effective.has(passage.passage);
-  })));
-  attempt(() => diagnostics.push(...unusedWidgetDiagnostics(doc, story)));
+  }));
+  attempt(() => unusedWidgetDiagnostics(doc, story));
   if (options?.maxLineLength) {
     const maxLength = options.maxLineLength;
-    attempt(() => diagnostics.push(...lineLengthDiagnostics(doc, maxLength)));
+    attempt(() => lineLengthDiagnostics(doc, maxLength));
   }
 
   return diagnostics.sort((a, b) =>
@@ -178,6 +181,8 @@ interface StoryReport {
   readonly passages: readonly PassageMarkup[];
   /** The macros the story may use, with the variable an input macro binds. */
   readonly macros: readonly ToolingMacro[];
+  /** Sub-macros whose parent checks belong to tooling, shared across calls. */
+  readonly toolingChildren: ReadonlySet<string>;
   /** `validateStoryMarkup`'s diagnostics, by the passage they are in. */
   readonly markup: ReadonlyMap<PassageMarkup, MarkupDiagnostic[]>;
   /** The effective closed widgets, selected in runtime phase order by tooling. */
@@ -272,6 +277,9 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
     metadata: storyDataDiagnostics(documents, workspace),
     passages,
     macros,
+    toolingChildren: new Set(workspace.macros.getAllMacros()
+      .filter(macro => macro.source === 'user')
+      .flatMap(macro => macro.subMacros.map(name => name.toLowerCase()))),
     markup,
     widgets,
     widgetList,
@@ -586,7 +594,7 @@ interface Ancestor {
   element: boolean;
 }
 
-function structureDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
+function structureDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
   const diagnostics: SpindleDiagnostic[] = [];
   if (!passage.isMarkup) return diagnostics;
 
@@ -594,8 +602,8 @@ function structureDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel)
     for (const node of nodes) {
       const token = node.token;
       if (token.type === 'macro' && !token.isClose) {
-        diagnostics.push(...parentDiagnostics(passage, token, ancestors, workspace));
-        diagnostics.push(...childDiagnostics(passage, node, token, workspace));
+        diagnostics.push(...parentDiagnostics(passage, token, ancestors, story, workspace));
+        for (const diagnostic of childDiagnostics(passage, node, token, workspace)) diagnostics.push(diagnostic);
         diagnostics.push(...loopDiagnostics(passage, token, ancestors, workspace));
       }
       if (!node.body) continue;
@@ -619,15 +627,14 @@ function structureDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel)
 }
 
 /** SP107: a macro outside the parents the registry says it needs. */
-function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[], workspace: WorkspaceModel): SpindleDiagnostic[] {
+function parentDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: readonly Ancestor[], story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
   const name = token.name.toLowerCase();
   const parents = workspace.getEffectiveMacro(name)?.parents;
   if (!parents || parents.length === 0 || BRANCH_MACROS.has(name)) return [];
   // Tooling owns the sub-macros of discovered macros, also those of a
   // project's own listbox. Built-in value children and configured-only
   // constraints stay here.
-  if (workspace.macros.getAllMacros().some(macro => macro.source === 'user' &&
-    macro.subMacros.some(sub => sub.toLowerCase() === name))) return [];
+  if (story.toolingChildren.has(name)) return [];
 
   const allowed = new Set(parents.map((parent) => parent.toLowerCase()));
   const parentList = parents.join(', ');

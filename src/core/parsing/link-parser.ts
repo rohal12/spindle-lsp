@@ -1,8 +1,8 @@
-import { builtinMacros, findCodeEnd, isBlockMacro } from '@rohal12/spindle/tooling';
+import { builtinMacros, findCodeEnd, isBlockMacro, type LinkToken } from '@rohal12/spindle/tooling';
 import type { Passage, Range } from '../types.js';
 import { bracketLinkMismatch, type LinkRead } from './link-runtime.js';
 import { PassageIndex } from '../workspace/passage-index.js';
-import { DocumentMarkup } from '../markup/passage-markup.js';
+import { DocumentMarkup, type PassageMarkup } from '../markup/passage-markup.js';
 import { documentPassageRefs } from '../markup/passage-refs.js';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +60,18 @@ export interface LinkRuntimeMismatch {
   runtime: LinkRead;
 }
 
+/** Token lookup by tooling-owned target offset; a new passage invalidates it. */
+const bracketLinks = new WeakMap<PassageMarkup, ReadonlyMap<number, LinkToken>>();
+
+function bracketLinksByTarget(passage: PassageMarkup): ReadonlyMap<number, LinkToken> {
+  let index = bracketLinks.get(passage);
+  if (!index) {
+    index = new Map(passage.tokens.flatMap(token => token.type === 'link' ? [[token.targetStart, token] as const] : []));
+    bracketLinks.set(passage, index);
+  }
+  return index;
+}
+
 /**
  * The bracket links Spindle's link macro does not read back as written (see
  * link-runtime.ts), in order: a target with a line break, which the macro's
@@ -70,8 +82,8 @@ export function findLinkRuntimeMismatches(text: string | DocumentMarkup): LinkRu
   const found: LinkRuntimeMismatch[] = [];
   for (const ref of documentPassageRefs(markupOfText(text))) {
     if (ref.form !== 'bracket') continue;
-    const link = ref.passage.tokens.find(token => token.type === 'link' && token.targetStart === ref.start);
-    if (link?.type !== 'link') continue;
+    const link = bracketLinksByTarget(ref.passage).get(ref.start);
+    if (!link) continue;
     const runtime = bracketLinkMismatch(link.display, link.target);
     if (!runtime) continue;
     found.push({ range: ref.passage.range(link.start, link.end), display: link.display, target: link.target, runtime });
