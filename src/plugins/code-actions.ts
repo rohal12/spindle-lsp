@@ -174,12 +174,16 @@ function addMacroToConfig(
     }
   }
 
-  const edit = configPath.toLowerCase().endsWith('.json')
-    ? addMacroToJsonConfig(text, macroName)
-    : addMacroToYamlConfig(text, macroName);
-  if (!edit) return null;
-
-  return { ...action, edits: [{ uri: configUri, ...edit }] };
+  try {
+    const edit = configPath.toLowerCase().endsWith('.json')
+      ? addMacroToJsonConfig(text, macroName)
+      : addMacroToYamlConfig(text, macroName);
+    return edit ? { ...action, edits: [{ uri: configUri, ...edit }] } : null;
+  } catch {
+    // YAML may parse without errors but fail while resolving aliases or
+    // serializing the edit. Independent spelling fixes remain valid.
+    return null;
+  }
 }
 
 /**
