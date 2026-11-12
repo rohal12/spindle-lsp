@@ -188,6 +188,7 @@ interface StoryReport {
   /** The effective closed widgets, selected in runtime phase order by tooling. */
   readonly widgets: ReadonlyMap<string, DefinedWidget>;
   readonly widgetList: readonly DefinedWidget[];
+  readonly widgetNamesByPassage: ReadonlyMap<Passage, readonly string[]>;
   /** The lower-case names of the macros the story invokes. */
   readonly invoked: ReadonlySet<string>;
   /** What StoryVariables declares; undefined while the story has no such passage. */
@@ -261,6 +262,12 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
 
   const sources = widgetSources(passages, macros);
   const widgetList = [...sources].map(([definition, passage]) => ({ definition, passage }));
+  const widgetNamesByPassage = new Map<Passage, string[]>();
+  for (const { definition, passage } of widgetList) {
+    const names = widgetNamesByPassage.get(passage.passage);
+    if (names) names.push(definition.name);
+    else widgetNamesByPassage.set(passage.passage, [definition.name]);
+  }
   const widgets = new Map(effectiveWidgetDefinitions([...sources.keys()]).map(definition => [
     definition.name.toLowerCase(), { definition, passage: sources.get(definition)! },
   ]));
@@ -283,6 +290,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
     markup,
     widgets,
     widgetList,
+    widgetNamesByPassage,
     invoked,
     variables: declarationsOf(workspace, 'StoryVariables'),
     transients: declarationsOf(workspace, 'StoryTransients'),
@@ -948,7 +956,6 @@ function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel, 
 function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
   if (!passage.isMarkup) return [];
   const diagnostics: SpindleDiagnostic[] = [];
-  const macros = [...macroTokens(passage)];
 
   for (const token of passage.invocations) {
     // Only an effective widget owns the invocation
@@ -974,14 +981,26 @@ function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace
   // passage name written out is a target: a bare `{include Other}` is an
   // expression.
   if (workspace.getEffectiveMacro('include')?.source !== 'builtin') return diagnostics;
+  // Tooling spans include calls in labels and attribute values. Index them
+  // in source order once; each passage piece then needs only a span lookup.
+  const includes = [...macroTokens(passage)]
+    .filter(token => !token.isClose && token.name.toLowerCase() === 'include')
+    .sort((a, b) => a.start - b.start);
   for (const piece of passage.pieces) {
     if (piece.kind !== 'passage' || piece.macro !== 'include') continue;
     const target = workspace.passages.getEffectivePassage(piece.name);
     if (!target?.tags?.includes('widget')) continue;
-    const defined = story.widgetList.filter((widget) => widget.passage.passage === target).map((widget) => widget.definition.name);
+    const defined = story.widgetNamesByPassage.get(target) ?? [];
     if (defined.length === 0) continue;
-    const include = macros.find((token) => !token.isClose && token.name.toLowerCase() === 'include' && token.start <= piece.offset && piece.offset < token.end);
-    if (!include) continue;
+    let low = 0;
+    let high = includes.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (includes[mid].start <= piece.offset) low = mid + 1;
+      else high = mid;
+    }
+    const include = includes[low - 1];
+    if (!include || piece.offset >= include.end) continue;
 
     const names = defined.map((name) => `{${name}}`).join(', ');
     diagnostics.push(makeDiag(
