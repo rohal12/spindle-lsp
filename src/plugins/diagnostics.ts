@@ -809,13 +809,13 @@ function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: r
   if (!loop || !close) return [];
 
   const targets = macro === 'computed' ? computedTemporaryTarget(token.rawArgs) : setTemporaryTargets(token.rawArgs);
-  const view = sourceView(passage, token.argsStart, token.argsEnd);
-  const argsIndex = viewIndex(view, token.argsStart);
+  let view: ReturnType<typeof sourceView> | undefined;
   const bodyStart = loop.node.token.end;
   const diagnostics: SpindleDiagnostic[] = [];
   for (const target of targets) {
     if (!isReadInBody(passage, bodyStart, close.start, target.name, token.start, token.end)) continue;
-    const start = argsIndex + target.offset;
+    view ??= sourceView(passage, token.argsStart, token.argsEnd);
+    const start = viewIndex(view, token.argsStart) + target.offset;
     diagnostics.push(makeDiag(
       passage.range(pieceOffset(view, start), pieceOffset(view, start + 1 + target.name.length)),
       DiagnosticCode.TemporaryAssignedInLoop,
@@ -828,27 +828,55 @@ function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: r
   return diagnostics;
 }
 
+const temporaryReadIndexes = new WeakMap<PassageMarkup, Map<string, number[]>>();
+
 /**
- * Whether `_name` is read somewhere in the loop body outside the assigning
- * macro. Public tooling distinguishes reads from write-only targets,
- * including nested destructuring patterns and their default expressions.
+ * Index public tooling's proven reads once. Passage identities include both
+ * the text version and effective macro metadata, so neither can leave stale reads.
  */
-function isReadInBody(passage: PassageMarkup, bodyStart: number, bodyEnd: number, name: string, macroStart: number, macroEnd: number): boolean {
-  const eligible = (offset: number) => offset >= bodyStart && offset < bodyEnd && !(offset >= macroStart && offset < macroEnd);
+function temporaryReads(passage: PassageMarkup): Map<string, number[]> {
+  const cached = temporaryReadIndexes.get(passage);
+  if (cached) return cached;
+  const reads = new Map<string, number[]>();
+  const add = (name: string, offset: number) => {
+    const offsets = reads.get(name);
+    if (offsets) offsets.push(offset);
+    else reads.set(name, [offset]);
+  };
   for (const token of markupTokens(passage)) {
-    if (token.type === 'variable' && token.scope === 'temporary' && token.name.split('.')[0] === name && eligible(token.start)) return true;
+    if (token.type === 'variable' && token.scope === 'temporary') add(token.name.split('.')[0], token.start);
   }
   for (const piece of passage.pieces) {
     if (piece.kind !== 'code') continue;
     try {
-      if (parseCode(piece.code, piece.goal).refs.some(ref =>
-        ref.sigil === '_' && ref.name === name && ref.read && eligible(pieceOffset(piece, ref.start)),
-      )) return true;
+      for (const ref of parseCode(piece.code, piece.goal).refs) {
+        if (ref.sigil === '_' && ref.read) add(ref.name, pieceOffset(piece, ref.start));
+      }
     } catch {
       // Syntax diagnostics own malformed code; it provides no proven read.
     }
   }
-  return false;
+  for (const offsets of reads.values()) offsets.sort((a, b) => a - b);
+  temporaryReadIndexes.set(passage, reads);
+  return reads;
+}
+
+/** Whether `_name` is read in the loop body outside the assigning macro. */
+function isReadInBody(passage: PassageMarkup, bodyStart: number, bodyEnd: number, name: string, macroStart: number, macroEnd: number): boolean {
+  const offsets = temporaryReads(passage).get(name);
+  if (!offsets) return false;
+  const firstAt = (start: number) => {
+    let low = 0;
+    let high = offsets.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (offsets[mid] < start) low = mid + 1;
+      else high = mid;
+    }
+    return offsets[low] ?? Infinity;
+  };
+  const first = firstAt(bodyStart);
+  return (first >= macroStart && first < macroEnd ? firstAt(macroEnd) : first) < bodyEnd;
 }
 
 // ---------------------------------------------------------------------------
@@ -871,8 +899,7 @@ const SPINDLE_MACROS: ReadonlySet<string> = new Set([
 function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel, getPassageNames: () => string[]): SpindleDiagnostic[] {
   const diagnostics: SpindleDiagnostic[] = [];
 
-  for (const token of passage.isMarkup ? macroTokens(passage) : []) {
-    if (token.type !== 'macro' || token.isClose) continue;
+  for (const token of passage.invocations) {
     const info = workspace.getEffectiveMacro(token.name);
     if (!info?.parameters || info.skipArgs || info.parameterDefs?.length) continue;
     if (SPINDLE_MACROS.has(token.name.toLowerCase()) && !workspace.macros.hasDiscoveredMacro(token.name)) continue;
@@ -885,24 +912,29 @@ function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel, 
       continue;
     }
     const range = passage.range(token.start, token.end);
-    const args = lexArguments(token.rawArgs);
+    try {
+      const args = lexArguments(token.rawArgs);
 
-    // SP108: no parameters, but arguments
-    if (params.isEmpty()) {
-      if (args.length > 0) {
-        diagnostics.push(makeDiag(range, DiagnosticCode.ExpectedNoArguments, `Expected no arguments for {${token.name}}, got ${args.length}`));
+      // SP108: no parameters, but arguments
+      if (params.isEmpty()) {
+        if (args.length > 0) {
+          diagnostics.push(makeDiag(range, DiagnosticCode.ExpectedNoArguments, `Expected no arguments for {${token.name}}, got ${args.length}`));
+        }
+        continue;
       }
-      continue;
-    }
 
-    const result = params.validate(args, { passages: getPassageNames() });
-    if (result.variantIndex === null) continue;
-    for (const error of result.errors) {
-      const code = error.message.startsWith('Too many arguments') ? DiagnosticCode.TooManyArguments : DiagnosticCode.ParameterTypeError;
-      diagnostics.push(makeDiag(range, code, `{${token.name}}: ${error.message}`));
-    }
-    for (const warning of result.warnings) {
-      diagnostics.push(makeDiag(range, DiagnosticCode.ParameterWarning, `{${token.name}}: ${warning.message}`));
+      const result = params.validate(args, { passages: getPassageNames() });
+      if (result.variantIndex === null) continue;
+      for (const error of result.errors) {
+        const code = error.message.startsWith('Too many arguments') ? DiagnosticCode.TooManyArguments : DiagnosticCode.ParameterTypeError;
+        diagnostics.push(makeDiag(range, code, `{${token.name}}: ${error.message}`));
+      }
+      for (const warning of result.warnings) {
+        diagnostics.push(makeDiag(range, DiagnosticCode.ParameterWarning, `{${token.name}}: ${warning.message}`));
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      diagnostics.push(makeDiag(range, DiagnosticCode.ParameterTypeError, `{${token.name}}: Unable to validate arguments: ${reason}`));
     }
   }
   return diagnostics;
@@ -941,6 +973,7 @@ function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace
   // no widgets renders its content like any other and is not reported.) Only a
   // passage name written out is a target: a bare `{include Other}` is an
   // expression.
+  if (workspace.getEffectiveMacro('include')?.source !== 'builtin') return diagnostics;
   for (const piece of passage.pieces) {
     if (piece.kind !== 'passage' || piece.macro !== 'include') continue;
     const target = workspace.passages.getEffectivePassage(piece.name);

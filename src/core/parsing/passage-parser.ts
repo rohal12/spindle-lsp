@@ -38,7 +38,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   // The compiler accepts BOM-prefixed headers in concatenated files too.
   // Keep every column in the client's original coordinates.
   const bomLength = /^\uFEFF*/.exec(line)![0].length;
-  const escaped = line.replace(/\\./g, 'ec');
+  const escaped = line.replace(/\\./gs, 'ec');
   // Twee uses Go/Unicode White_Space, not JavaScript whitespace (FEFF/NEL).
   const prefix = /^::\p{White_Space}*/u.exec(escaped.slice(bomLength));
   if (!prefix) return null;
@@ -53,7 +53,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   // Trim structural whitespace in the masked source so an escaped trailing
   // space stays in the edit range. The compiler trims the decoded name.
   const nameEnd = trimmedEnd(escaped, boundary);
-  const decodedName = line.slice(nameStart, nameEnd).replace(/\\(.|$)/g, '$1').replace(/^\p{White_Space}+/u, '');
+  const decodedName = line.slice(nameStart, nameEnd).replace(/\\(.|$)/gs, '$1').replace(/^\p{White_Space}+/u, '');
   const name = decodedName.slice(0, trimmedEnd(decodedName));
   if (!name) return null;
 
@@ -62,7 +62,7 @@ export function parsePassageHeader(rawLine: string, lineNumber: number): ParsedP
   if (escaped[rest] === '[') {
     const end = escaped.indexOf(']', rest + 1);
     if (end === -1 || /[\[{}]/.test(escaped.slice(rest + 1, end))) return null;
-    const decoded = line.slice(rest + 1, end).replace(/\\(.)/g, '$1');
+    const decoded = line.slice(rest + 1, end).replace(/\\(.)/gs, '$1');
     tags = decoded.match(/[^\p{White_Space}]+/gu) ?? [];
     rest = end + 1;
     while (rest < line.length && /\p{White_Space}/u.test(escaped[rest])) rest++;
