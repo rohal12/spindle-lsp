@@ -136,6 +136,27 @@ it('indexes executable loop reads, excludes the assignment and invalidates on ed
   expect(warnings()).toEqual(['_x', '_y']);
 });
 
+it('validates a replacement widget macro in StoryInit and invalidates after definition edits (#270)', async () => {
+  const definition = ':: Macros [script]\n'
+    + 'Story.defineMacro({name:"widget",render(_props,ctx){ctx.mutate(\'$seen = "yes"\');return "custom";}});\n';
+  const text = metadata + ':: StoryVariables\n$seen = "no"\n' + definition
+    + ':: StoryInit\n{widget "bad"}\n:: Start\n{$seen}';
+  const model = workspace(new Map([[uri, text]]));
+  model.macros.loadConfig({ widget: { parameters: ['number'] } });
+  const errors = () => computeDiagnostics(uri, model).filter(d => d.code === 'SP109');
+  expect(errors()).toContainEqual(expect.objectContaining({ message: '{widget}: Argument is not a number', severity: 'error' }));
+  const session = await play(new Map([[uri, text]]));
+  try {
+    const observation = await session.observe();
+    expect(observation.errors).toEqual([]);
+    expect(observation.text).toBe('yes');
+  } finally { await session.close(); }
+  model.documents.update(uri, text.replace(definition, ''));
+  expect(errors()).toEqual([]);
+  model.documents.update(uri, text);
+  expect(errors()).toHaveLength(1);
+});
+
 it.each(['listbox', 'cycle'])('only applies custom option/else schemas to invocations inside %s (#270)', async control => {
   const definitions = ['option', 'else'].map(name => `Story.defineMacro({name:"${name}",render(){return "replacement";}});`).join('\n');
   const body = `{${control} $choice}{option "yes"}{/${control}}\n{if false}no{else}yes{/if}`;

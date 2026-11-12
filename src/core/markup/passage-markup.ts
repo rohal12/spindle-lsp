@@ -147,7 +147,10 @@ export class PassageMarkup {
   get invocations(): readonly MacroToken[] {
     if (!this.cachedInvocations) {
       const macros = this.doc.context.macros;
-      const definitions = widgetDefinitions([{ ...this.passage, content: this.content }], macros);
+      // A user-defined macro named widget executes registration-shaped heads
+      // normally. Actual widgets still register these heads at startup.
+      const customWidgetMacro = macros.find(macro => macro.name.toLowerCase() === 'widget')?.source === 'user';
+      const definitions = customWidgetMacro ? [] : widgetDefinitions([{ ...this.passage, content: this.content }], macros);
       const registration = new Set(definitions.map(definition => definition.start));
       this.cachedInvocations = this.isMarkup ? macroCalls(this.content, macros)
         .filter(call => call.kind === 'invocation' && !registration.has(call.token.start))
