@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createRequire as createCompilerRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseDocument, isAlias, isMap, isScalar, stringify as stringifyYaml } from 'yaml';
@@ -26,6 +27,8 @@ export interface CodeAction {
   title: string;
   kind: string;
   diagnosticCodes: string[];
+  /** The request diagnostics addressed by this action, filled by computeCodeActions. */
+  diagnostics?: SpindleDiagnostic[];
   /** URI of a file that must be created (empty) before applying `edits`. */
   createFile?: string;
   edits: Array<{ uri: string; range: Range; newText: string }>;
@@ -61,16 +64,27 @@ export function computeCodeActions(
 ): CodeAction[] {
   const actions: CodeAction[] = [];
   const current = computeDiagnostics(uri, workspace);
+  const identity = (diag: SpindleDiagnostic) => JSON.stringify([
+    diag.code, diag.range.start.line, diag.range.start.character,
+    diag.range.end.line, diag.range.end.character,
+  ]);
+  const byIdentity = new Map<string, SpindleDiagnostic[]>();
+  for (const candidate of current) {
+    const key = identity(candidate);
+    const group = byIdentity.get(key);
+    if (group) group.push(candidate);
+    else byIdentity.set(key, [candidate]);
+  }
 
   for (const diag of diagnostics) {
     // Client diagnostic data can still contain positions from an earlier
     // publication, even when the editor has moved the visible range.
-    const fresh = current.find(candidate => candidate.code === diag.code
-      && isDeepStrictEqual(candidate.range, diag.range)
+    const fresh = byIdentity.get(identity(diag))?.find(candidate => isDeepStrictEqual(candidate.range, diag.range)
       && isDeepStrictEqual(candidate.data, diag.data));
     // SP202 uses no saved location or data: its fix derives the owner and
     // verifies the missing declaration from the current complete workspace.
     if (!fresh && diag.code !== DiagnosticCode.NoStoryVariables) continue;
+    const firstAction = actions.length;
     switch (diag.code) {
       case DiagnosticCode.UndefinedMacro:
         actions.push(...fixUndefinedMacro(uri, diag, workspace, options));
@@ -98,6 +112,7 @@ export function computeCodeActions(
         break;
       // No quick fix for other diagnostic codes
     }
+    for (let i = firstAction; i < actions.length; i++) actions[i].diagnostics = [diag];
   }
 
   return actions;
@@ -497,7 +512,7 @@ function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: Workspac
 
   // A new passage after the last one of the document
   const encoded = encodePassageName(name);
-  if (!workspace.passages.getPassage(name) && encoded !== undefined) {
+  if (!workspace.passages.getPassage(name) && encoded !== undefined && emptyPassageIsDestination(name)) {
     const edit = insertLinesAt(text, splitLines(text).length, `\n:: ${encoded}\n`, lineEndingFor(workspace, uri));
     actions.push({
       title: `Create passage '${name}'`,
@@ -507,6 +522,15 @@ function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: Workspac
     });
   }
   return actions;
+}
+
+/** The compiler decides whether this proposed empty body is emitted as a destination. */
+function emptyPassageIsDestination(name: string): boolean {
+  const { StoryBuilder, passageOmission } = createCompilerRequire(import.meta.url)('@rohal12/twee-ts') as typeof import('@rohal12/twee-ts');
+  const passage = { name, text: '', tags: [] };
+  const builder = new StoryBuilder();
+  builder.add(passage, []);
+  return passageOmission(builder.build(), passage, 'twine2') === undefined;
 }
 
 /** Edit a destination only when the runtime reads it back and keeps all other code intact. */
@@ -569,23 +593,28 @@ export const codeActionsPlugin: SpindlePlugin = {
   initialize(ctx: PluginContext) {
     ctx.connection.onCodeAction((params) => {
       // Convert LSP diagnostics back to our Diagnostic type
+      const originals = new Map<SpindleDiagnostic, typeof params.context.diagnostics[number]>();
       const diagnostics: SpindleDiagnostic[] = params.context.diagnostics
         .filter(d => d.source === 'spindle')
-        .map(d => ({
-          range: {
-            start: { line: d.range.start.line, character: d.range.start.character },
-            end: { line: d.range.end.line, character: d.range.end.character },
-          },
-          // LSP 3.18 lets a message be markup; our diagnostics are always plain text
-          message: typeof d.message === 'string' ? d.message : d.message.value,
-          severity: d.severity === 1 ? 'error' as const
-            : d.severity === 2 ? 'warning' as const
-            : d.severity === 3 ? 'info' as const
-            : 'hint' as const,
-          code: String(d.code ?? ''),
-          source: d.source ?? 'spindle',
-          data: d.data as SpindleDiagnostic['data'],
-        }));
+        .map(d => {
+          const diagnostic: SpindleDiagnostic = {
+            range: {
+              start: { line: d.range.start.line, character: d.range.start.character },
+              end: { line: d.range.end.line, character: d.range.end.character },
+            },
+            // LSP 3.18 lets a message be markup; our diagnostics are always plain text
+            message: typeof d.message === 'string' ? d.message : d.message.value,
+            severity: d.severity === 1 ? 'error' as const
+              : d.severity === 2 ? 'warning' as const
+              : d.severity === 3 ? 'info' as const
+              : 'hint' as const,
+            code: String(d.code ?? ''),
+            source: d.source ?? 'spindle',
+            data: d.data as SpindleDiagnostic['data'],
+          };
+          originals.set(diagnostic, d);
+          return diagnostic;
+        });
 
       const actions = computeCodeActions(
         params.textDocument.uri,
@@ -597,9 +626,7 @@ export const codeActionsPlugin: SpindlePlugin = {
       return actions.map(a => ({
         title: a.title,
         kind: a.kind,
-        diagnostics: params.context.diagnostics.filter(d =>
-          a.diagnosticCodes.includes(String(d.code)),
-        ),
+        diagnostics: a.diagnostics?.map(d => originals.get(d)!) ?? [],
         edit: a.createFile
           ? {
             // Resource operations are only expressible via documentChanges

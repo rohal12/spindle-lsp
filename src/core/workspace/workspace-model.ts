@@ -333,7 +333,7 @@ export class WorkspaceModel extends EventEmitter {
       if (!text) continue;
 
       if (isMacroSource(uri)) {
-        found.push(...discoverMacros(text));
+        for (const macro of discoverMacros(text)) found.push(macro);
         continue;
       }
 
@@ -349,8 +349,9 @@ export class WorkspaceModel extends EventEmitter {
         if (!isStoryInit && !isScript) continue;
 
         const content = this.markup.get(passage.uri)?.passages.find(p => p.passage === passage)?.content ?? '';
-        if (isScript) found.push(...discoverMacros(content));
-        else init.push(passage);
+        if (isScript) {
+          for (const macro of discoverMacros(content)) found.push(macro);
+        } else init.push(passage);
       }
     }
 
@@ -362,7 +363,9 @@ export class WorkspaceModel extends EventEmitter {
     this.rescanWidgets();
     for (const passage of init) {
       const markup = this.markup.get(passage.uri)?.passages.find(p => p.passage === passage);
-      if (markup) found.push(...storyInitMacros(markup));
+      if (markup) {
+        for (const macro of storyInitMacros(markup)) found.push(macro);
+      }
     }
     this.macros.setDiscoveredMacros(found);
   }
