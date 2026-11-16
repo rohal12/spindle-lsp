@@ -20,9 +20,9 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@rohal12/spindle": "0.64.15",
     "@rohal12/twee-ts": "^2.1.0",
-    "glob": "^14.0.3",
+    "glob": "^14.0.6",
     "happy-dom": "^21.0.4",
-    "minimatch": "^11.0.1",
+    "minimatch": "^11.0.8",
     "vscode-languageserver": "^11.0.0",
     "vscode-languageserver-textdocument": "^1.0.16",
     "yaml": "^2.9.1"
@@ -36,7 +36,7 @@
     "fallow": "3.38.1",
     "jscpd": "5.4.2",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "publishConfig": {
     "access": "public"
