@@ -104,6 +104,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
   const story = storyReport(workspace);
   for (const diagnostic of story.metadata.get(doc) ?? []) diagnostics.push(diagnostic);
   const effective = new Set(workspace.passages.getEffectivePassages());
+  const destinations = new Map([...effective].map(passage => [passage.name, passage]));
   let passageNames: string[] | undefined;
   const getPassageNames = () => passageNames ??= [...effective].filter(isRuntimePassage).map(passage => passage.name);
   for (const passage of doc.passages) {
@@ -112,7 +113,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     attempt(() => variableDiagnostics(passage, story));
     attempt(() => structureDiagnostics(passage, story, workspace));
     attempt(() => argumentDiagnostics(passage, workspace, getPassageNames));
-    attempt(() => widgetDiagnostics(passage, story, workspace));
+    attempt(() => widgetDiagnostics(passage, story, workspace, destinations));
   }
   attempt(() => versionDiagnostics(uri, doc, workspace));
   attempt(() => storyVariablesDiagnostics(uri, doc, story, workspace));
@@ -666,7 +667,10 @@ function childDiagnostics(passage: PassageMarkup, node: PairedNode, token: Macro
 
   // The macros directly in the body (also after a branch such as {else}); those in an element or a nested container are its own
   const direct: PairedNode[] = [...node.body.children];
-  for (const branch of node.body.branches) direct.push({ token: branch.tag, start: branch.tag.start, end: branch.tag.end }, ...branch.children);
+  for (const branch of node.body.branches) {
+    direct.push({ token: branch.tag, start: branch.tag.start, end: branch.tag.end });
+    for (const child of branch.children) direct.push(child);
+  }
   const branchTags = new Set(node.body.branches.map(branch => branch.tag));
   const consumesOptions = macro?.source === 'builtin' && ['listbox', 'cycle'].includes(token.name.toLowerCase());
   const counts: Record<string, number> = Object.create(null);
@@ -953,7 +957,7 @@ function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel, 
 // ---------------------------------------------------------------------------
 
 /** SP301 (argument count of an invocation) and SP302 ({include} of a passage that defines widgets). */
-function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
+function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace: WorkspaceModel, destinations: ReadonlyMap<string, Passage>): SpindleDiagnostic[] {
   if (!passage.isMarkup) return [];
   const diagnostics: SpindleDiagnostic[] = [];
 
@@ -988,7 +992,7 @@ function widgetDiagnostics(passage: PassageMarkup, story: StoryReport, workspace
     .sort((a, b) => a.start - b.start);
   for (const piece of passage.pieces) {
     if (piece.kind !== 'passage' || piece.macro !== 'include') continue;
-    const target = workspace.passages.getEffectivePassage(piece.name);
+    const target = destinations.get(piece.name);
     if (!target?.tags?.includes('widget')) continue;
     const defined = story.widgetNamesByPassage.get(target) ?? [];
     if (defined.length === 0) continue;
