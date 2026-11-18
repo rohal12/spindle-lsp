@@ -1,6 +1,6 @@
 import type { PassagePiece, TextPiece } from '@rohal12/spindle/tooling';
 import type { Position, Range } from '../types.js';
-import type { DocumentMarkup, PassageMarkup } from './passage-markup.js';
+import type { DocumentMarkup, MarkupContext, PassageMarkup } from './passage-markup.js';
 
 /**
  * How a passage name is written, which decides how a new name is spelled:
@@ -44,6 +44,8 @@ export interface PassageRef {
 
 const kept = new WeakMap<PassageMarkup, readonly PassageRef[]>();
 const byName = new WeakMap<DocumentMarkup, Map<string, PassageRef[]>>();
+// Documents share a context until macro or widget changes invalidate it.
+const dialogBodies = new WeakMap<MarkupContext, boolean>();
 
 /** The passage names written out in a passage, in source order, labels and attribute values included. */
 function passageRefs(passage: PassageMarkup): readonly PassageRef[] {
@@ -87,6 +89,14 @@ export function passageRefAt(doc: DocumentMarkup, position: Position): PassageRe
 function readRefs(passage: PassageMarkup): PassageRef[] {
   const refs: PassageRef[] = [];
   const content = passage.content;
+  const decodedIndexes = new Map<TextPiece, Map<number, number>>();
+  const context = passage.doc.context;
+  let dialogBody = dialogBodies.get(context);
+  if (dialogBody === undefined) {
+    const dialog = context.macros.find(macro => macro.name.toLowerCase() === 'dialog');
+    dialogBody = dialog?.source === 'builtin' && !dialog.widget;
+    dialogBodies.set(context, dialogBody);
+  }
   // The texts (labels, attribute values) whose markup the next pieces are
   const open: Array<{ text: TextPiece; end: number }> = [];
 
@@ -100,7 +110,7 @@ function readRefs(passage: PassageMarkup): PassageRef[] {
     if (piece.kind !== 'passage' || piece.name === '') return;
 
     const parent = open.at(-1)?.text;
-    const span = nameSpan(piece, parent, content);
+    const span = nameSpan(piece, parent, content, decodedIndexes, dialogBody);
     if (!span) return;
     refs.push({
       name: piece.name,
@@ -141,17 +151,28 @@ function nameSpan(
   piece: PassagePiece,
   parent: TextPiece | undefined,
   content: string,
+  decodedIndexes: Map<TextPiece, Map<number, number>>,
+  dialogBody: boolean,
 ): NameSpan | undefined {
   const offsets = parent?.sourceOffsets;
   if (offsets) {
+    let decoded = decodedIndexes.get(parent!);
+    if (!decoded) {
+      decoded = new Map();
+      // Keep the first decoded boundary for a source offset, like indexOf.
+      for (const [index, offset] of offsets.entries()) {
+        if (!decoded.has(offset)) decoded.set(offset, index);
+      }
+      decodedIndexes.set(parent!, decoded);
+    }
     // The piece starts at the source offset of character `i` of the text and ends at that of `j`
-    const i = offsets.indexOf(piece.offset);
-    const j = offsets.indexOf(piece.offset + piece.length);
-    if (i < 0 || j < 0) return undefined;
-    return classify(piece, parent!.text[i], [offsets[i], offsets[j]], [offsets[i + 1], offsets[j - 1]]);
+    const i = decoded.get(piece.offset);
+    const j = decoded.get(piece.offset + piece.length);
+    if (i === undefined || j === undefined) return undefined;
+    return classify(piece, parent!.text[i], [offsets[i], offsets[j]], [offsets[i + 1], offsets[j - 1]], dialogBody);
   }
   const end = piece.offset + piece.length;
-  return classify(piece, content[piece.offset], [piece.offset, end], [piece.offset + 1, end - 1]);
+  return classify(piece, content[piece.offset], [piece.offset, end], [piece.offset + 1, end - 1], dialogBody);
 }
 
 interface NameSpan {
@@ -162,10 +183,10 @@ interface NameSpan {
 }
 
 /** `whole` is the markup of the name as written, `inner` what is inside its quotes. */
-function classify(piece: PassagePiece, first: string | undefined, whole: [number, number], inner: [number, number]): NameSpan {
+function classify(piece: PassagePiece, first: string | undefined, whole: [number, number], inner: [number, number], dialogBody: boolean): NameSpan {
   if (isBracket(piece)) return { start: whole[0], end: whole[1], form: 'bracket' };
   // The body of {dialog} is text; a name that is not in quotes is text too
-  if (piece.macro === 'dialog' || (first !== '"' && first !== "'")) return { start: whole[0], end: whole[1], form: 'text' };
+  if ((piece.macro === 'dialog' && dialogBody) || (first !== '"' && first !== "'")) return { start: whole[0], end: whole[1], form: 'text' };
   return { start: inner[0], end: inner[1], form: 'quoted', quote: first };
 }
 

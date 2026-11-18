@@ -81,7 +81,7 @@ function passageMacroHeads(passage: PassageMarkup): readonly MacroHead[] {
   const found = [...pairedHeads(passage.pairing, passage.tokens)];
   for (const piece of passage.pieces) {
     if (piece.kind !== 'text') continue;
-    found.push(...pairedHeads(pairMarkup(piece.tokens, { isBlock }), piece.tokens));
+    for (const head of pairedHeads(pairMarkup(piece.tokens, { isBlock }), piece.tokens)) found.push(head);
   }
   const invocations = new Set(passage.invocations.map(token => token.start));
   heads = found

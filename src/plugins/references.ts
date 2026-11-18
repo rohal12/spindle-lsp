@@ -155,7 +155,7 @@ export function findVariableReferences(
   const locations: ReferenceLocation[] = [];
 
   if (includeDeclaration) {
-    locations.push(...workspace.variables.getDeclarations(varName, '$'));
+    for (const declaration of workspace.variables.getDeclarations(varName, '$')) locations.push(declaration);
   }
 
   // Get all usages from the variable tracker
@@ -178,7 +178,7 @@ export function findTransientReferences(
   const results: ReferenceLocation[] = [];
 
   if (includeDeclaration) {
-    results.push(...workspace.variables.getDeclarations(varName, '%'));
+    for (const declaration of workspace.variables.getDeclarations(varName, '%')) results.push(declaration);
   }
 
   const usages = workspace.variables.getTransientUsages(varName);

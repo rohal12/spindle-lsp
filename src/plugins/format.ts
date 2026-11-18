@@ -66,12 +66,15 @@ function buildDefaultIsBlock(text: string): (name: string) => boolean {
  *  3. Ensure file ends with a single newline, in the document's line-ending style
  */
 export async function formatDocument(text: string, options?: FormatOptions): Promise<string> {
-  // A byte order mark is not story text: format what follows it and keep the mark
-  if (text.charCodeAt(0) === 0xfeff) return '﻿' + await formatDocument(text.slice(1), options);
+  // Byte order marks are not story text. Preserve the whole prefix without recursion.
+  let start = 0;
+  while (text.charCodeAt(start) === 0xfeff) start++;
+  const prefix = text.slice(0, start);
+  text = text.slice(start);
   // Format with LF endings, then give the output the document's own style
   const eol = dominantEol(text);
   const output = await formatLf(splitLines(text).join('\n'), options);
-  return output.replace(/\n/g, eol);
+  return prefix + output.replace(/\n/g, eol);
 }
 
 /**
