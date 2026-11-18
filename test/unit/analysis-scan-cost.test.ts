@@ -8,6 +8,35 @@ const uri = 'file:///story.tw';
 let model: WorkspaceModel;
 afterEach(() => model?.dispose());
 
+it.each([64, 128])('bounds dialog metadata reads across %i passages with many widgets (#289)', count => {
+  model = new WorkspaceModel();
+  const widgets = Array.from({ length: count }, (_, i) => `{widget "w${i}"}x{/widget}`).join('');
+  const override = '{widget "dialog" @target:passage}{@target}{/widget}';
+  const passages = Array.from({ length: count }, (_, i) => `:: P${i}\n{dialog "P0"}\n`).join('');
+  const text = ':: StoryVariables\n:: Widgets [widget]\n' + widgets + override + '\n' + passages;
+  model.initialize(new Map([[uri, text]]));
+  const doc = model.markup.get(uri)!;
+  const macros = doc.context.macros;
+  let reads = 0;
+  Object.defineProperty(doc.context, 'macros', {
+    value: new Proxy(macros, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+        return Reflect.get(target, key, receiver);
+      },
+    }),
+  });
+  const refs = documentPassageRefs(doc);
+  expect(refs).toHaveLength(count);
+  expect(refs.every(ref => ref.name === 'P0' && ref.form === 'quoted')).toBe(true);
+  expect(reads).toBeLessThanOrEqual(macros.length * 2);
+
+  model.documents.update(uri, text.replace(override, '').replaceAll('{dialog "P0"}', '{dialog "Title"}"P0"{/dialog}'));
+  const builtinRefs = documentPassageRefs(model.markup.get(uri)!);
+  expect(builtinRefs).toHaveLength(count);
+  expect(builtinRefs.every(ref => ref.name === 'P0' && ref.form === 'text')).toBe(true);
+});
+
 it.each([64, 128])('bounds decoded-offset reads for %i escaped nested targets after edits (#287)', count => {
   model = new WorkspaceModel();
   const original = ':: StoryVariables\r\n:: Target\r\nHi\r\n:: Start\r\n{link "'

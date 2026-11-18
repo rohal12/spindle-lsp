@@ -1,6 +1,6 @@
 import type { PassagePiece, TextPiece } from '@rohal12/spindle/tooling';
 import type { Position, Range } from '../types.js';
-import type { DocumentMarkup, PassageMarkup } from './passage-markup.js';
+import type { DocumentMarkup, MarkupContext, PassageMarkup } from './passage-markup.js';
 
 /**
  * How a passage name is written, which decides how a new name is spelled:
@@ -44,6 +44,8 @@ export interface PassageRef {
 
 const kept = new WeakMap<PassageMarkup, readonly PassageRef[]>();
 const byName = new WeakMap<DocumentMarkup, Map<string, PassageRef[]>>();
+// Documents share a context until macro or widget changes invalidate it.
+const dialogBodies = new WeakMap<MarkupContext, boolean>();
 
 /** The passage names written out in a passage, in source order, labels and attribute values included. */
 function passageRefs(passage: PassageMarkup): readonly PassageRef[] {
@@ -88,8 +90,13 @@ function readRefs(passage: PassageMarkup): PassageRef[] {
   const refs: PassageRef[] = [];
   const content = passage.content;
   const decodedIndexes = new Map<TextPiece, Map<number, number>>();
-  const dialog = passage.doc.context.macros.find(macro => macro.name.toLowerCase() === 'dialog');
-  const dialogBody = dialog?.source === 'builtin' && !dialog.widget;
+  const context = passage.doc.context;
+  let dialogBody = dialogBodies.get(context);
+  if (dialogBody === undefined) {
+    const dialog = context.macros.find(macro => macro.name.toLowerCase() === 'dialog');
+    dialogBody = dialog?.source === 'builtin' && !dialog.widget;
+    dialogBodies.set(context, dialogBody);
+  }
   // The texts (labels, attribute values) whose markup the next pieces are
   const open: Array<{ text: TextPiece; end: number }> = [];
 
