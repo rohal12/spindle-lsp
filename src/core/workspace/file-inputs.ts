@@ -1,7 +1,8 @@
-import { readFileSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { canDiscoverProjectPath, findProjectFiles, isExcludedProjectFile } from './macro-sources.js';
 import { compareSourcePaths } from './source-order.js';
+import { readRegularFile } from './regular-files.js';
 
 /**
  * Existing files are literal, even when their names contain glob syntax or
@@ -20,7 +21,7 @@ export async function resolveFiles(pattern: string, cwd: string): Promise<string
       if (isExcludedProjectFile(literal, cwd) || !canDiscoverProjectPath(literal, cwd)) return [];
       directory = literal;
       input = '**/*.{tw,twee}';
-    }
+    } else throw new Error(`Expected a regular file or directory: ${literal}`);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
@@ -30,7 +31,7 @@ export async function resolveFiles(pattern: string, cwd: string): Promise<string
 
 /** Read in compiler source order before analysis or writes; failures retain their path. */
 export function readFileContents(files: readonly string[]): Map<string, string> {
-  return new Map([...files].sort(compareSourcePaths).map(file => [file, readFileSync(file, 'utf8')]));
+  return new Map([...files].sort(compareSourcePaths).map(file => [file, readRegularFile(file)]));
 }
 
 /** Resolve overlapping CLI arguments once, using the same policy as MCP. */

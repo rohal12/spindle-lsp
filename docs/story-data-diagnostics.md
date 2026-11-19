@@ -14,6 +14,10 @@ that the compiler omits (for example, one tagged `script`). They clear after
 metadata or destination roles are repaired, including unsaved edits and
 replacements in other files. CLI checks exit with status 1 for these errors.
 
+Every source StoryData body is validated, including declarations replaced
+later in the same file or another file. Replacement selects the effective
+format, version and entry; it does not erase errors in earlier source bodies.
+
 Metadata decoding uses the compiler's case folding, repeated-field, null and
 replacement semantics. Partial metadata does not require an IFID or an explicit
 entry selection just for editor checks.

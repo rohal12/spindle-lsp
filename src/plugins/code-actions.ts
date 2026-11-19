@@ -407,6 +407,8 @@ function lineEndingFor(workspace: WorkspaceModel, uri: string): string {
 function declareVariable(diag: SpindleDiagnostic, workspace: WorkspaceModel, sigil: '$' | '%'): CodeAction[] {
   if (diag.data?.kind !== 'undeclared-variable' || diag.data.sigil !== sigil) return [];
   const { name } = diag.data;
+  const opposite = sigil === '$' ? workspace.variables.getDeclaredTransient() : workspace.variables.getDeclared();
+  if (opposite.has(name)) return [];
 
   const passage = sigil === '$' ? workspace.passages.getStoryVariables() : workspace.passages.getStoryTransients();
   if (!passage || !isRuntimePassage(passage)) return [];
