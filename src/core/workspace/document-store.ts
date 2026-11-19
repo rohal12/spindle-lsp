@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { readRegularFile } from './regular-files.js';
 
 /**
  * A leading U+FEFF is the file's byte order mark, not story text: the
@@ -69,7 +69,7 @@ export class DocumentStore extends EventEmitter {
   loadFromDisk(paths: string[]): void {
     for (const filePath of paths) {
       try {
-        const text = readFileSync(filePath, 'utf-8');
+        const text = readRegularFile(filePath);
         const uri = pathToFileURL(filePath).href;
         this.open(uri, text);
       } catch {

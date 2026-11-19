@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdir, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdir } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { glob } from 'glob';
@@ -6,6 +6,7 @@ import type { Path } from 'glob';
 
 import { findConfigFile } from './config-loader.js';
 import { compareSourcePaths } from './source-order.js';
+import { isRegularFile, readRegularFile } from './regular-files.js';
 
 /**
  * JavaScript/TypeScript files scanned for `Story.defineMacro({...})` calls.
@@ -95,7 +96,7 @@ export async function findProjectFiles(root: string, pattern: string): Promise<s
   });
   // Recheck after enumeration: files or their ancestors may have disappeared
   // or become links while glob was running.
-  return files.filter(file => canDiscoverProjectPath(file, root)).sort(compareSourcePaths);
+  return files.filter(file => canDiscoverProjectPath(file, root) && isRegularFile(file)).sort(compareSourcePaths);
 }
 
 /** Whether `path` is `dir` or lies inside it (whole segments, not a string prefix). */
@@ -144,7 +145,7 @@ export async function addProjectMacroSources(
     const uri = pathToFileURL(filePath).toString();
     if (contents.has(uri)) continue;
     try {
-      contents.set(uri, readFileSync(filePath, 'utf-8'));
+      contents.set(uri, readRegularFile(filePath));
     } catch {
       // Skip unreadable files
     }

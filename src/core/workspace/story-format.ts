@@ -1,5 +1,5 @@
 import { splitLines } from '../text.js';
-import { readFileSync } from 'node:fs';
+import { readRegularFile } from './regular-files.js';
 import { stripBom } from './document-store.js';
 import type { Passage } from '../types.js';
 import { PassageIndex } from './passage-index.js';
@@ -154,7 +154,7 @@ export async function findStoryFormat(texts: Iterable<string>, dir: string): Pro
   const projectTexts: string[] = [];
   for (const file of await findProjectFiles(findProjectRoot(dir), '**/*.{tw,twee}')) {
     try {
-      projectTexts.push(stripBom(readFileSync(file, 'utf-8')));
+      projectTexts.push(stripBom(readRegularFile(file)));
     } catch {
       // Skip unreadable files
     }
@@ -185,7 +185,7 @@ export async function findSpindleTarget(texts: Iterable<string>, dir: string): P
     const projectTexts: string[] = [];
     for (const file of await findProjectFiles(findProjectRoot(dir), '**/*.{tw,twee}')) {
       try {
-        projectTexts.push(readFileSync(file, 'utf-8'));
+        projectTexts.push(readRegularFile(file));
       } catch {
         // Skip unreadable files
       }

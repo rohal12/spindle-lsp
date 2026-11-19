@@ -176,7 +176,7 @@ interface DefinedWidget {
 interface StoryReport {
   /** The documents it was computed from. */
   readonly documents: readonly DocumentMarkup[];
-  /** Unresolved explicit entry selections, located on effective StoryData. */
+  /** Compiler errors on every source StoryData, plus effective entry errors. */
   readonly metadata: ReadonlyMap<DocumentMarkup, SpindleDiagnostic[]>;
   /** Compiler-effective runtime passages, in their original story slots. */
   readonly passages: readonly PassageMarkup[];
@@ -313,8 +313,9 @@ function storyDataDiagnostics(documents: readonly DocumentMarkup[], workspace: W
   // The compiler normalizes passage bodies before decoding special passages.
   // Match by header line so repeated declarations keep their source identity.
   const parsed = new Map(documents.map(doc => [doc, new Map(parseTwee(doc.text).passages.map(passage => [passage.source?.line, passage]))]));
-  const effective = workspace.passages.getEffectivePassages();
-  for (const source of effective) {
+  // Decoding errors survive replacement: the compiler reads each source,
+  // then keeps the last declaration's metadata in its original story slot.
+  for (const source of workspace.passages.getAllPassages()) {
     const passage = sources.get(source);
     if (!passage) continue;
     const input = parsed.get(passage.doc)?.get(source.headerEnd.start.line + 1);
@@ -322,8 +323,12 @@ function storyDataDiagnostics(documents: readonly DocumentMarkup[], workspace: W
     const diagnostics: import('@rohal12/twee-ts').Diagnostic[] = [];
     builder.add(input, diagnostics);
     if (source.name === 'StoryData') {
-      found.set(passage.doc, diagnostics.filter(d => d.level === 'error').map(d =>
-        makeDiag(passage.range(0, passage.content.trimEnd().length), DiagnosticCode.InvalidStoryData, d.message)));
+      const list = found.get(passage.doc) ?? [];
+      for (const diagnostic of diagnostics) {
+        if (diagnostic.level === 'error') list.push(
+          makeDiag(passage.range(0, passage.content.trimEnd().length), DiagnosticCode.InvalidStoryData, diagnostic.message));
+      }
+      found.set(passage.doc, list);
     }
   }
   const story = builder.build();

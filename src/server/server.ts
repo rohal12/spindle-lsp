@@ -6,8 +6,8 @@ import {
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
+import { readRegularFile } from '../core/workspace/regular-files.js';
 
 import { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import { loadPlugins } from '../core/plugin/plugin-loader.js';
@@ -243,7 +243,7 @@ export function startServer(args: string[]): void {
           || !canDiscoverProjectPath(fsPath, workspaceRoot ?? dirname(fsPath))) {
           workspace.documents.close(textDocument.uri);
         } else {
-          const text = readFileSync(fsPath, 'utf-8');
+          const text = readRegularFile(fsPath);
           workspace.documents.update(textDocument.uri, text);
         }
       } catch {
@@ -299,14 +299,15 @@ export function startServer(args: string[]): void {
       } else {
         // Created or Changed — re-read from disk
         try {
-          const text = readFileSync(fsPath, 'utf-8');
+          const text = readRegularFile(fsPath);
           if (workspace.documents.has(change.uri)) {
             workspace.documents.update(change.uri, text);
           } else {
             workspace.documents.open(change.uri, text);
           }
         } catch {
-          // File may have been deleted between event and read
+          // Remove stale entries if a source disappeared or changed type.
+          workspace.documents.close(change.uri);
         }
       }
     }
@@ -345,7 +346,7 @@ async function scanWorkspaceFiles(
     ];
     for (const filePath of files) {
       try {
-        const text = readFileSync(filePath, 'utf-8');
+        const text = readRegularFile(filePath);
         const uri = fsPathToUri(filePath);
         contents.set(uri, text);
       } catch {
