@@ -194,11 +194,53 @@ function isBracket(piece: PassagePiece): boolean {
   return piece.macro === 'link' && piece.label.startsWith('[[');
 }
 
+interface TextSpan {
+  piece: TextPiece;
+  order: number;
+  start: number;
+  end: number;
+  maxEnd: number;
+  left?: TextSpan;
+  right?: TextSpan;
+}
+
+const enclosingTexts = new WeakMap<PassageMarkup, { root?: TextSpan }>();
+
+/** Index source spans once; prune subtrees that cannot contain the requested span. */
+function enclosingText(passage: PassageMarkup, start: number, end: number): TextPiece[] {
+  let index = enclosingTexts.get(passage);
+  if (!index) {
+    const spans = passage.pieces.flatMap((piece, order): TextSpan[] => piece.kind === 'text'
+      ? [{ piece, order, start: piece.offset, end: textEnd(piece), maxEnd: 0 }] : []);
+    spans.sort((a, b) => a.start - b.start || a.order - b.order);
+    const build = (low: number, high: number): TextSpan | undefined => {
+      if (low >= high) return undefined;
+      const mid = (low + high) >>> 1;
+      const node = spans[mid];
+      node.left = build(low, mid);
+      node.right = build(mid + 1, high);
+      node.maxEnd = Math.max(node.end, node.left?.maxEnd ?? -Infinity, node.right?.maxEnd ?? -Infinity);
+      return node;
+    };
+    index = { root: build(0, spans.length) };
+    enclosingTexts.set(passage, index);
+  }
+  const parents: TextSpan[] = [];
+  const visit = (node: TextSpan | undefined): void => {
+    if (!node || node.maxEnd < end) return;
+    visit(node.left);
+    if (node.start > start) return;
+    if (node.end >= end) parents.push(node);
+    visit(node.right);
+  };
+  visit(index.root);
+  // Tooling's piece order is outer to inner, even for decoded source spans.
+  return parents.sort((a, b) => b.order - a.order).map(parent => parent.piece);
+}
+
 /** Encode replacement markup through every enclosing label's string escapes. */
 export function encodeEnclosingMarkup(passage: PassageMarkup, start: number, end: number, spelling: string): string {
-  const parents = passage.pieces.filter((piece): piece is TextPiece =>
-    piece.kind === 'text' && piece.offset <= start && textEnd(piece) >= end);
-  for (const parent of parents.reverse()) {
+  for (const parent of enclosingText(passage, start, end)) {
     if (/\battribute of </.test(parent.where)) continue;
     const quote = quoteAt(passage.content, parent.offset - 1);
     if (quote) spelling = spelling.replace(/\\/g, '\\\\').replace(/["']/g, ch => ch === quote ? `\\${ch}` : ch);

@@ -103,10 +103,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
 
   const story = storyReport(workspace);
   for (const diagnostic of story.metadata.get(doc) ?? []) diagnostics.push(diagnostic);
-  const effective = new Set(workspace.passages.getEffectivePassages());
-  const destinations = new Map([...effective].map(passage => [passage.name, passage]));
-  let passageNames: string[] | undefined;
-  const getPassageNames = () => passageNames ??= [...effective].filter(isRuntimePassage).map(passage => passage.name);
+  const { effective, destinations, getPassageNames } = story;
   for (const passage of doc.passages) {
     if (!effective.has(passage.passage)) continue;
     attempt(() => markupDiagnostics(passage, story, workspace));
@@ -115,7 +112,7 @@ export function computeDiagnostics(uri: string, workspace: WorkspaceModel, optio
     attempt(() => argumentDiagnostics(passage, workspace, getPassageNames));
     attempt(() => widgetDiagnostics(passage, story, workspace, destinations));
   }
-  attempt(() => versionDiagnostics(uri, doc, workspace));
+  attempt(() => versionDiagnostics(uri, doc, story, workspace));
   attempt(() => storyVariablesDiagnostics(uri, doc, story, workspace));
   attempt(() => arrayMemberDiagnostics(uri, workspace));
   attempt(() => linkDiagnostics(doc).filter(diagnostic => {
@@ -174,8 +171,12 @@ interface DefinedWidget {
  * and widgets changed) and kept.
  */
 interface StoryReport {
-  /** The documents it was computed from. */
-  readonly documents: readonly DocumentMarkup[];
+  readonly effective: ReadonlySet<Passage>;
+  readonly destinations: ReadonlyMap<string, Passage>;
+  readonly getPassageNames: () => string[];
+  readonly diagnosticOwner: string | undefined;
+  readonly storyVariables: Passage | undefined;
+  readonly storyTransients: Passage | undefined;
   /** Compiler errors on every source StoryData, plus effective entry errors. */
   readonly metadata: ReadonlyMap<DocumentMarkup, SpindleDiagnostic[]>;
   /** Compiler-effective runtime passages, in their original story slots. */
@@ -200,22 +201,23 @@ interface StoryReport {
   readonly variableDiagnostics: Map<PassageMarkup, VariableDiagnostic[]>;
 }
 
-const reports = new WeakMap<WorkspaceModel, StoryReport>();
+const reports = new WeakMap<WorkspaceModel, { generation: number; report: StoryReport }>();
 
 /** The passages the compiler turns into story attributes: the runtime never has them. */
 const COMPILER_PASSAGES = new Set(['StoryTitle', 'StoryData']);
 
 function storyReport(workspace: WorkspaceModel): StoryReport {
+  const generation = workspace.markup.generation;
+  const kept = reports.get(workspace);
+  if (kept?.generation === generation) return kept.report;
   const documents: DocumentMarkup[] = [];
   for (const uri of workspace.passages.getDocumentUris()) {
     if (isMacroSource(uri)) continue;
     const doc = workspace.markup.get(uri);
     if (doc) documents.push(doc);
   }
-  const kept = reports.get(workspace);
-  if (kept && kept.documents.length === documents.length && kept.documents.every((doc, i) => doc === documents[i])) return kept;
   const report = buildReport(documents, workspace);
-  reports.set(workspace, report);
+  reports.set(workspace, { generation, report });
   return report;
 }
 
@@ -232,7 +234,10 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
       markups.set(passage.passage, passage);
     }
   }
-  const passages = workspace.passages.getEffectivePassages()
+  const effective = new Set(workspace.passages.getEffectivePassages());
+  const destinations = new Map([...effective].map(passage => [passage.name, passage]));
+  let passageNames: string[] | undefined;
+  const passages = [...effective]
     .filter(isRuntimePassage).flatMap(passage => markups.get(passage) ?? []);
 
   // validateStoryMarkup hands back the `data-source-file` it was given: the index of the passage
@@ -281,7 +286,12 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
   }
 
   return {
-    documents,
+    effective,
+    destinations,
+    getPassageNames: () => passageNames ??= [...effective].filter(isRuntimePassage).map(passage => passage.name),
+    diagnosticOwner: missingStoryVariablesOwner(workspace),
+    storyVariables: workspace.passages.getStoryVariables(),
+    storyTransients: workspace.passages.getStoryTransients(),
     metadata: storyDataDiagnostics(documents, workspace),
     passages,
     macros,
@@ -502,7 +512,7 @@ function storyVariablesDiagnostics(uri: string, doc: DocumentMarkup, story: Stor
   // A project that does not declare its story format is still being edited,
   // so there it requires a variable usage and stays informational; a declared
   // Spindle story gets an error, since it cannot start.
-  if (!workspace.variables.hasStoryVariables() && uri === missingStoryVariablesOwner(workspace)) {
+  if (!workspace.variables.hasStoryVariables() && uri === story.diagnosticOwner) {
     const declared = workspace.storyFormat !== undefined;
     if (declared || storyUsesVariables(story)) {
       const diagnostic = makeDiag(
@@ -516,13 +526,13 @@ function storyVariablesDiagnostics(uri: string, doc: DocumentMarkup, story: Stor
   }
 
   // SP207: lines Spindle cannot read as declarations
-  const storyVars = workspace.passages.getStoryVariables();
+  const storyVars = story.storyVariables;
   if (storyVars?.uri === uri) {
     for (const invalid of workspace.variables.getInvalidDeclarations()) {
       diagnostics.push(makeDiag(invalid.range, DiagnosticCode.InvalidDeclaration, `${invalid.message} ${WILL_NOT_START}`));
     }
   }
-  const storyTransients = workspace.passages.getStoryTransients();
+  const storyTransients = story.storyTransients;
   if (storyTransients?.uri === uri) {
     for (const invalid of workspace.variables.getInvalidTransientDeclarations()) {
       diagnostics.push(makeDiag(invalid.range, DiagnosticCode.InvalidDeclaration, `${invalid.message} ${WILL_NOT_START}`));
@@ -575,9 +585,9 @@ function arrayMemberDiagnostics(uri: string, workspace: WorkspaceModel): Spindle
  * (missingStoryVariablesOwner). An undetectable version
  * raises nothing.
  */
-function versionDiagnostics(uri: string, doc: DocumentMarkup, workspace: WorkspaceModel): SpindleDiagnostic[] {
+function versionDiagnostics(uri: string, doc: DocumentMarkup, story: StoryReport, workspace: WorkspaceModel): SpindleDiagnostic[] {
   const target: SpindleTarget = workspace.target;
-  if (target.supported || uri !== missingStoryVariablesOwner(workspace)) return [];
+  if (target.supported || uri !== story.diagnosticOwner) return [];
   const first = doc.passages[0].passage;
   return [makeDiag({ start: first.range.start, end: first.headerEnd.end }, DiagnosticCode.UnsupportedSpindleVersion, unsupportedVersionMessage(target))];
 }

@@ -4,7 +4,7 @@ import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
 import { parsePassageHeader } from '../core/parsing/passage-parser.js';
 import { workspaceMacroHeads } from '../core/markup/macro-heads.js';
-import { findPassageReferences } from './references.js';
+import { documentPassageRefs } from '../core/markup/passage-refs.js';
 
 // ---------------------------------------------------------------------------
 // Core code lens function (no LSP dependency)
@@ -53,6 +53,14 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
     .filter(w => w.uri === uri)
     .map(w => [w.range.start.line, w.name] as const));
   const widgetCounts = new Map<string, number>();
+  const passageCounts = new Map<string, number>();
+  for (const docUri of workspace.documents.getUris()) {
+    const doc = workspace.markup.get(docUri);
+    if (!doc) continue;
+    for (const ref of documentPassageRefs(doc)) {
+      passageCounts.set(ref.name, (passageCounts.get(ref.name) ?? 0) + 1);
+    }
+  }
   for (const name of widgetLines.values()) {
     if (!workspace.getEffectiveMacro(name)) widgetCounts.set(name.toLowerCase(), 0);
   }
@@ -76,7 +84,7 @@ export function computeCodeLenses(uri: string, workspace: WorkspaceModel): CodeL
       if (passageName === 'StoryData') continue;
 
       // references only: a name declared twice is two declarations, not references
-      const refCount = findPassageReferences(passageName, workspace, false).length;
+      const refCount = passageCounts.get(passageName) ?? 0;
 
       addLens(lineNum, `${refCount} reference${refCount !== 1 ? 's' : ''}`);
       continue;
