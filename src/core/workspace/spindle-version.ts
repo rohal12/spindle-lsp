@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { globSync } from 'glob';
+import { readRegularFile } from './regular-files.js';
 
 /**
  * The oldest Spindle the LSP supports. spindle-lsp is built on the tooling
@@ -151,7 +152,7 @@ type PackageJson = { name?: unknown; version?: unknown; workspaces?: unknown } &
 
 function readPackageJson(file: string): PackageJson | undefined {
   try {
-    return JSON.parse(readFileSync(file, 'utf-8')) as PackageJson;
+    return JSON.parse(readRegularFile(file)) as PackageJson;
   } catch {
     return undefined;
   }

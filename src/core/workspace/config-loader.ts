@@ -1,6 +1,7 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { readRegularFile } from './regular-files.js';
 
 /**
  * Spindle project config as loaded from config files.
@@ -127,7 +128,7 @@ export function findConfigRoot(directory: string): string {
 export function loadConfigFile(configPath: string): SpindleProjectConfig {
   let content: string;
   try {
-    content = readFileSync(configPath, 'utf-8');
+    content = readRegularFile(configPath);
   } catch (err: unknown) {
     const reason = (err as NodeJS.ErrnoException)?.code === 'ENOENT'
       ? 'file not found'
@@ -154,7 +155,7 @@ export function loadConfigFromDisk(workspaceRoot: string): SpindleProjectConfig 
     return { ...EMPTY_CONFIG };
   }
 
-  const content = readFileSync(configPath, 'utf-8');
+  const content = readRegularFile(configPath);
   const format = configPath.endsWith('.json') ? 'json' : 'yaml';
   return parseConfig(content, format);
 }

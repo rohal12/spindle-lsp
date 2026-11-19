@@ -385,10 +385,14 @@ function misreadRewrite(
   oldName: string,
   newName: string,
 ): PassageRef | null {
-  let content = passage.content;
-  for (const { ref, text } of [...edits].sort((a, b) => b.ref.start - a.ref.start)) {
-    content = content.slice(0, ref.start) + text + content.slice(ref.end);
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { ref, text } of [...edits].sort((a, b) => a.ref.start - b.ref.start)) {
+    parts.push(passage.content.slice(cursor, ref.start), text);
+    cursor = ref.end;
   }
+  parts.push(passage.content.slice(cursor));
+  const content = parts.join('');
   const before = passage.pieces.map(piece => signature(piece, name => (name === oldName ? newName : name)));
   const after = passagePieces(content, passage.doc.context.macros).map(piece => signature(piece, name => name));
   const at = before.findIndex((sig, index) => sig !== after[index]);

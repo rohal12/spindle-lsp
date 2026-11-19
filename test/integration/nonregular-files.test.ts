@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -47,6 +47,77 @@ describe.skipIf(process.platform === 'win32')('regular project sources (#297)', 
     writeFileSync(join(directory, 'package.json'), '{}');
     writeFileSync(join(directory, 'story.tw'), `${declared ? ':: StoryData\n{"format":"Spindle"}\n' : ''}:: Start\nHello\n`);
   }
+
+  it.each(['spindle.config.yaml', 'spindle.config.yml', 'spindle.config.json', 't3lt.twee-config.yaml'])
+  ('rejects automatic FIFO metadata %s without blocking (#299)', name => {
+    project();
+    fifo(name);
+    const result = run('config');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(name);
+    expect(result.stderr).toMatch(/regular file/i);
+    const cli = run('cli', 'story.tw');
+    expect(cli.status).toBe(1);
+    expect(cli.stderr).toContain(name);
+  });
+
+  it.each(['config-file', 'cli-config'])('rejects explicit FIFO config through %s (#299)', mode => {
+    project();
+    fifo('custom.yaml');
+    const result = run(mode, 'custom.yaml');
+    expect(result.status).toBe(mode === 'cli-config' ? 2 : 1);
+    expect(result.stderr).toContain('custom.yaml');
+    expect(result.stderr).toMatch(/regular file/i);
+  });
+
+  it.each(['fifo', 'directory'])('ignores %s package metadata in all version readers (#299)', kind => {
+    project();
+    unlinkSync(join(directory, 'package.json'));
+    if (kind === 'fifo') fifo('package.json');
+    else mkdirSync(join(directory, 'package.json'));
+    const result = run('version');
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ target: { source: 'default', supported: true }, installed: null, package: null });
+    expect(run('cli', 'story.tw').status).toBe(0);
+  });
+
+  it.each(['direct', 'symlink'])('reads %s regular config and package metadata (#299)', kind => {
+    project();
+    const pkg = JSON.stringify({ name: '@rohal12/spindle', version: '0.64.24', dependencies: { '@rohal12/spindle': '*' } });
+    const config = JSON.stringify({ macros: { custom: { block: true } } });
+    const installed = join(directory, 'node_modules/@rohal12/spindle');
+    mkdirSync(installed, { recursive: true });
+    writeFileSync(join(installed, 'package.json'), pkg);
+    if (kind === 'direct') {
+      writeFileSync(join(directory, 'package.json'), pkg);
+      writeFileSync(join(directory, 'spindle.config.json'), config);
+    } else {
+      unlinkSync(join(directory, 'package.json'));
+      writeFileSync(join(directory, 'manifest.json'), pkg);
+      writeFileSync(join(directory, 'config.json'), config);
+      symlinkSync('manifest.json', join(directory, 'package.json'));
+      symlinkSync('config.json', join(directory, 'spindle.config.json'));
+    }
+    expect(JSON.parse(run('config').stdout)).toEqual(JSON.parse(config));
+    expect(JSON.parse(run('config-file', 'spindle.config.json').stdout)).toEqual(JSON.parse(config));
+    expect(JSON.parse(run('version').stdout)).toEqual({
+      target: { version: '0.64.24', source: 'installed', supported: true }, installed: '0.64.24', package: '0.64.24',
+    });
+  });
+
+  it.each(['installed', 'member'])('ignores FIFO %s package manifests (#299)', kind => {
+    project();
+    if (kind === 'installed') {
+      writeFileSync(join(directory, 'package.json'), '{"dependencies":{"@rohal12/spindle":"*"}}');
+      mkdirSync(join(directory, 'node_modules/@rohal12/spindle'), { recursive: true });
+      fifo('node_modules/@rohal12/spindle/package.json');
+    } else {
+      writeFileSync(join(directory, 'package.json'), '{"workspaces":["packages/*"]}');
+      mkdirSync(join(directory, 'packages/story'), { recursive: true });
+      fifo('packages/story/package.json');
+    }
+    expect(run('version').status).toBe(0);
+  });
 
   it('discovers regular story and macro files while traversing directories', () => {
     project();

@@ -17,6 +17,14 @@ export interface MarkupSources {
 export class MarkupIndex {
   private readonly cache = new Map<string, { markup: DocumentMarkup; headers: readonly Passage[] }>();
   private context: MarkupContext | undefined;
+  private revision = 0;
+
+  /**
+   * Changes when workspace analysis invalidates document, macro or widget
+   * state. WorkspaceModel finishes pending analysis before exposing this index.
+   * Consumers can reuse workspace aggregates until this generation changes.
+   */
+  get generation(): number { return this.revision; }
 
   constructor(private readonly sources: MarkupSources) {}
 
@@ -38,6 +46,7 @@ export class MarkupIndex {
 
   /** The macros or widgets changed: every document's markup is read again on demand. */
   invalidate(): void {
+    this.revision++;
     this.cache.clear();
     this.context = undefined;
   }
