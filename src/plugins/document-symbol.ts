@@ -1,4 +1,4 @@
-import type { Range } from '../core/types.js';
+import type { Range, WidgetDef } from '../core/types.js';
 import { splitLines } from '../core/text.js';
 import type { WorkspaceModel } from '../core/workspace/workspace-model.js';
 import type { SpindlePlugin, PluginContext } from '../core/plugin/plugin-api.js';
@@ -35,6 +35,27 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
   const lines = splitLines(text);
   const symbols: DocSymbol[] = [];
 
+  // Registered widgets are not ordered by source location. Locate each one
+  // in the ordered passage ranges once, rather than scanning all widgets for
+  // every passage (including widgets from other documents).
+  const widgetsByPassage = new Map<number, WidgetDef[]>();
+  for (const widget of workspace.widgets.getAllWidgets()) {
+    if (widget.uri !== uri) continue;
+    let low = 0;
+    let high = passages.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (passages[mid].range.start.line < widget.range.start.line) low = mid + 1;
+      else high = mid;
+    }
+    const passage = passages[low - 1];
+    if (!passage || widget.range.end.line > passage.range.end.line) continue;
+    const header = passage.range.start.line;
+    const group = widgetsByPassage.get(header);
+    if (group) group.push(widget);
+    else widgetsByPassage.set(header, [widget]);
+  }
+
   for (const passage of passages) {
     const headerLine = passage.range.start.line;
     const selectionRange: Range = {
@@ -51,8 +72,7 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
     };
 
     // Outline only definitions registered by the tooling API, including StoryInit.
-    for (const widget of workspace.widgets.getAllWidgets()) {
-      if (widget.uri !== uri || widget.range.start.line <= passage.range.start.line || widget.range.end.line > passage.range.end.line) continue;
+    for (const widget of widgetsByPassage.get(headerLine) ?? []) {
       passageSymbol.children!.push({
         name: widget.name,
         kind: SymbolKind.Function,
