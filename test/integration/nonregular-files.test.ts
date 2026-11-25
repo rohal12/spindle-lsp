@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from 'vscode-languageserver/node';
+import type { CodeAction, PublishDiagnosticsParams } from 'vscode-languageserver';
 
 const repo = join(import.meta.dirname, '../..');
 let bundleDir: string;
@@ -202,6 +203,68 @@ describe.skipIf(process.platform === 'win32')('regular project sources (#297)', 
           }
         }
         expect((await symbols()).map(s => s.name)).toEqual(['Start']);
+      })()]);
+    } finally {
+      clearTimeout(timer!);
+      conn.dispose();
+      proc.kill('SIGKILL');
+    }
+  });
+
+  it.each([
+    ['fifo', 'spindle.config.yaml'],
+    ['fifo', 'spindle.config.json'],
+    ['symlink-fifo', 'spindle.config.yaml'],
+    ['directory', 'spindle.config.yaml'],
+    ['buffer', 'spindle.config.yaml'],
+    ['regular', 'spindle.config.yaml'],
+    ['symlink-regular', 'spindle.config.yaml'],
+  ])('LSP quick fixes handle %s config %s and keep answering requests (#299)', async (kind, name) => {
+    project();
+    writeFileSync(join(directory, 'story.tw'), ':: StoryVariables\n:: Start\n{prnit}\n');
+    if (kind === 'directory') mkdirSync(join(directory, name));
+    else if (kind === 'fifo' || kind === 'buffer') fifo(name);
+    else if (kind === 'symlink-fifo') {
+      fifo('config-target');
+      symlinkSync('config-target', join(directory, name));
+    } else {
+      writeFileSync(join(directory, 'config-target'), 'macros: {}\n');
+      if (kind === 'regular') writeFileSync(join(directory, name), 'macros: {}\n');
+      else symlinkSync('config-target', join(directory, name));
+    }
+    const proc = spawn(process.execPath, [join(bundleDir, 'server.js'), '--stdio']);
+    proc.stderr.resume();
+    const conn = createMessageConnection(new StreamMessageReader(proc.stdout), new StreamMessageWriter(proc.stdin));
+    conn.onRequest(() => null);
+    const uri = pathToFileURL(join(directory, 'story.tw')).href;
+    const published = new Promise<PublishDiagnosticsParams>(resolve => {
+      conn.onNotification('textDocument/publishDiagnostics', (params: PublishDiagnosticsParams) => {
+        if (params.uri === uri && params.diagnostics.some(d => d.code === 'SP100')) resolve(params);
+      });
+    });
+    conn.listen();
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { proc.kill('SIGKILL'); reject(new Error(`LSP quick fix blocked on ${kind} config`)); }, 5_000);
+    });
+    try {
+      await Promise.race([deadline, (async () => {
+        await conn.sendRequest('initialize', { processId: process.pid, rootUri: pathToFileURL(directory).href, capabilities: {} });
+        await conn.sendNotification('initialized', {});
+        const { diagnostics } = await published;
+        if (kind === 'buffer') await conn.sendNotification('textDocument/didOpen', {
+          textDocument: { uri: pathToFileURL(join(directory, name)).href, languageId: 'yaml', version: 1, text: 'macros: {}\n' },
+        });
+        const diagnostic = diagnostics.find(d => d.code === 'SP100')!;
+        const actions = await conn.sendRequest('textDocument/codeAction', {
+          textDocument: { uri }, range: diagnostic.range, context: { diagnostics: [diagnostic] },
+        }) as CodeAction[];
+        expect(actions.map(action => action.title)).toEqual([
+          "Change to '{print}'",
+          ...(['buffer', 'regular', 'symlink-regular'].includes(kind) ? [`Add 'prnit' to ${name}`] : []),
+        ]);
+        const symbols = await conn.sendRequest('workspace/symbol', { query: '' }) as Array<{ name: string }>;
+        expect(symbols.map(symbol => symbol.name)).toEqual(['StoryVariables', 'Start']);
       })()]);
     } finally {
       clearTimeout(timer!);
