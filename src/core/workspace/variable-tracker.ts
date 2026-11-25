@@ -124,6 +124,8 @@ export class VariableTracker {
 
   /** Executable assignments can replace a declaration's default shape anywhere in the story. */
   private rootWritesByUri = new Map<string, Set<string>>();
+  /** Shared by every diagnostic check until a document is rescanned or removed. */
+  private rootWrites: ReadonlySet<string> | undefined;
 
   /**
    * Parse the StoryVariables passage content for declarations.
@@ -195,6 +197,7 @@ export class VariableTracker {
     this.usagesByUri.delete(uri);
     this.transientUsagesByUri.delete(uri);
     this.rootWritesByUri.delete(uri);
+    this.rootWrites = undefined;
   }
 
   /** Get all declared variables. */
@@ -279,7 +282,13 @@ export class VariableTracker {
    */
   getArrayMemberAccesses(uri: string): ArrayMemberAccess[] {
     const results: ArrayMemberAccess[] = [];
-    const rootWrites = new Set([...this.rootWritesByUri.values()].flatMap(writes => [...writes]));
+    if (!this.rootWrites) {
+      const writes = new Set<string>();
+      for (const documentWrites of this.rootWritesByUri.values()) {
+        for (const name of documentWrites) writes.add(name);
+      }
+      this.rootWrites = writes;
+    }
     const sources: Array<['$' | '%', VariableUsage[] | undefined, Map<string, DeclaredVariable>]> = [
       ['$', this.usagesByUri.get(uri), this.variables.declared],
       ['%', this.transientUsagesByUri.get(uri), this.transients.declared],
@@ -290,7 +299,7 @@ export class VariableTracker {
         const member = u.fullName.split('.')[1];
         if (member === undefined) continue;
         if (declared.get(u.baseName)?.type !== 'array') continue;
-        if (rootWrites.has(sigil + u.baseName)) continue;
+        if (this.rootWrites.has(sigil + u.baseName)) continue;
         // Canonical array indices are properties too, including a path
         // through an element such as $rows.0.name.
         if (ARRAY_MEMBERS.has(member) || (/^(0|[1-9]\d*)$/.test(member) && Number(member) < 0xffffffff)) continue;

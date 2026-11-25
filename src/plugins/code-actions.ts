@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { createRequire as createCompilerRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -10,6 +9,7 @@ import { DiagnosticCode, type SpindleDiagnostic } from '../core/diagnostic-codes
 import { computeDiagnostics } from './diagnostics.js';
 import { isDeepStrictEqual } from 'node:util';
 import { findConfigFile } from '../core/workspace/config-loader.js';
+import { readRegularFile } from '../core/workspace/regular-files.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
 import { passagePieces, type Piece } from '@rohal12/spindle/tooling';
@@ -183,7 +183,7 @@ function addMacroToConfig(
   let text = workspace.documents.getText(configUri);
   if (text === undefined) {
     try {
-      text = readFileSync(existingPath, 'utf-8');
+      text = readRegularFile(existingPath);
     } catch {
       return null;
     }

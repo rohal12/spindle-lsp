@@ -326,6 +326,7 @@ export class WorkspaceModel extends EventEmitter {
     const init: Passage[] = [];
     const seen = new Set<string>();
     const effective = new Map(this.passages.getEffectivePassages().map(passage => [passage.name, passage]));
+    const scriptBodies = new Map<string, Map<Passage, string>>();
 
     // Use a stable source order within each runtime phase.
     for (const uri of this.documents.getUris().sort(compareSourceUris)) {
@@ -348,9 +349,15 @@ export class WorkspaceModel extends EventEmitter {
         const isScript = passage.tags?.includes('script') ?? false;
         if (!isStoryInit && !isScript) continue;
 
-        const content = this.markup.get(passage.uri)?.passages.find(p => p.passage === passage)?.content ?? '';
         if (isScript) {
-          for (const macro of discoverMacros(content)) found.push(macro);
+          // A replacement can live in another document while retaining this
+          // source's slot. Index each document once, by passage identity.
+          let bodies = scriptBodies.get(passage.uri);
+          if (!bodies) {
+            bodies = new Map(this.markup.get(passage.uri)?.passages.map(p => [p.passage, p.content]));
+            scriptBodies.set(passage.uri, bodies);
+          }
+          for (const macro of discoverMacros(bodies.get(passage) ?? '')) found.push(macro);
         } else init.push(passage);
       }
     }
