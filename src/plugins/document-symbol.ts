@@ -38,7 +38,7 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
   // Registered widgets are not ordered by source location. Locate each one
   // in the ordered passage ranges once, rather than scanning all widgets for
   // every passage (including widgets from other documents).
-  const widgetsByPassage = new Map<number, WidgetDef[]>();
+  const widgetsByPassage: WidgetDef[][] = [];
   for (const widget of workspace.widgets.getAllWidgets()) {
     if (widget.uri !== uri) continue;
     let low = 0;
@@ -50,13 +50,10 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
     }
     const passage = passages[low - 1];
     if (!passage || widget.range.end.line > passage.range.end.line) continue;
-    const header = passage.range.start.line;
-    const group = widgetsByPassage.get(header);
-    if (group) group.push(widget);
-    else widgetsByPassage.set(header, [widget]);
+    (widgetsByPassage[low - 1] ??= []).push(widget);
   }
 
-  for (const passage of passages) {
+  for (const [index, passage] of passages.entries()) {
     const headerLine = passage.range.start.line;
     const selectionRange: Range = {
       start: { line: headerLine, character: 0 },
@@ -72,7 +69,7 @@ export function computeDocumentSymbols(uri: string, workspace: WorkspaceModel): 
     };
 
     // Outline only definitions registered by the tooling API, including StoryInit.
-    for (const widget of widgetsByPassage.get(headerLine) ?? []) {
+    for (const widget of widgetsByPassage[index] ?? []) {
       passageSymbol.children!.push({
         name: widget.name,
         kind: SymbolKind.Function,
