@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as regularFiles from '../../src/core/workspace/regular-files.js';
+import * as yaml from 'yaml';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -10,6 +12,13 @@ import type { CodeAction } from '../../src/plugins/code-actions.js';
 import { computeDiagnostics } from '../../src/plugins/diagnostics.js';
 import { parseConfig } from '../../src/core/workspace/config-loader.js';
 import type { Position } from '../../src/core/types.js';
+
+// Count real YAML parses without replacing their behavior (ESM exports cannot
+// be reconfigured by spyOn).
+vi.mock('yaml', async importOriginal => {
+  const actual = await importOriginal<typeof import('yaml')>();
+  return { ...actual, parseDocument: vi.fn(actual.parseDocument) };
+});
 
 /** Apply a code action's edits for `uri` to `text`, as an editor would. */
 function applyEdits(text: string, action: CodeAction, uri: string): string {
@@ -227,6 +236,76 @@ describe('SP100 quick fix targets the project config', () => {
     expect(Object.keys(macrosOf(result, 'yaml'))).toEqual(['ondisk', 'unsaved', 'nosuch']);
     // the file on disk is never touched by computing the action
     expect(readFileSync(path, 'utf-8')).toBe('macros:\n  ondisk: {}\n');
+  });
+
+  it.each(['disk', 'buffer'])('prepares a populated YAML config once per request from %s (#311)', source => {
+    const path = join(dir, 'spindle.config.yaml');
+    const configUri = pathToFileURL(path).toString();
+    const docUri = pathToFileURL(join(dir, 'story.tw')).toString();
+    const entries = Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`custom${i}`, { description: `Macro ${i}` }]));
+    const original = yaml.stringify({ macros: entries });
+    writeFileSync(path, source === 'disk' ? original : 'macros:\n  ondisk: {}\n');
+    const ws = new WorkspaceModel();
+    ws.macros.loadConfig(entries);
+    ws.initialize(new Map([[docUri, ':: StoryVariables\n:: Start\n'
+      + Array.from({ length: 32 }, (_, i) => `{undefinedmacro${i}}`).join(' ')]]));
+    if (source === 'buffer') ws.documents.open(configUri, original);
+    const diags = computeDiagnostics(docUri, ws).filter(d => d.code === 'SP100');
+    expect(diags).toHaveLength(32);
+    const reads = vi.spyOn(regularFiles, 'readRegularFile');
+    const parses = vi.mocked(yaml.parseDocument);
+    parses.mockClear();
+    try {
+      const actions = computeCodeActions(docUri, diags, ws, { workspaceRoot: dir });
+      const readCount = reads.mock.calls.length;
+      const parseCount = parses.mock.calls.length;
+      expect(actions).toHaveLength(32);
+      for (const [i, action] of actions.entries()) {
+        expect(action.diagnostics).toEqual([diags[i]]);
+        const fixed = parseYaml(applyEdits(original, action, configUri));
+        expect(fixed.macros).toEqual({ ...entries, [`undefinedmacro${i}`]: { description: '' } });
+      }
+      expect(readCount).toBe(source === 'disk' ? 1 : 0);
+      expect(parseCount).toBe(1);
+      // Preparation belongs to the request; later buffer edits must be visible.
+      ws.documents.open(configUri, 'macros:\n  edited: {}\n');
+      const next = computeCodeActions(docUri, diags.slice(0, 1), ws, { workspaceRoot: dir });
+      expect(parseYaml(applyEdits('macros:\n  edited: {}\n', next[0], configUri)).macros)
+        .toEqual({ edited: {}, undefinedmacro0: { description: '' } });
+    } finally {
+      reads.mockRestore();
+      parses.mockRestore();
+      ws.dispose();
+    }
+  });
+
+  it.each([
+    ['yaml', 'macros: {}\n'],
+    ['yaml', 'shared: &shared\n  existing: {}\nmacros: *shared\n'],
+    ['yaml', 'defaults: &settings\n  macros: &macros\n    existing: {}\n  other: *macros\nspindle-0: *settings\n'],
+    ['json', '{"spindle-0":{"macros":{"existing":{}}},"keep":true}'],
+  ] as const)('keeps multiple %s config fixes independent against the original snapshot (#311)', (format, original) => {
+    const path = join(dir, `spindle.config.${format}`);
+    const configUri = pathToFileURL(path).toString();
+    const docUri = pathToFileURL(join(dir, 'story.tw')).toString();
+    writeFileSync(path, original);
+    const ws = new WorkspaceModel();
+    try {
+      ws.initialize(new Map([[docUri, ':: StoryVariables\n:: Start\n{nosuchalpha} {nosuchbeta}']]));
+      const diags = computeDiagnostics(docUri, ws).filter(d => d.code === 'SP100');
+      const actions = computeCodeActions(docUri, diags, ws, { workspaceRoot: dir });
+      expect(actions).toHaveLength(2);
+      const before = parseYaml(original);
+      for (const [i, name] of ['nosuchalpha', 'nosuchbeta'].entries()) {
+        const fixed = parseYaml(applyEdits(original, actions[i], configUri));
+        const target = before['spindle-0'] ?? before;
+        expect(fixed).toEqual(before['spindle-0']
+          ? { ...before, 'spindle-0': { ...target, macros: { ...target.macros, [name]: { description: '' } } } }
+          : { ...before, macros: { ...target.macros, [name]: { description: '' } } });
+      }
+    } finally {
+      ws.dispose();
+    }
   });
 
   it.each(['disk', 'buffer'])('retains spelling fixes when a YAML alias in the %s cannot resolve (#265)', source => {
