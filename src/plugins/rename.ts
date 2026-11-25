@@ -202,7 +202,7 @@ export function computeRename(
           `Cannot rename to ${JSON.stringify(newName)}: a widget name must start with a letter and contain only letters, digits, _ and - to be called as {name}.`,
         ).at(uri, symbol.range);
       }
-      if (workspace.macros.getMacro(newName)) {
+      if (newName.toLowerCase() !== symbol.name.toLowerCase() && workspace.macros.getMacro(newName)) {
         throw new RenameError(
           `Cannot rename to ${JSON.stringify(newName)}: a macro of that name already exists.`,
         ).at(uri, symbol.range);
