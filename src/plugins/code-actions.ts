@@ -63,6 +63,11 @@ export function computeCodeActions(
   options: CodeActionOptions = {},
 ): CodeAction[] {
   const actions: CodeAction[] = [];
+  let configAction: MacroConfigAction | null | undefined;
+  const addMacro = (name: string): CodeAction | null => {
+    if (configAction === undefined) configAction = prepareMacroConfig(uri, workspace, options);
+    return configAction?.(name) ?? null;
+  };
   const current = computeDiagnostics(uri, workspace);
   const identity = (diag: SpindleDiagnostic) => JSON.stringify([
     diag.code, diag.range.start.line, diag.range.start.character,
@@ -87,7 +92,7 @@ export function computeCodeActions(
     const firstAction = actions.length;
     switch (diag.code) {
       case DiagnosticCode.UndefinedMacro:
-        actions.push(...fixUndefinedMacro(uri, diag, workspace, options));
+        actions.push(...fixUndefinedMacro(uri, diag, addMacro));
         break;
       case DiagnosticCode.MalformedContainer:
       case DiagnosticCode.MalformedElement:
@@ -128,12 +133,13 @@ const DEFAULT_CONFIG_FILENAME = 'spindle.config.yaml';
 const NEW_MACRO_ENTRY = { description: '' };
 
 type TextEdit = { range: Range; newText: string };
+type MacroConfigAction = (name: string) => CodeAction | null;
+type MacroConfigEdit = (name: string) => TextEdit | null;
 
 function fixUndefinedMacro(
   uri: string,
   diag: SpindleDiagnostic,
-  workspace: WorkspaceModel,
-  options: CodeActionOptions,
+  addMacro: MacroConfigAction,
 ): CodeAction[] {
   const data = diag.data;
   if (data?.kind !== 'unknown-macro') return [];
@@ -143,40 +149,40 @@ function fixUndefinedMacro(
     diagnosticCodes: [DiagnosticCode.UndefinedMacro],
     edits: [{ uri, range: data.nameRange, newText: suggestion }],
   }));
-  const config = addMacroToConfig(uri, data.name, workspace, options);
+  const config = addMacro(data.name);
   if (config) actions.push(config);
   return actions;
 }
 
-function addMacroToConfig(
+/** Select and prepare one authoritative config snapshot for this request. */
+function prepareMacroConfig(
   uri: string,
-  macroName: string,
   workspace: WorkspaceModel,
   options: CodeActionOptions,
-): CodeAction | null {
+): MacroConfigAction | null {
   const root = resolveConfigRoot(uri, options.workspaceRoot);
   if (!root) return null;
 
   const existingPath = findConfigFile(root);
   const configPath = existingPath ?? join(root, DEFAULT_CONFIG_FILENAME);
   const configUri = pathToFileURL(configPath).toString();
-  const action = {
+  const action = (macroName: string) => ({
     title: `Add '${macroName}' to ${basename(configPath)}`,
     kind: 'quickfix',
     diagnosticCodes: [DiagnosticCode.UndefinedMacro],
-  };
+  });
 
   if (!existingPath) {
     const start: Position = { line: 0, character: 0 };
-    return {
-      ...action,
+    return macroName => ({
+      ...action(macroName),
       createFile: configUri,
       edits: [{
         uri: configUri,
         range: { start, end: start },
         newText: stringifyYaml({ macros: { [macroName]: NEW_MACRO_ENTRY } }),
       }],
-    };
+    });
   }
 
   // Prefer the live editor contents when the config is open
@@ -190,10 +196,18 @@ function addMacroToConfig(
   }
 
   try {
-    const edit = configPath.toLowerCase().endsWith('.json')
-      ? addMacroToJsonConfig(text, macroName)
-      : addMacroToYamlConfig(text, macroName);
-    return edit ? { ...action, edits: [{ uri: configUri, ...edit }] } : null;
+    const editFor = configPath.toLowerCase().endsWith('.json')
+      ? prepareJsonConfig(text)
+      : prepareYamlConfig(text);
+    if (!editFor) return null;
+    return macroName => {
+      try {
+        const edit = editFor(macroName);
+        return edit ? { ...action(macroName), edits: [{ uri: configUri, ...edit }] } : null;
+      } catch {
+        return null;
+      }
+    };
   } catch {
     // YAML may parse without errors but fail while resolving aliases or
     // serializing the edit. Independent spelling fixes remain valid.
@@ -230,21 +244,20 @@ function macrosPath(root: unknown): string[] {
   return legacy !== null && typeof legacy === 'object' ? ['spindle-0', 'macros'] : ['macros'];
 }
 
-function definesMacro(macros: unknown, macroName: string): boolean {
-  if (macros === null || typeof macros !== 'object') return false;
-  const lower = macroName.toLowerCase();
-  return Object.keys(macros).some(k => k.toLowerCase() === lower);
+function configuredMacroNames(macros: unknown): Set<string> {
+  return new Set(macros !== null && typeof macros === 'object'
+    ? Object.keys(macros).map(name => name.toLowerCase()) : []);
 }
 
 /**
- * Build an edit adding `macroName` under the `macros` mapping of a YAML config.
+ * Prepare independent edits under the `macros` mapping of a YAML config.
  * When `macros` is a non-empty block mapping, the entry is inserted right after
  * its last item, matching its indentation and leaving the rest of the file
  * untouched. Otherwise the document is updated through the YAML library and
  * only the changed span is replaced. Returns null when the config is not valid
  * YAML, is not a mapping, or already defines the macro.
  */
-function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null {
+function prepareYamlConfig(text: string): MacroConfigEdit | null {
   const doc = parseDocument(text);
   if (doc.errors.length > 0) return null;
   if (doc.contents !== null && !isMap(doc.contents)) return null;
@@ -270,7 +283,7 @@ function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null 
   }
   const parent = path.length > 1 ? doc.getIn(path.slice(0, -1), true) : doc.contents;
   const macros = doc.getIn(path, true);
-  if (isMap(macros) && definesMacro(macros.toJS(doc), macroName)) return null;
+  const names = configuredMacroNames(isMap(macros) ? macros.toJS(doc) : undefined);
 
   if (isMap(parent) && isMap(macros) && !macros.flow && macros.items.length > 0 && macros.range) {
     const macrosKey = parent.items.find(p => isScalar(p.key) && p.key.value === 'macros')?.key;
@@ -278,9 +291,6 @@ function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null 
     if (isScalar(macrosKey) && macrosKey.range && isScalar(firstKey) && firstKey.range) {
       const indent = columnOf(text, firstKey.range[0]);
       const step = Math.max(indent - columnOf(text, macrosKey.range[0]), 1);
-      const entry = stringifyYaml({ [macroName]: NEW_MACRO_ENTRY }, { indent: step })
-        .replace(/^(?=.)/gm, ' '.repeat(indent));
-
       // Insert at the start of the line following the end of the last item
       let offset = macros.range[1];
       if (offset > 0 && text[offset - 1] !== '\n') {
@@ -289,24 +299,32 @@ function addMacroToYamlConfig(text: string, macroName: string): TextEdit | null 
       }
       const lead = offset === text.length && text.length > 0 && !/[\r\n]$/.test(text) ? '\n' : '';
       const pos = offsetToPosition(text, offset);
-      return { range: { start: pos, end: pos }, newText: lead + entry };
+      return macroName => {
+        if (names.has(macroName.toLowerCase())) return null;
+        const entry = stringifyYaml({ [macroName]: NEW_MACRO_ENTRY }, { indent: step })
+          .replace(/^(?=.)/gm, ' '.repeat(indent));
+        return { range: { start: pos, end: pos }, newText: lead + entry };
+      };
     }
   }
 
-  if (isMap(macros)) {
-    macros.set(macroName, doc.createNode(NEW_MACRO_ENTRY));
-  } else {
-    doc.setIn(path, doc.createNode({ [macroName]: NEW_MACRO_ENTRY }));
-  }
-  return minimalEdit(text, doc.toString({ lineWidth: 0 }));
+  return macroName => {
+    if (names.has(macroName.toLowerCase())) return null;
+    // Each action is applied on its own to the original editor snapshot.
+    const updated = doc.clone();
+    const mapping = updated.getIn(path, true);
+    if (isMap(mapping)) mapping.set(macroName, updated.createNode(NEW_MACRO_ENTRY));
+    else updated.setIn(path, updated.createNode({ [macroName]: NEW_MACRO_ENTRY }));
+    return minimalEdit(text, updated.toString({ lineWidth: 0 }));
+  };
 }
 
 /**
- * Build an edit adding `macroName` under the `macros` object of a JSON config,
+ * Prepare independent edits under the `macros` object of a JSON config,
  * keeping the file's indentation. Returns null when the config is not a valid
  * JSON object or already defines the macro.
  */
-function addMacroToJsonConfig(text: string, macroName: string): TextEdit | null {
+function prepareJsonConfig(text: string): MacroConfigEdit | null {
   let raw: unknown;
   try {
     raw = text.trim() ? JSON.parse(text) : {};
@@ -320,17 +338,17 @@ function addMacroToJsonConfig(text: string, macroName: string): TextEdit | null 
     ? (raw as Record<string, Record<string, unknown>>)[path[0]]
     : raw as Record<string, unknown>;
   const macros = container.macros;
-  if (definesMacro(macros, macroName)) return null;
-
-  if (macros !== null && typeof macros === 'object' && !Array.isArray(macros)) {
-    (macros as Record<string, unknown>)[macroName] = NEW_MACRO_ENTRY;
-  } else {
-    container.macros = { [macroName]: NEW_MACRO_ENTRY };
-  }
+  const names = configuredMacroNames(macros);
+  const entries = macros !== null && typeof macros === 'object' && !Array.isArray(macros) ? macros : {};
 
   const indent = text.match(/^[ \t]+(?=")/m)?.[0] ?? '  ';
   const newline = /[\r\n]$/.test(text) || !text.trim() ? '\n' : '';
-  return minimalEdit(text, JSON.stringify(raw, null, indent) + newline);
+  return macroName => {
+    if (names.has(macroName.toLowerCase())) return null;
+    const updated = { ...container, macros: { ...entries, [macroName]: NEW_MACRO_ENTRY } };
+    const root = path.length > 1 ? { ...raw, [path[0]]: updated } : updated;
+    return minimalEdit(text, JSON.stringify(root, null, indent) + newline);
+  };
 }
 
 /** Zero-based column of `offset` within its line. */

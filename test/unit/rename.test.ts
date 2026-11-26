@@ -333,6 +333,23 @@ describe('computeRename', () => {
     expect(applyRenameToFiles(files, computeRename('file:///widgets.tw', { line: 1, character: 10 }, 'Greet', ws)))
       .toEqual(expected);
   });
+
+  it.each(['include', 'option', 'hello'])('allows case-only renames of widget %s (#313)', name => {
+    const uri = 'file:///widgets.tw';
+    const content = `:: W [widget]\n{widget "${name}"}Hi{/widget}\n:: Start\n{${name}}`;
+    const ws = createWorkspace({ name: 'widgets.tw', content });
+    try {
+      for (const position of [{ line: 1, character: 10 }, { line: 3, character: 2 }]) {
+        expect(prepareRename(uri, position, ws)?.placeholder).toBe(name);
+        const renamed = applyRename(ws, uri, position, name.toUpperCase()).get(uri);
+        expect(renamed).toBe(`:: W [widget]\n{widget "${name.toUpperCase()}"}Hi{/widget}\n:: Start\n{${name.toUpperCase()}}`);
+        expect(computeRename(uri, position, name, ws).size).toBe(0);
+        expect(() => computeRename(uri, position, 'print', ws)).toThrow(/macro of that name/);
+      }
+    } finally {
+      ws.dispose();
+    }
+  });
 });
 
 describe('computeRename: executable references in StoryInit and strings (#44)', () => {

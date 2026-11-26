@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { WorkspaceModel } from '../../src/core/workspace/workspace-model.js';
 import { computeDocumentSymbols } from '../../src/plugins/document-symbol.js';
 import { SymbolKind } from 'vscode-languageserver';
@@ -95,5 +95,63 @@ describe('computeDocumentSymbols', () => {
     const symbols = computeDocumentSymbols('file:///test.tw', ws);
     expect(symbols.map(s => s.selectionRange.end)).toEqual([{ line: 0, character: 8 }, { line: 2, character: 7 }]);
     expect(symbols[0].range.end).toEqual({ line: 1, character: 5 });
+  });
+
+  it.each([[16, 8], [32, 16]])('indexes widgets once for %i passages and %i widgets (#312)', (passageCount, widgetCount) => {
+    const uri = 'file:///widgets.tw';
+    const ws = createWorkspace({
+      name: 'widgets.tw',
+      content: Array.from({ length: passageCount }, (_, i) =>
+        `:: P${i} [widget]\n${i < widgetCount ? `{widget "w${i}"}Hi{/widget}` : 'Hi'}\n`).join(''),
+    }, {
+      name: 'other.tw',
+      content: ':: Other [widget]\n{widget "outside"}Other{/widget}',
+    });
+    let widgetVisits = 0;
+    for (const widget of ws.widgets.getAllWidgets()) {
+      const widgetUri = widget.uri;
+      Object.defineProperty(widget, 'uri', { get: () => { widgetVisits++; return widgetUri; } });
+    }
+    const widgets = vi.spyOn(ws.widgets, 'getAllWidgets');
+    try {
+      const symbols = computeDocumentSymbols(uri, ws);
+      expect(symbols).toHaveLength(passageCount);
+      expect(symbols.map(s => s.children!.map(c => c.name))).toEqual(
+        Array.from({ length: passageCount }, (_, i) => i < widgetCount ? [`w${i}`] : []),
+      );
+      expect(widgets).toHaveBeenCalledTimes(1);
+      expect(widgetVisits).toBeLessThanOrEqual(widgetCount + 1);
+      const first = symbols[0].children![0];
+      // Tooling's definition range covers the opening registration token.
+      expect(first.range).toEqual({ start: { line: 1, character: 0 }, end: { line: 1, character: 13 } });
+      expect(first.selectionRange).toEqual({ start: { line: 1, character: 9 }, end: { line: 1, character: 11 } });
+    } finally {
+      widgets.mockRestore();
+      ws.dispose();
+    }
+  });
+
+  it('uses effective StoryInit widgets and refreshes the outline after edits and removals (#312)', () => {
+    const uri = 'file:///widgets.tw';
+    const other = 'file:///zother.tw';
+    const ws = createWorkspace({
+      name: 'widgets.tw',
+      content: ':: StoryInit\n{widget "init"}Hi{/widget}\n:: W [widget]\n{widget "shared"}Old{/widget}\n{widget "local"}Here{/widget}',
+    }, {
+      name: 'zother.tw',
+      content: ':: Other [widget]\n{widget "shared"}New{/widget}',
+    });
+    const names = () => computeDocumentSymbols(uri, ws).map(s => s.children!.map(c => c.name));
+    try {
+      expect(names()).toEqual([['init'], ['local']]);
+      ws.documents.update(other, ':: Other\nNo widgets');
+      expect(names()).toEqual([['init'], ['shared', 'local']]);
+      ws.documents.update(uri, ':: StoryInit\n{widget "fresh"}New{/widget}\n:: W [widget]\nNone');
+      expect(names()).toEqual([['fresh'], []]);
+      ws.documents.close(uri);
+      expect(computeDocumentSymbols(uri, ws)).toEqual([]);
+    } finally {
+      ws.dispose();
+    }
   });
 });
