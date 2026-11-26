@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { build } from 'esbuild';
 import { buildDist, type DistBuild } from './support/dist-build.js';
 
@@ -183,6 +183,68 @@ describe('B76-dist: the executable built by `npm run build`', () => {
   it('B76-dist-version: --version prints the package version', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
     expect(execFileSync(process.execPath, [dist.executable, '--version'], { encoding: 'utf8' }).trim()).toBe(pkg.version);
+  });
+  describe('CLI output drains before exit (#318)', () => {
+    let project: string;
+    beforeAll(() => {
+      project = mkdtempSync(join(tmpdir(), 'spindle-cli-output-'));
+      writeFileSync(join(project, 'package.json'), '{}\n');
+    });
+    afterAll(() => { if (project) rmSync(project, { recursive: true, force: true }); });
+
+    for (const format of ['json', 'sarif'] as const) {
+      it.each([
+        { severity: 'warning', markup: '{unknownmacro}', exitCode: 0 },
+        { severity: 'error', markup: '{/if}', exitCode: 1 },
+      ])(`preserves a large piped ${format} report with $severity diagnostics`, ({ severity, markup, exitCode }) => {
+        writeFileSync(join(project, 'story.tw'), `:: StoryVariables\n:: Start\n${`${markup}\n`.repeat(1000)}`);
+        const result = spawnSync(process.execPath, [dist.executable, 'check', 'story.tw', '--format', format], {
+          cwd: project, encoding: 'utf8', timeout: 30_000, maxBuffer: 20 * 1024 * 1024,
+        });
+        expect(result.error).toBeUndefined();
+        expect(result.signal).toBeNull();
+        expect(result.status).toBe(exitCode);
+        expect(result.stderr).toBe('');
+        const report = JSON.parse(result.stdout);
+        const diagnostics = format === 'json' ? report.files[0].diagnostics : report.runs[0].results;
+        expect(diagnostics).toHaveLength(1000);
+        expect(diagnostics.every((diagnostic: { severity?: string; level?: string }) =>
+          (format === 'json' ? diagnostic.severity : diagnostic.level) === severity,
+        )).toBe(true);
+      });
+    }
+
+    it('preserves every path and the summary in a large piped format --check report', async () => {
+      const directories = Array.from({ length: 8 }, (_, i) => `${i}-${'d'.repeat(178)}`);
+      const directory = join(project, ...directories);
+      mkdirSync(directory, { recursive: true });
+      const files = Array.from({ length: 250 }, (_, i) => join(...directories, `${i}.tw`));
+      for (const file of files) writeFileSync(join(project, file), ':: Start\nHello   \n');
+      const child = spawn(process.execPath, [dist.executable, 'format', '--check', join(...directories, '*.tw')], {
+        cwd: project, stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
+      });
+      let output = '';
+      let errors = '';
+      // Hold off reading until the pipe fills, as a slow downstream consumer would.
+      child.stdout.on('data', data => { output += data; });
+      child.stdout.once('data', () => {
+        child.stdout.pause();
+        setTimeout(() => child.stdout.resume(), 200);
+      });
+      child.stderr.on('data', data => { errors += data; });
+      const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        child.on('error', reject);
+        child.on('close', (code, signal) => resolve({ code, signal }));
+      });
+      expect(exit.signal).toBeNull();
+      expect(exit.code).toBe(1);
+      expect(errors).toBe('');
+      const lines = output.trimEnd().split('\n');
+      expect(lines.pop()).toBe('250 files would be reformatted');
+      expect(lines.pop()).toBe('');
+      expect(lines.sort()).toEqual(files.sort());
+      expect(readFileSync(join(project, files[0]), 'utf8')).toBe(':: Start\nHello   \n');
+    });
   });
   it.each(['', '0', 'true'])('refuses play without exact host opt-in (%j) (#122)', async trust => {
     const { child, request } = await mcpProcess(dist.executable, trust);
