@@ -33,18 +33,17 @@ Check options:
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(HELP);
-  process.exit(0);
+  process.exitCode = 0;
 } else if (args.includes('--version') || args.includes('-v')) {
   console.log(VERSION);
-  process.exit(0);
+  process.exitCode = 0;
 } else if (args[0] === 'check') {
   const { runCheck } = await import('./cli/check.js');
-  const exitCode = await runCheck(args.slice(1));
-  process.exit(exitCode);
+  // Let pending stdout/stderr writes drain before Node exits.
+  process.exitCode = await runCheck(args.slice(1));
 } else if (args[0] === 'format') {
   const { runFormat } = await import('./cli/format.js');
-  const exitCode = await runFormat(args.slice(1));
-  process.exit(exitCode);
+  process.exitCode = await runFormat(args.slice(1));
 } else if (args[0] === 'mcp') {
   const { startMcpServer } = await import('./mcp/server.js');
   await startMcpServer(VERSION);
