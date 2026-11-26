@@ -1102,10 +1102,14 @@ function linkDiagnostics(doc: DocumentMarkup): SpindleDiagnostic[] {
 // ---------------------------------------------------------------------------
 
 function lineLengthDiagnostics(doc: DocumentMarkup, maxLength: number): SpindleDiagnostic[] {
-  // Skip script/stylesheet passages — those have their own formatting rules
+  // Reuse indexed headers, including compact and BOM-prefixed spellings.
+  // Script/stylesheet bodies have their own formatting rules.
   const excludedLines = new Set<number>();
-  for (const { passage } of doc.passages.filter(({ passage }) => isScriptOrStylesheetPassage(passage))) {
-    for (let i = passage.range.start.line; i <= passage.range.end.line; i++) excludedLines.add(i);
+  for (const { passage } of doc.passages) {
+    excludedLines.add(passage.headerEnd.start.line);
+    if (isScriptOrStylesheetPassage(passage)) {
+      for (let i = passage.range.start.line; i <= passage.range.end.line; i++) excludedLines.add(i);
+    }
   }
 
   const diagnostics: SpindleDiagnostic[] = [];
@@ -1113,8 +1117,6 @@ function lineLengthDiagnostics(doc: DocumentMarkup, maxLength: number): SpindleD
   for (let i = 0; i < lines.length; i++) {
     if (excludedLines.has(i)) continue;
     const line = lines[i];
-    // Skip passage headers
-    if (/^﻿?::\s+/.test(line)) continue;
     // Skip HTML-heavy lines (tags with attributes)
     if (/^\s*<[a-zA-Z]/.test(line)) continue;
 
