@@ -197,9 +197,15 @@ export class DocumentMarkup {
 
   /** The passage that contains `position`. */
   passageAt(position: Position): PassageMarkup | undefined {
-    for (let i = this.passages.length - 1; i >= 0; i--) {
-      if (this.passages[i].passage.range.start.line <= position.line) return this.passages[i];
+    // Headers are ordered by line. Find the last header at or before the
+    // position without rescanning the document for each reference in a batch.
+    let low = 0;
+    let high = this.passages.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (this.passages[mid].passage.range.start.line <= position.line) low = mid + 1;
+      else high = mid;
     }
-    return undefined;
+    return this.passages[low - 1];
   }
 }
