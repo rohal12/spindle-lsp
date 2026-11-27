@@ -79,6 +79,44 @@ it('shares configured passage validation and refreshes it after edits and replac
   expect(parameterErrors()).toEqual([]);
 });
 
+it.each([64, 128])('bounds passage membership work for %i configured references (#326)', count => {
+  workspace = new WorkspaceModel();
+  workspace.macros.loadConfig({ visit: { parameters: ['passage'] } });
+  const target = `P${count - 1}`;
+  workspace.initialize(new Map([[uri, ':: StoryVariables\n'
+    + Array.from({ length: count }, (_, i) => `:: P${i}\n{visit "${target}"}\n`).join('')]]));
+  expect(computeDiagnostics(uri, workspace)).toEqual([]);
+  const includes = Array.prototype.includes;
+  let searched = 0;
+  vi.spyOn(Array.prototype, 'includes').mockImplementation(function (this: unknown[], value, from) {
+    if (value === target && this[0] === 'StoryVariables') searched += this.length;
+    return includes.call(this, value, from);
+  });
+  for (let request = 0; request < 2; request++) {
+    searched = 0;
+    expect(computeDiagnostics(uri, workspace)).toEqual([]);
+    expect(searched).toBeLessThanOrEqual(count * 4);
+  }
+});
+
+it('keeps configured membership aligned with runtime destinations (#326)', () => {
+  workspace = new WorkspaceModel();
+  workspace.macros.loadConfig({ visit: { parameters: ['passage'] } });
+  const source = ':: StoryVariables\n:: Start\n{visit "Target"}\n{visit "StoryTitle"}\n{visit "StoryData"}\n:: Target\nhello\n:: StoryTitle\nTitle';
+  workspace.initialize(new Map([[uri, source]]));
+  const missing = () => computeDiagnostics(uri, workspace).filter(d => d.code === 'SP110').map(d => d.message);
+  const omitted = ['{visit}: Nonexistent passage: "StoryTitle"', '{visit}: Nonexistent passage: "StoryData"'];
+  expect(missing()).toEqual(omitted);
+  workspace.documents.open('file:///z.tw', ':: Target [stylesheet]\nbody {}');
+  expect(missing()).toEqual(['{visit}: Nonexistent passage: "Target"', ...omitted]);
+  workspace.documents.close('file:///z.tw');
+  expect(missing()).toEqual(omitted);
+  workspace.documents.update(uri, source.replace(':: Target\n', ':: Renamed\n'));
+  expect(missing()).toEqual(['{visit}: Nonexistent passage: "Target"', ...omitted]);
+  workspace.documents.update(uri, source);
+  expect(missing()).toEqual(omitted);
+});
+
 it.each([128, 140_000])('preserves every diagnostic in batches of %i (#262)', count => {
   workspace = new WorkspaceModel();
   const content = '{nosuch}\n'.repeat(count) + '{if }\n';
