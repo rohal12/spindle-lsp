@@ -109,8 +109,14 @@ function aWorkspaceMemberDeclaresSpindle(dir: string, pkg: PackageJson | undefin
   if (members.length === 0) return false;
   const excluded = globs.filter(g => g.startsWith('!')).map(g => manifest(g.slice(1)));
   const ignore = ['**/node_modules/**', ...excluded];
-  return globSync(members, { cwd: dir, ignore })
-    .some(file => declaresSpindle(readPackageJson(join(dir, file))));
+  try {
+    return globSync(members, { cwd: dir, ignore })
+      .some(file => declaresSpindle(readPackageJson(join(dir, file))));
+  } catch {
+    // Workspace metadata is optional evidence of a hoisted installation.
+    // Invalid patterns must not prevent the language server from starting.
+    return false;
+  }
 }
 
 /**

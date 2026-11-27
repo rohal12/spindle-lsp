@@ -1,4 +1,4 @@
-import { builtinMacros, findCodeEnd, isBlockMacro, type LinkToken } from '@rohal12/spindle/tooling';
+import { builtinMacros, indexStrictCodeEnds, isBlockMacro, type LinkToken } from '@rohal12/spindle/tooling';
 import type { Passage, Range } from '../types.js';
 import { bracketLinkMismatch, type LinkRead } from './link-runtime.js';
 import { PassageIndex } from '../workspace/passage-index.js';
@@ -115,9 +115,10 @@ export function findLiteralLinkInterpolations(text: string | DocumentMarkup): Li
   for (const ref of documentPassageRefs(markupOfText(text))) {
     if (ref.macro !== 'link' || ref.form === 'text') continue;
     const written = ref.passage.content.slice(ref.start, ref.end);
+    let endAt: ReturnType<typeof indexStrictCodeEnds> | undefined;
     for (let i = 0; i < written.length; i++) {
       if (written[i] !== '{' || !/^\{[$_@%]\w/.test(written.slice(i, i + 3))) continue;
-      const close = findCodeEnd(written, i + 1);
+      const close = (endAt ??= indexStrictCodeEnds(written))(i + 1);
       if (close === -1) continue;
       found.push({
         range: ref.passage.range(ref.start + i, ref.start + close + 1),

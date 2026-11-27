@@ -28,6 +28,10 @@ export interface PluginContext {
   connection: Connection;
   workspace: WorkspaceModel;
   config: SpindleConfig;
+  /** Whether commands can ask this client to apply an edit. */
+  canApplyEdit?: boolean;
+  /** Present when versioned edits are supported: the open version, or null for a disk-only file. */
+  documentVersion?(uri: string): number | null;
 }
 
 /**
