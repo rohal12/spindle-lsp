@@ -13,6 +13,7 @@ import type { Connection } from 'vscode-languageserver';
  *  - rename:            WorkspaceEdit | null
  *  - codeLens:          CodeLens[] | null
  *  - codeAction:        (Command | CodeAction)[] | null
+ *  - executeCommand:    any | null
  *  - formatting:        TextEdit[] | null
  *  - rangeFormatting:   TextEdit[] | null
  *  - documentSymbol:    DocumentSymbol[] | SymbolInformation[] | null
@@ -35,6 +36,7 @@ const GATED_REQUESTS = [
   'onRenameRequest',
   'onCodeLens',
   'onCodeAction',
+  'onExecuteCommand',
   'onDocumentFormatting',
   'onDocumentRangeFormatting',
   'onDocumentSymbol',

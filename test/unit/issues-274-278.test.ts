@@ -56,7 +56,7 @@ function lspActions(model: WorkspaceModel, params: CodeActionParams) {
   let handler!: (params: CodeActionParams) => CodeAction[];
   codeActionsPlugin.initialize({
     workspace: model, config: {},
-    connection: { onCodeAction(callback: typeof handler) { handler = callback; } } as unknown as Connection,
+    connection: { onCodeAction(callback: typeof handler) { handler = callback; }, onExecuteCommand() {} } as unknown as Connection,
   });
   return handler(params);
 }

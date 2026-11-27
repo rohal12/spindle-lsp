@@ -12,11 +12,8 @@ import { findConfigFile } from '../core/workspace/config-loader.js';
 import { readRegularFile } from '../core/workspace/regular-files.js';
 import { missingStoryVariablesOwner } from '../core/workspace/story-variables-owner.js';
 import { isMacroSource } from '../core/workspace/macro-sources.js';
-import { passagePieces, type Piece } from '@rohal12/spindle/tooling';
-import { documentPassageRefs, encodeEnclosingMarkup } from '../core/markup/passage-refs.js';
-import { encodePassageRefName } from './rename.js';
-import { encodeStringLiteralBody } from '../core/parsing/js-string-literal.js';
-import { buildLineStarts, positionToOffset, offsetToPosition as textPosition, splitLines } from '../core/text.js';
+import { PassageNameEditor } from './code-actions/passage-edits.js';
+import { buildLineStarts, offsetToPosition as textPosition, splitLines } from '../core/text.js';
 import { encodePassageName, isRuntimePassage } from '../core/parsing/passage-parser.js';
 
 // ---------------------------------------------------------------------------
@@ -31,12 +28,16 @@ export interface CodeAction {
   diagnostics?: SpindleDiagnostic[];
   /** URI of a file that must be created (empty) before applying `edits`. */
   createFile?: string;
+  /** Recompute and validate this expensive passage edit when selected. */
+  deferred?: boolean;
   edits: Array<{ uri: string; range: Range; newText: string }>;
 }
 
 export interface CodeActionOptions {
   /** Workspace root (filesystem path or file:// URI) used to locate the project config. */
   workspaceRoot?: string;
+  /** Aggregate rewritten passage characters to validate eagerly; selection uses Infinity. */
+  passageEditBudget?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +68,25 @@ export function computeCodeActions(
   const addMacro = (name: string): CodeAction | null => {
     if (configAction === undefined) configAction = prepareMacroConfig(uri, workspace, options);
     return configAction?.(name) ?? null;
+  };
+  let passageEditor: PassageNameEditor | undefined;
+  const editPassage = (diag: SpindleDiagnostic, name: string) => {
+    passageEditor ??= new PassageNameEditor(workspace.markup.get(uri), options.passageEditBudget ?? 100_000);
+    return passageEditor.edit(diag, name);
+  };
+  const creations = new Map<string, CodeAction | undefined>();
+  let appendPassage: ((body: string) => TextEdit) | undefined;
+  const createPassage = (name: string) => {
+    if (!creations.has(name)) {
+      if (!appendPassage) {
+        const text = workspace.documents.getText(uri) ?? '';
+        const eol = lineEndingFor(workspace, uri);
+        const end = insertLinesAt(text, Infinity, '', eol);
+        appendPassage = body => ({ range: end.range, newText: end.newText + body.replace(/\r?\n/g, eol) });
+      }
+      creations.set(name, passageCreation(uri, name, workspace, appendPassage));
+    }
+    return creations.get(name);
   };
   const current = computeDiagnostics(uri, workspace);
   const identity = (diag: SpindleDiagnostic) => JSON.stringify([
@@ -99,7 +119,7 @@ export function computeCodeActions(
         actions.push(...fixUnclosedBlock(uri, diag));
         break;
       case DiagnosticCode.UnquotedPassageName:
-        actions.push(...fixUnquotedPassageName(uri, diag, workspace));
+        actions.push(...fixUnquotedPassageName(uri, diag, editPassage));
         break;
       case DiagnosticCode.UndeclaredVariable:
         actions.push(...fixUndeclaredVariable(diag, workspace));
@@ -113,7 +133,7 @@ export function computeCodeActions(
         actions.push(...fixUndeclaredTransient(diag, workspace));
         break;
       case DiagnosticCode.BrokenPassageLink:
-        actions.push(...fixBrokenLink(uri, diag, workspace));
+        actions.push(...fixBrokenLink(uri, diag, editPassage, createPassage));
         break;
       // No quick fix for other diagnostic codes
     }
@@ -495,53 +515,50 @@ function fixUnclosedBlock(uri: string, diag: SpindleDiagnostic): CodeAction[] {
 // Quick fix: SP113 — Quote a passage name
 // ---------------------------------------------------------------------------
 
-/** `{goto Kitchen}` is an expression, and throws a ReferenceError: the name is a quoted string. */
-function fixUnquotedPassageName(uri: string, diag: SpindleDiagnostic, workspace: WorkspaceModel): CodeAction[] {
+type PassageEdit = (diag: SpindleDiagnostic, name: string) => ReturnType<PassageNameEditor['edit']>;
+
+function passageAction(uri: string, diag: SpindleDiagnostic, name: string, title: string, editPassage: PassageEdit): CodeAction | undefined {
+  const edit = editPassage(diag, name);
+  if (!edit) return;
+  return {
+    title, kind: 'quickfix', diagnosticCodes: [diag.code],
+    ...(edit === 'deferred' ? { deferred: true, edits: [] } : { edits: [{ uri, ...edit }] }),
+  };
+}
+
+function fixUnquotedPassageName(uri: string, diag: SpindleDiagnostic, editPassage: PassageEdit): CodeAction[] {
   if (diag.data?.kind !== 'unquoted-passage-name') return [];
-  const edit = passageNameEdit(uri, diag, diag.data.name, workspace);
-  if (!edit) return [];
-  return [{
-    title: `Quote the passage name: ${JSON.stringify(diag.data.name)}`,
-    kind: 'quickfix',
-    diagnosticCodes: [DiagnosticCode.UnquotedPassageName],
-    edits: [{ uri, ...edit }],
-  }];
+  const action = passageAction(uri, diag, diag.data.name, `Quote the passage name: ${JSON.stringify(diag.data.name)}`, editPassage);
+  return action ? [action] : [];
 }
 
 // ---------------------------------------------------------------------------
 // Quick fix: SP300 — Change a broken link to a close passage, or create the passage
 // ---------------------------------------------------------------------------
 
-function fixBrokenLink(uri: string, diag: SpindleDiagnostic, workspace: WorkspaceModel): CodeAction[] {
+function fixBrokenLink(uri: string, diag: SpindleDiagnostic, editPassage: PassageEdit, createPassage: (name: string) => CodeAction | undefined): CodeAction[] {
   if (diag.data?.kind !== 'unknown-passage') return [];
   const { name, suggestions } = diag.data;
-  const text = workspace.documents.getText(uri);
-  if (text === undefined) return [];
   const actions: CodeAction[] = [];
-
   for (const suggestion of suggestions) {
-    const edit = passageNameEdit(uri, diag, suggestion, workspace);
-    if (!edit) continue;
-    actions.push({
-      title: `Change to '${suggestion}'`,
-      kind: 'quickfix',
-      diagnosticCodes: [DiagnosticCode.BrokenPassageLink],
-      edits: [{ uri, ...edit }],
-    });
+    const action = passageAction(uri, diag, suggestion, `Change to '${suggestion}'`, editPassage);
+    if (action) actions.push(action);
   }
-
-  // A new passage after the last one of the document
-  const encoded = encodePassageName(name);
-  if (!workspace.passages.getPassage(name) && encoded !== undefined && emptyPassageIsDestination(name)) {
-    const edit = insertLinesAt(text, splitLines(text).length, `\n:: ${encoded}\n`, lineEndingFor(workspace, uri));
-    actions.push({
-      title: `Create passage '${name}'`,
-      kind: 'quickfix',
-      diagnosticCodes: [DiagnosticCode.BrokenPassageLink],
-      edits: [{ uri, ...edit }],
-    });
-  }
+  const creation = createPassage(name);
+  // Each action receives its own originating diagnostic below.
+  if (creation) actions.push({ ...creation });
   return actions;
+}
+
+function passageCreation(uri: string, name: string, workspace: WorkspaceModel, append: (body: string) => TextEdit): CodeAction | undefined {
+  const text = workspace.documents.getText(uri);
+  const encoded = encodePassageName(name);
+  if (text === undefined || workspace.passages.getPassage(name) || encoded === undefined || !emptyPassageIsDestination(name)) return;
+  const edit = append(`\n:: ${encoded}\n`);
+  return {
+    title: `Create passage '${name}'`, kind: 'quickfix',
+    diagnosticCodes: [DiagnosticCode.BrokenPassageLink], edits: [{ uri, ...edit }],
+  };
 }
 
 /** The compiler decides whether this proposed empty body is emitted as a destination. */
@@ -553,54 +570,18 @@ function emptyPassageIsDestination(name: string): boolean {
   return passageOmission(builder.build(), passage, 'twine2') === undefined;
 }
 
-/** Edit a destination only when the runtime reads it back and keeps all other code intact. */
-function passageNameEdit(uri: string, diag: SpindleDiagnostic, name: string, workspace: WorkspaceModel): TextEdit | undefined {
-  const markup = workspace.markup.get(uri);
-  const passage = markup?.passageAt(diag.range.start);
-  if (!markup || !passage) return;
-  const start = passage.contentOffset(positionToOffset(diag.range.start, markup.lineStarts));
-  const end = passage.contentOffset(positionToOffset(diag.range.end, markup.lineStarts));
-  const ref = documentPassageRefs(markup).find(ref => ref.passage === passage && ref.start >= start && ref.end <= end);
-  const from = ref?.start ?? start;
-  const to = ref?.end ?? end;
-  const meaningful = (piece: Piece) => piece.kind !== 'text';
-  const before = passage.pieces.filter(meaningful);
-  const changed = before.findIndex(piece => piece.kind === 'passage' || piece.kind === 'code'
-    ? piece.offset >= start && piece.offset < end : false);
-  if (changed < 0) return;
-  const identity = (piece: Piece): string => {
-    if (piece.kind === 'passage') return `passage ${piece.macro} ${piece.name}`;
-    if (piece.kind === 'code') return `code ${piece.macro} ${piece.goal} ${piece.code}`;
-    return piece.kind;
-  };
-  const expected = before.map(identity);
-  const target = before[changed];
-  if (target.kind !== 'passage' && target.kind !== 'code') return;
-  expected[changed] = `passage ${target.macro} ${name}`;
-
-  for (const quote of ['"', "'"] as const) {
-    let newText: string;
-    try {
-      newText = ref ? encodePassageRefName(ref, name)
-        : encodeEnclosingMarkup(passage, from, to, quote + encodeStringLiteralBody(name, quote) + quote);
-    } catch { continue; }
-    const rewritten = passage.content.slice(0, from) + newText + passage.content.slice(to);
-    const after = passagePieces(rewritten, markup.context.macros).filter(meaningful).map(identity);
-    if (after.length === expected.length && after.every((sig, index) => sig === expected[index])) {
-      return { range: passage.range(from, to), newText };
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Plugin wrapper (LSP integration)
 // ---------------------------------------------------------------------------
 
-function toLspRange(r: Range): import('vscode-languageserver').Range {
-  return {
-    start: { line: r.start.line, character: r.start.character },
-    end: { line: r.end.line, character: r.end.character },
-  };
+const APPLY_CODE_ACTION = 'spindle.applyCodeAction';
+
+function isSavedDiagnostic(value: unknown): value is SpindleDiagnostic {
+  if (!value || typeof value !== 'object') return false;
+  const diagnostic = value as SpindleDiagnostic;
+  const position = (p: Position | undefined) => p && Number.isInteger(p.line) && p.line >= 0
+    && Number.isInteger(p.character) && p.character >= 0;
+  return typeof diagnostic.code === 'string' && !!position(diagnostic.range?.start) && !!position(diagnostic.range?.end);
 }
 
 export const codeActionsPlugin: SpindlePlugin = {
@@ -609,8 +590,25 @@ export const codeActionsPlugin: SpindlePlugin = {
     codeActionProvider: {
       codeActionKinds: ['quickfix'],
     },
+    executeCommandProvider: { commands: [APPLY_CODE_ACTION] },
   },
   initialize(ctx: PluginContext) {
+    ctx.connection.onExecuteCommand(async params => {
+      if (params.command !== APPLY_CODE_ACTION || !ctx.canApplyEdit) return null;
+      const [uri, diagnostic, title] = params.arguments ?? [];
+      if (typeof uri !== 'string' || typeof title !== 'string' || !isSavedDiagnostic(diagnostic)
+        || (diagnostic.code !== DiagnosticCode.BrokenPassageLink && diagnostic.code !== DiagnosticCode.UnquotedPassageName)) return null;
+      const action = computeCodeActions(uri, [diagnostic], ctx.workspace, {
+        workspaceRoot: ctx.config.workspaceRoot, passageEditBudget: Infinity,
+      }).find(action => action.title === title && !action.deferred);
+      if (action) {
+        const version = ctx.documentVersion?.(uri);
+        await ctx.connection.workspace.applyEdit(version === undefined
+          ? { changes: { [uri]: action.edits } }
+          : { documentChanges: [{ textDocument: { uri, version }, edits: action.edits }] });
+      }
+      return null;
+    });
     ctx.connection.onCodeAction((params) => {
       // Convert LSP diagnostics back to our Diagnostic type
       const originals = new Map<SpindleDiagnostic, typeof params.context.diagnostics[number]>();
@@ -640,21 +638,27 @@ export const codeActionsPlugin: SpindlePlugin = {
         params.textDocument.uri,
         diagnostics,
         ctx.workspace,
-        { workspaceRoot: ctx.config.workspaceRoot },
+        {
+          workspaceRoot: ctx.config.workspaceRoot,
+          // Clients without server-applied edits need complete direct edits.
+          passageEditBudget: ctx.canApplyEdit ? undefined : Infinity,
+        },
       );
 
       return actions.map(a => ({
         title: a.title,
         kind: a.kind,
         diagnostics: a.diagnostics?.map(d => originals.get(d)!) ?? [],
-        edit: a.createFile
+        ...(a.deferred ? {
+          command: { title: a.title, command: APPLY_CODE_ACTION, arguments: [params.textDocument.uri, a.diagnostics![0], a.title] },
+        } : { edit: a.createFile
           ? {
             // Resource operations are only expressible via documentChanges
             documentChanges: [
               { kind: 'create' as const, uri: a.createFile, options: { ignoreIfExists: true } },
               ...a.edits.map(e => ({
                 textDocument: { uri: e.uri, version: null },
-                edits: [{ range: toLspRange(e.range), newText: e.newText }],
+                edits: [{ range: e.range, newText: e.newText }],
               })),
             ],
           }
@@ -662,10 +666,10 @@ export const codeActionsPlugin: SpindlePlugin = {
             changes: Object.fromEntries(
               a.edits.map(e => [
                 e.uri,
-                [{ range: toLspRange(e.range), newText: e.newText }],
+                [{ range: e.range, newText: e.newText }],
               ]),
             ),
-          },
+          } }),
       }));
     });
   },

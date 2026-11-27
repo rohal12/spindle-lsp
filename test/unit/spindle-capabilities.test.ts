@@ -152,6 +152,23 @@ describe('Spindle target', () => {
     expect(resolveSpindleTarget(undefined)).toBe(DEFAULT_TARGET);
   });
 
+  it.each([
+    { workspaces: ['a'.repeat(66_000)] },
+    { workspaces: ['packages/*', '!' + 'a'.repeat(66_000)] },
+    { workspaces: { packages: ['a'.repeat(66_000)] } },
+  ])('contains unusable workspace patterns, case %# (#322)', ({ workspaces }) => {
+    const root = project('0.70.0', false, { workspaces });
+    expect(readInstalledSpindleVersion(root)).toBeUndefined();
+    const { workspace, diagnostics } = diagnose(root,
+      ':: StoryData\n{"format-version":"0.59.20"}\n:: StoryVariables\n:: Start\nHi\n');
+    try {
+      expect(workspace.target).toMatchObject({ version: '0.59.20', source: 'story-data' });
+      expect(diagnostics.map(d => d.code)).toContain('SP001');
+    } finally {
+      workspace.dispose();
+    }
+  });
+
   it('matches the runtime the tests import', () => {
     expect(resolveSpindleTarget(INSTALLED_SPINDLE_VERSION)).toMatchObject({ version: INSTALLED_SPINDLE_VERSION, supported: true });
   });

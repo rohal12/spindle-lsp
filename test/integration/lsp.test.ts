@@ -856,6 +856,58 @@ describe('Integration: LSP server over stdio', () => {
     if (serverBundleDir) rmSync(serverBundleDir, { recursive: true, force: true });
   });
 
+  it('initializes and answers editor requests with an overlong workspace pattern (#322)', async () => {
+    const source = ':: StoryVariables\n:: Start\n{pr';
+    const dir = makeTempWorkspace({
+      'package.json': JSON.stringify({ private: true, workspaces: ['a'.repeat(66_000)] }),
+      'story.tw': source,
+    });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, source);
+    const items = await session.conn.sendRequest('textDocument/completion', {
+      textDocument: { uri }, position: { line: 2, character: 3 },
+    }) as CompletionItem[];
+    expect(items.map(item => item.label)).toContain('print');
+    expect(session.log()).toContain('workspace initialized');
+  });
+
+  it('offers a large batch of link fixes and executes a selected deferred fix (#321)', async () => {
+    const source = ':: StoryVariables\n:: Target\n{print 1}\n:: Start\n' + '[[Targte]]'.repeat(800);
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': source });
+    const session = await startLsp(dir, {}, { workspace: { applyEdit: true, workspaceEdit: { documentChanges: true } } });
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, source);
+    const diagnostics = await session.waitForDiagnostics(uri, hasCode('SP300'));
+    const actionsRequest = session.conn.sendRequest('textDocument/codeAction', {
+      textDocument: { uri }, range: diagnostics.at(-1)!.range, context: { diagnostics },
+    }) as Promise<import('vscode-languageserver').CodeAction[]>;
+    const hoverRequest = session.conn.sendRequest('textDocument/hover', {
+      textDocument: { uri }, position: { line: 2, character: 3 },
+    });
+    const [actions, hover] = await Promise.all([actionsRequest, hoverRequest]);
+    expect(actions).toHaveLength(1600);
+    expect(hover).not.toBeNull();
+    const selected = actions.findLast(action => action.title === "Change to 'Target'" && action.command)!;
+    expect(selected).toBeDefined();
+    expect(selected.edit).toBeUndefined();
+    let applied: import('vscode-languageserver').WorkspaceEdit | undefined;
+    session.conn.onRequest('workspace/applyEdit', (params: { edit: import('vscode-languageserver').WorkspaceEdit }) => {
+      applied = params.edit;
+      return { applied: true };
+    });
+    await session.conn.sendRequest('workspace/executeCommand', selected.command!);
+    expect(applied?.documentChanges).toHaveLength(1);
+    const change = applied!.documentChanges![0] as import('vscode-languageserver').TextDocumentEdit;
+    expect(change.textDocument).toEqual({ uri, version: 1 });
+    const rewritten = TextDocument.applyEdits(TextDocument.create(uri, 'twee', 1, source), change.edits);
+    expect(rewritten).toBe(source.slice(0, -10) + '[[Target]]');
+    const mark = session.publishes.length;
+    await didChangeFull(session, uri, 2, rewritten);
+    const remaining = await session.waitForDiagnostics(uri, hasCode('SP300'), mark);
+    expect(remaining.filter(d => d.code === 'SP300')).toHaveLength(799);
+  });
+
   it('enables editor features after ingesting a file above the argument limit and deleting it (#255)', async () => {
     const source = Array.from({ length: 140_000 }, (_, i) => `:: P${i}\n`).join('');
     const dir = makeTempWorkspace({ 'package.json': '{}', 'large.tw': source });

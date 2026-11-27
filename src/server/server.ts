@@ -127,7 +127,12 @@ export function startServer(args: string[]): void {
 
     // Initialize each plugin with context
     for (const plugin of activePlugins) {
-      plugin.initialize({ connection: pluginConnection, workspace, config });
+      plugin.initialize({
+        connection: pluginConnection, workspace, config,
+        canApplyEdit: params.capabilities.workspace?.applyEdit === true,
+        ...(params.capabilities.workspace?.workspaceEdit?.documentChanges
+          ? { documentVersion: (uri: string) => documents.get(uri)?.version ?? null } : {}),
+      });
     }
 
     const refresh = params.capabilities.workspace;
