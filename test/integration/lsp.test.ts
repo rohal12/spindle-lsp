@@ -872,6 +872,16 @@ describe('Integration: LSP server over stdio', () => {
     expect(session.log()).toContain('workspace initialized');
   });
 
+  it('publishes diagnostics within the response bound for a 12 KB unmatched link target (#320)', async () => {
+    const source = ':: StoryVariables\n:: Start\n[[go->' + '{$x'.repeat(4000) + ']]';
+    const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': source });
+    const session = await startLsp(dir);
+    const uri = uriFor(dir, 'story.tw');
+    await didOpen(session, uri, source);
+    const diagnostics = await session.waitForDiagnostics(uri, hasCode('SP300'));
+    expect(codesOf(diagnostics)).toEqual(['SP300']);
+  });
+
   it('offers a large batch of link fixes and executes a selected deferred fix (#321)', async () => {
     const source = ':: StoryVariables\n:: Target\n{print 1}\n:: Start\n' + '[[Targte]]'.repeat(800);
     const dir = makeTempWorkspace({ 'package.json': '{}', 'story.tw': source });

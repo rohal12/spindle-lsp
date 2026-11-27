@@ -238,6 +238,19 @@ describe('Q-diagnostic: SP305 flags {$x} where the link macro prints the braces'
     expect(found.map(f => f.place)).toEqual(['link-target', 'link-macro-passage']);
   });
 
+  it.each([
+    ['{$x{$y}', ['{$y}']],
+    ['{$x + "unterminated} {$y}', ['{$y}']],
+    ['{$x + "}"}', ['{$x + "}"}']],
+    ['{$x} {@y} {%z} {_w}', ['{$x}', '{@y}', '{%z}', '{_w}']],
+  ])('keeps strict interpolation spans inside literal target %j (#320)', (target, blocks) => {
+    const source = `[[go->${target}]]`;
+    const found = findLiteralLinkInterpolations(source);
+    expect(found.map(span => span.block)).toEqual(blocks);
+    const doc = TextDocument.create(uri, 'twee', 0, source);
+    expect(found.map(span => doc.getText(span.range))).toEqual(blocks);
+  });
+
   it('Q-diagnostic-silent: other formats and non-markup passages', () => {
     const sugarcube = ':: StoryData\n{"format": "SugarCube"}\n:: Start\n[[Take {$item}->T]]\n';
     expect(sp305(workspace(sugarcube))).toEqual([]);
