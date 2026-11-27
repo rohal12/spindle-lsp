@@ -167,7 +167,7 @@ describe('Parameters', () => {
     // Without stateInfo, string should be accepted (passage = text-like)
     const r = params.validate(
       [makeArg(ArgType.String, '"Start"', 0, 7)],
-      { passages: ['Start', 'End'] },
+      { passages: new Set(['Start', 'End']) },
     );
     expect(r.errors).toHaveLength(0);
   });
@@ -176,7 +176,7 @@ describe('Parameters', () => {
     const params = new Parameters(['passage']);
     const r = params.validate(
       [makeArg(ArgType.String, '"Missing"', 0, 9)],
-      { passages: ['Start', 'End'] },
+      { passages: new Set(['Start', 'End']) },
     );
     expect(r.errors).toHaveLength(0);
     expect(r.warnings.length).toBeGreaterThan(0);
@@ -243,12 +243,12 @@ describe('configured schema alternatives (#135)', () => {
 
   it('keeps warnings from the chosen complete branch only', () => {
     const result = new Parameters(['passage | (string &+ number)']).validate(
-      lexArguments('"Missing" 1'), { passages: ['Start'] },
+      lexArguments('"Missing" 1'), { passages: new Set(['Start']) },
     );
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual([]);
     expect(new Parameters(['passage | (string &+ number)']).validate(
-      lexArguments('"Missing"'), { passages: ['Start'] },
+      lexArguments('"Missing"'), { passages: new Set(['Start']) },
     ).warnings).toHaveLength(1);
   });
 
@@ -262,7 +262,7 @@ describe('configured schema alternatives (#135)', () => {
 
   it('keeps the preferred repeated branch warnings at a shared endpoint', () => {
     const result = new Parameters(['...(passage | (string &+ string))']).validate(
-      lexArguments('"MissingA" "MissingB"'), { passages: ['Start'] },
+      lexArguments('"MissingA" "MissingB"'), { passages: new Set(['Start']) },
     );
     expect(result.errors).toEqual([]);
     expect(result.warnings.map(warning => warning.argIndex)).toEqual([0, 1]);

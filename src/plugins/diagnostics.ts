@@ -173,7 +173,7 @@ interface DefinedWidget {
 interface StoryReport {
   readonly effective: ReadonlySet<Passage>;
   readonly destinations: ReadonlyMap<string, Passage>;
-  readonly getPassageNames: () => string[];
+  readonly getPassageNames: () => ReadonlySet<string>;
   readonly diagnosticOwner: string | undefined;
   readonly storyVariables: Passage | undefined;
   readonly storyTransients: Passage | undefined;
@@ -236,7 +236,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
   }
   const effective = new Set(workspace.passages.getEffectivePassages());
   const destinations = new Map([...effective].map(passage => [passage.name, passage]));
-  let passageNames: string[] | undefined;
+  let passageNames: ReadonlySet<string> | undefined;
   const passages = [...effective]
     .filter(isRuntimePassage).flatMap(passage => markups.get(passage) ?? []);
 
@@ -288,7 +288,7 @@ function buildReport(documents: readonly DocumentMarkup[], workspace: WorkspaceM
   return {
     effective,
     destinations,
-    getPassageNames: () => passageNames ??= [...effective].filter(isRuntimePassage).map(passage => passage.name),
+    getPassageNames: () => passageNames ??= new Set([...effective].filter(isRuntimePassage).map(passage => passage.name)),
     diagnosticOwner: missingStoryVariablesOwner(workspace),
     storyVariables: workspace.passages.getStoryVariables(),
     storyTransients: workspace.passages.getStoryTransients(),
@@ -723,11 +723,6 @@ interface TemporaryTarget {
   offset: number;
 }
 
-/** Matches a `_name` temporary reference, using Spindle's own boundary rule. */
-function temporaryRefRegex(name: string): RegExp {
-  return new RegExp(`(?<![.\\w$@%])_(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![\\w$])`, 'g');
-}
-
 /**
  * `code` with the contents of string literals, regular expressions and
  * comments replaced by spaces (keeping the quotes' offsets), so that sigils in
@@ -781,28 +776,54 @@ function computedTemporaryTarget(rawArgs: string): TemporaryTarget[] {
  */
 function setTemporaryTargets(rawArgs: string): TemporaryTarget[] {
   const code = maskLiterals(rawArgs);
+  const assignments = [...code.matchAll(/(?<![.\w$@%])_([A-Za-z_$][\w$]*)\s*=(?![=>])/g)];
+  if (!assignments.length) return [];
+  const refs = [...code.matchAll(/(?<![.\w$@%])_([A-Za-z_$][\w$]*)(?![\w$])/g)];
+  const nextRef = new Map<string, number>();
+  let assignment = assignments.length - 1;
+  let ref = refs.length - 1;
+  let depth = 0;
+  for (const ch of code) depth += bracketChange(ch);
+
+  // Walk once from the right. An earlier delimiter hides later ones at the
+  // same or greater depth; the surviving depths increase, so a binary search
+  // finds the first delimiter at or below each assignment's starting depth.
+  // This preserves the advisory's relative-depth boundaries even for code
+  // which tooling will diagnose as malformed.
+  const ends: Array<{ offset: number; depth: number }> = [];
   const targets: TemporaryTarget[] = [];
-  const assignRe = /(?<![.\w$@%])_([A-Za-z_$][\w$]*)\s*=(?![=>])/g;
-  let m: RegExpExecArray | null;
-  while ((m = assignRe.exec(code)) !== null) {
-    const name = m[1];
-    const rhs = code.slice(m.index + m[0].length, statementEnd(code, m.index + m[0].length));
-    if (temporaryRefRegex(name).test(rhs)) continue;
-    targets.push({ name, offset: m.index });
+  for (let i = code.length; i >= 0 && assignment >= 0; i--) {
+    const ch = code[i];
+    depth -= bracketChange(ch);
+    if (ch === ';' || ch === ',') {
+      while (ends.length && ends[ends.length - 1].depth >= depth) ends.pop();
+      ends.push({ offset: i, depth });
+    }
+    if (ref >= 0 && refs[ref].index === i) {
+      nextRef.set(refs[ref][1], i);
+      ref--;
+    }
+    const m = assignments[assignment];
+    if (i !== m.index + m[0].length) continue;
+    let low = 0;
+    let high = ends.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (ends[mid].depth <= depth) low = mid + 1;
+      else high = mid;
+    }
+    const end = ends[low - 1]?.offset ?? code.length;
+    if ((nextRef.get(m[1]) ?? code.length) >= end) targets.push({ name: m[1], offset: m.index });
+    assignment--;
   }
-  return targets;
+  return targets.reverse();
 }
 
-/** Offset of the `;` or `,` that ends the expression starting at `from`. */
-function statementEnd(code: string, from: number): number {
-  let depth = 0;
-  for (let i = from; i < code.length; i++) {
-    const ch = code[i];
-    if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-    else if ((ch === ';' || ch === ',') && depth <= 0) return i;
-  }
-  return code.length;
+/** Delimiter depth in code already masked by the public JavaScript lexer. */
+function bracketChange(ch: string | undefined): number {
+  if (ch === '(' || ch === '[' || ch === '{') return 1;
+  if (ch === ')' || ch === ']' || ch === '}') return -1;
+  return 0;
 }
 
 /**
@@ -923,7 +944,7 @@ const SPINDLE_MACROS: ReadonlySet<string> = new Set([
  * registry's format instead, and the language server checks its arguments
  * against those.
  */
-function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel, getPassageNames: () => string[]): SpindleDiagnostic[] {
+function argumentDiagnostics(passage: PassageMarkup, workspace: WorkspaceModel, getPassageNames: () => ReadonlySet<string>): SpindleDiagnostic[] {
   const diagnostics: SpindleDiagnostic[] = [];
 
   for (const token of passage.invocations) {

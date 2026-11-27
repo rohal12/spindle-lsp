@@ -40,7 +40,7 @@ export interface ArgumentWarning {
 }
 
 export interface StateInfo {
-  passages: string[];
+  passages: ReadonlySet<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,8 +188,8 @@ const parameterTypes: ParameterType[] = [
       }
 
       if (passageName !== undefined) {
-        if (state && state.passages.length > 0) {
-          if (!state.passages.includes(passageName)) {
+        if (state && state.passages.size > 0) {
+          if (!state.passages.has(passageName)) {
             return new TypeWarning(`Nonexistent passage: "${passageName}"`);
           }
         }
