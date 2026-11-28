@@ -2,6 +2,7 @@ import {
   builtinMacros,
   effectiveWidgetDefinitions,
   lexJs,
+  macroArgumentSpans,
   pairMarkup,
   parseCode,
   pieceOffset,
@@ -721,49 +722,45 @@ interface TemporaryTarget {
   name: string;
   /** Offset of the `_` within the macro's raw arguments. */
   offset: number;
+  /** Exclusive boundary within the macro's raw arguments. */
+  end: number;
 }
 
 /**
- * `code` with the contents of string literals, regular expressions and
- * comments replaced by spaces (keeping the quotes' offsets), so that sigils in
- * them are not mistaken for code. The code in a template literal's `${…}`
- * stays, because Spindle transforms the sigils inside them like any other code.
+ * Mask literals/comments for the advisory's operator and delimiter scan, and
+ * keep the public lexer's temporary references separately. Member properties
+ * remain code, but never become temporary references. Keep identifier source
+ * spellings in the mask: decoded names need not have the same length.
  */
-function maskLiterals(code: string): string {
+function temporaryCode(code: string): { code: string; refs: TemporaryTarget[] } {
   const chars: string[] = code.split('').map(ch => (ch === '\n' ? '\n' : ' '));
-  const copy = (text: string, index: number) => {
-    for (let i = 0; i < text.length; i++) chars[index + i] = text[i];
-  };
+  const refs: TemporaryTarget[] = [];
   lexJs(code, {
-    code: copy,
-    variable: (sigil, name, index) => copy(sigil + name, index),
+    code: (ch, index) => { chars[index] = ch; },
+    variable: (sigil, name, offset, _nesting, end) => {
+      for (let i = offset; i < end; i++) chars[i] = code[i];
+      if (sigil === '_') refs.push({ name, offset, end });
+    },
   }, 'statements');
-  return chars.join('');
+  return { code: chars.join(''), refs };
 }
 
-/**
- * The `_name` target of `{computed _name = expr}`, located the way Spindle's
- * parseComputedArgs() does: the first `=` at bracket depth 0 that is not part
- * of `==` or `!=`.
- */
+const computedParameters = builtinMacros.find(macro => macro.name === 'computed')!.parameters!;
+
+/** The computed target's runtime argument boundary and decoded reference. */
 function computedTemporaryTarget(rawArgs: string): TemporaryTarget[] {
-  const lead = rawArgs.length - rawArgs.trimStart().length;
-  const trimmed = rawArgs.trim();
-  let depth = 0;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-    else if (ch === '=' && depth === 0) {
-      if (trimmed[i + 1] === '=') {
-        i++;
-        continue;
-      }
-      if (i > 0 && trimmed[i - 1] === '!') continue;
-      const target = trimmed.slice(0, i).trim();
-      const m = /^_(\w+)$/.exec(target);
-      return m ? [{ name: m[1], offset: lead }] : [];
+  const spans = macroArgumentSpans(rawArgs, computedParameters);
+  const target = spans.find(span => span.parameter.name === 'target');
+  if (!target || !spans.some(span => span.parameter.type === 'separator')) return [];
+  try {
+    const code = rawArgs.slice(target.start, target.end);
+    const refs = parseCode(code).refs;
+    const ref = refs[0];
+    if (refs.length === 1 && ref.sigil === '_' && ref.start === 0 && ref.end === code.length) {
+      return [{ name: ref.name, offset: target.start, end: target.end }];
     }
+  } catch {
+    // The runtime's syntax diagnostics own malformed targets.
   }
   return [];
 }
@@ -775,10 +772,13 @@ function computedTemporaryTarget(rawArgs: string): TemporaryTarget[] {
  * carry a value from one iteration to the next.
  */
 function setTemporaryTargets(rawArgs: string): TemporaryTarget[] {
-  const code = maskLiterals(rawArgs);
-  const assignments = [...code.matchAll(/(?<![.\w$@%])_([A-Za-z_$][\w$]*)\s*=(?![=>])/g)];
+  const { code, refs } = temporaryCode(rawArgs);
+  const operator = /\s*=(?![=>])/y;
+  const assignments = refs.flatMap(target => {
+    operator.lastIndex = target.end;
+    return operator.test(code) ? [{ ...target, rhsStart: operator.lastIndex }] : [];
+  });
   if (!assignments.length) return [];
-  const refs = [...code.matchAll(/(?<![.\w$@%])_([A-Za-z_$][\w$]*)(?![\w$])/g)];
   const nextRef = new Map<string, number>();
   let assignment = assignments.length - 1;
   let ref = refs.length - 1;
@@ -799,12 +799,12 @@ function setTemporaryTargets(rawArgs: string): TemporaryTarget[] {
       while (ends.length && ends[ends.length - 1].depth >= depth) ends.pop();
       ends.push({ offset: i, depth });
     }
-    if (ref >= 0 && refs[ref].index === i) {
-      nextRef.set(refs[ref][1], i);
+    if (ref >= 0 && refs[ref].offset === i) {
+      nextRef.set(refs[ref].name, i);
       ref--;
     }
     const m = assignments[assignment];
-    if (i !== m.index + m[0].length) continue;
+    if (i !== m.rhsStart) continue;
     let low = 0;
     let high = ends.length;
     while (low < high) {
@@ -813,7 +813,7 @@ function setTemporaryTargets(rawArgs: string): TemporaryTarget[] {
       else high = mid;
     }
     const end = ends[low - 1]?.offset ?? code.length;
-    if ((nextRef.get(m[1]) ?? code.length) >= end) targets.push({ name: m[1], offset: m.index });
+    if ((nextRef.get(m.name) ?? code.length) >= end) targets.push(m);
     assignment--;
   }
   return targets.reverse();
@@ -863,9 +863,9 @@ function loopDiagnostics(passage: PassageMarkup, token: MacroToken, ancestors: r
   for (const target of targets) {
     if (!isReadInBody(passage, bodyStart, close.start, target.name, token.start, token.end)) continue;
     view ??= sourceView(passage, token.argsStart, token.argsEnd);
-    const start = viewIndex(view, token.argsStart) + target.offset;
+    const argsStart = viewIndex(view, token.argsStart);
     diagnostics.push(makeDiag(
-      passage.range(pieceOffset(view, start), pieceOffset(view, start + 1 + target.name.length)),
+      passage.range(pieceOffset(view, argsStart + target.offset), pieceOffset(view, argsStart + target.end)),
       DiagnosticCode.TemporaryAssignedInLoop,
       `Temporary '_${target.name}' is assigned inside {${loop.name}} and read in the loop body. ` +
         'Temporaries are shared by every iteration, so all iterations end up seeing the value ' +

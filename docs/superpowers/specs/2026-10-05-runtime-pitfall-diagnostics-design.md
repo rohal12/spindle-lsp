@@ -55,10 +55,13 @@ A plain assignment to `_name` (target of `{computed _name = …}`, or
    `{for}`. Occurrences that are themselves plain assignment targets do not
    count as reads.
 
-The `{computed}` target is located exactly as Spindle's `parseComputedArgs()`
-locates it. In `{set}`, string contents are ignored, but code inside template
-`${…}` interpolations is analysed, because Spindle's `transform()` converts
-sigils there too.
+Spindle's public argument spans and code references locate the `{computed}`
+target. In `{set}`, the public JavaScript lexer distinguishes temporary
+references from member properties, including properties separated from their
+dot by whitespace or comments. String contents are ignored, but code inside
+template `${…}` interpolations is analysed. Escaped identifiers use their
+decoded names for identity and their complete source spans for underlining,
+including inside quoted labels.
 
 ### What is not reported
 
